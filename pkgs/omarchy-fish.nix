@@ -1,0 +1,120 @@
+# Omarchy shell configuration for Fish (upstream: omacom-io/omarchy-fish),
+# vendored as an opt-in profile. Pure vendor pin at
+# v1.5.0 — no patches; Quattro parity gaps (missing helpers cy/mup/rsw/lsw/
+# dsw/tds, the current completion contract) are upstream phase-1 work.
+#
+# Layout mirrors the canonical PKGBUILD
+# (omacom-io/omarchy-pkgs/pkgbuilds/omarchy-fish): conf.d/functions/
+# completions land in fish's vendor_* dirs, and fzf.fish v10.3 is bundled
+# into the same dirs (never nixpkgs' newer fishPlugins.fzf-fish). Copy
+# order matters: fzf.fish first, omarchy-fish second — both ship
+# _fzf_search_history.fish and omarchy's version must win.
+#
+# Deviations:
+#   - functions/try.fish is NOT installed: v1.5.0 hard-codes /usr/bin/try,
+#     /usr/bin/env ruby and a pacman install hint, so it is broken on
+#     NixOS. It returns when upstream phase 1 replaces it with `try init`.
+#   - bin/omarchy-setup-fish is replaced by an informational stub:
+#     upstream's script backs up ~/.bashrc and trampolines fish from bash,
+#     which conflicts with the NixOS ownership model — the login shell is a
+#     declarative account setting (users.users.<name>.shell).
+{
+  lib,
+  stdenvNoCC,
+  fetchFromGitHub,
+  writeShellScript,
+}:
+
+let
+  version = "1.5.0";
+
+  src = fetchFromGitHub {
+    owner = "omacom-io";
+    repo = "omarchy-fish";
+    rev = "refs/tags/v${version}";
+    hash = "sha256-WOlyf3BGQxD4Khl+jvbWpajgT7Zyh4+A3PLHJ1jUvzc=";
+  };
+
+  # Same fzf.fish revision the canonical PKGBUILD bundles.
+  fzfSrc = fetchFromGitHub {
+    owner = "PatrickF1";
+    repo = "fzf.fish";
+    rev = "refs/tags/v10.3";
+    hash = "sha256-T8KYLA/r/gOKvAivKRoeqIwE2pINlxFQtZJHpOy9GMM=";
+  };
+
+  setupStub = writeShellScript "omarchy-setup-fish" ''
+    cat <<'EOF'
+    omarchy-fish on NixOS: the login shell is a declarative account
+    setting, not something a script mutates.
+
+    1. Enable the Omarchy Fish profile (installs fish + vendor files):
+
+         omarchy.fish.enable = true;
+
+    2. Pick fish as the login shell for your account:
+
+         users.users.<name>.shell = pkgs.fish;
+
+    3. Rebuild and log back in:
+
+         sudo nixos-rebuild switch --flake <your-flake>
+
+    The Omarchy Fish profile loads from the system profile's
+    share/fish/vendor_* directories; nothing is copied to ~/.config/fish,
+    and functions in ~/.config/fish/functions override the vendor ones.
+    EOF
+  '';
+in
+stdenvNoCC.mkDerivation {
+  pname = "omarchy-fish";
+  inherit version src;
+
+  dontConfigure = true;
+  dontBuild = true;
+
+  installPhase = ''
+    runHook preInstall
+
+    # Vendor dirs — same targets as the PKGBUILD. dotglob so leading-dot
+    # function names (....fish, .....fish) are not skipped.
+    shopt -s dotglob
+    install -dm755 "$out/share/fish/vendor_conf.d" \
+      "$out/share/fish/vendor_functions.d" \
+      "$out/share/fish/vendor_completions.d"
+    for f in "${fzfSrc}/conf.d/"*.fish; do install -m644 "$f" "$out/share/fish/vendor_conf.d/"; done
+    for f in "${fzfSrc}/functions/"*.fish; do install -m644 "$f" "$out/share/fish/vendor_functions.d/"; done
+    for f in "${fzfSrc}/completions/"*.fish; do install -m644 "$f" "$out/share/fish/vendor_completions.d/"; done
+    for f in conf.d/*.fish; do install -m644 "$f" "$out/share/fish/vendor_conf.d/"; done
+    for f in functions/*.fish; do install -m644 "$f" "$out/share/fish/vendor_functions.d/"; done
+    for f in completions/*.fish; do install -m644 "$f" "$out/share/fish/vendor_completions.d/"; done
+    shopt -u dotglob
+
+    # B24: try.fish excluded — v1.5.0 hard-codes /usr/bin/try,
+    # /usr/bin/env ruby and a pacman hint (broken on NixOS until upstream
+    # phase 1). The exclusion stays a no-op when a future release stops
+    # shipping try.fish; the checks.omarchy-fish-package absence assertion
+    # enforces the invariant.
+    rm -f "$out/share/fish/vendor_functions.d/try.fish"
+
+    # Docs + licenses (PKGBUILD layout).
+    install -dm755 "$out/share/omarchy-fish"
+    cp -r templates "$out/share/omarchy-fish/"
+    install -m644 LICENSE README.md "$out/share/omarchy-fish/"
+    install -m644 "${fzfSrc}/LICENSE.md" "$out/share/omarchy-fish/LICENSE.fzf.fish"
+    install -m644 "${fzfSrc}/README.md" "$out/share/omarchy-fish/README.fzf.fish.md"
+
+    # NixOS informational stub replaces upstream's mutating setup script.
+    install -Dm755 "${setupStub}" "$out/bin/omarchy-setup-fish"
+
+    runHook postInstall
+  '';
+
+  meta = {
+    description = "Omarchy shell configuration for Fish (opt-in vendored profile)";
+    homepage = "https://github.com/omacom-io/omarchy-fish";
+    license = lib.licenses.mit;
+    mainProgram = "omarchy-setup-fish";
+    platforms = lib.platforms.linux;
+  };
+}

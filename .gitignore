@@ -1,0 +1,26 @@
+# Nix
+result
+result-*
+.direnv/
+.envrc.local
+
+# Editor / agent working state
+.zcode/
+.codex/
+.cache/
+
+# OS
+.DS_Store
+*.swp
+*~
+
+# Test VM artifacts (qcow2, OVMF, symlinks to nix store) — never commit
+/.vm/
+*.qcow2
+
+# Local analysis report
+/CODEX_REPORT.md
+
+# Consumer-state file — this repo is never a consumer; a copy at root is
+# always a stray artifact (e.g. omarchy-nix-add run with cwd here).
+/omarchy-packages.json
