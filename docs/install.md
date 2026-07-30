@@ -1,13 +1,19 @@
 # Installing omarchy-nix on a clean NixOS
 
-This is the "new user with a fresh NixOS minimal install" flow: boot the
-minimal ISO, partition, install omarchy-nix as a flake input, `nixos-install`,
-reboot into the desktop. No GUI is preinstalled; omarchy provides it.
+This is the "new user with a fresh NixOS install" flow: get NixOS onto
+the disk without a desktop, install omarchy-nix as a flake input,
+reboot into the Omarchy desktop. No GUI is preinstalled; omarchy
+provides it.
 
 ## Prerequisites
 
-- A NixOS minimal ISO (the plain console installer, not the graphical one).
-  Download from <https://nixos.org/download/> (look for the minimal ISO).
+- A NixOS ISO from <https://nixos.org/download/> — either works:
+  - **Graphical ISO** (recommended, faster): the live desktop runs the
+    Calamares installer; on its Desktop page you pick **No Desktop**
+    and it handles partitioning (LUKS optional), the user account and
+    network for you.
+  - **Minimal ISO** (fully manual): the plain console installer; you
+    partition and configure everything by hand (§ 2 onwards).
 - A machine (bare metal or VM) with EFI boot and a GPU Hyprland can drive
   (Intel/AMD work; NVIDIA needs the proprietary driver, out of scope here).
 - Network access (the install fetches omarchy-nix + nixpkgs from GitHub/cache).
@@ -20,9 +26,37 @@ reboot into the desktop. No GUI is preinstalled; omarchy provides it.
 > anything; this note is just so you know why the install pulls from a
 > non-default cache.
 
-## 1. Boot the minimal ISO
+## 1. Get NixOS onto the disk
 
-Boot the ISO, log in as `root` (or `nixos` with `sudo -i`).
+### Option A: graphical ISO + Calamares (faster)
+
+Boot the graphical ISO and run the installer. The convenient bits:
+
+- **Partitioning** is point-and-click, including full-disk **encryption**
+  (a checkbox with a passphrase prompt). If you encrypt, set
+  `omarchy.autologin.user` in § 4 for the single-password flow (disk
+  unlock at boot, straight into the desktop).
+- On the **Desktop** page select **No Desktop** — omarchy provides the
+  desktop later; anything else would be replaced anyway.
+- The **Allow unfree software** option can stay off: the omarchy module
+  whitelists the one unfree default app (obsidian) itself, so a global
+  `allowUnfree` is not needed.
+- The installer creates your user with a password already set, so you can
+  skip the `initialHashedPassword` line in § 4.
+
+Finish the install, reboot, then continue at
+[§ 4. Write configuration.nix](#4-write-configurationnix): replace the
+generated `/etc/nixos/configuration.nix`, wire the flake (§ 5), and
+instead of `nixos-install` run:
+
+```bash
+sudo nixos-rebuild switch --flake /etc/nixos#my-host
+```
+
+### Option B: minimal ISO (manual)
+
+Boot the ISO, log in as `root` (or `nixos` with `sudo -i`) and continue
+with § 2 below.
 
 ## 2. Partition + format
 
