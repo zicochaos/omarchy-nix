@@ -8,9 +8,9 @@ omarchy provides it.
 ## Prerequisites
 
 - The NixOS **graphical ISO** from <https://nixos.org/download/> — a live
-  image: at its boot menu you pick a desktop for the live session, which
-  does not affect the installed system; the included graphical installer
-  (Calamares) does the install.
+  image: its boot menu lets you pick the live session (GNOME or KDE) and
+  the kernel (latest or LTS); neither choice constrains the installed
+  system. The included graphical installer (Calamares) does the install.
 - A machine (bare metal or VM) with EFI boot and a GPU Hyprland can drive
   (Intel/AMD work; NVIDIA needs the proprietary driver, out of scope here).
 - Network access (the install fetches omarchy-nix + nixpkgs from GitHub/cache).
