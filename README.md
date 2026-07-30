@@ -285,4 +285,7 @@ loudly when upstream shifts under them.
 
 ## License
 
-MIT, same as upstream Omarchy.
+MIT, same as upstream Omarchy (upstream copyright: David Heinemeier
+Hansson and Omarchy contributors). One exception:
+[`docs/nix-best-practices.md`](docs/nix-best-practices.md) is a copy of
+the nix.dev best-practices guide, CC-BY-SA-4.0 (see its header).

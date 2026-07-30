@@ -697,7 +697,7 @@ in
         # shell out to it. The nixpkgs module installs the package AND the
         # setcap security wrapper for gsr-kms-server — without the wrapper the
         # KMS backend dies with "pkexec must be setuid root" and recording
-        # never starts (verified on the Flow Z13).
+        # never starts (verified on real AMD hardware).
         programs.gpu-screen-recorder.enable = lib.mkDefault true;
 
         # UPower: the shell's battery service (services/battery — low-battery

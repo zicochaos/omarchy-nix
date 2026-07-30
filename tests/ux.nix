@@ -814,7 +814,8 @@
         # <=15 chars — a longer one makes pgrep warn "pattern ... longer
         # than 15 characters" on every call, and this pgrep fires once per
         # second in the wait loop, so the warnings pile up behind the tte
-        # canvas and flash at every effect change (found on the Flow Z13).
+        # canvas and flash at every effect change (found on real AMD
+        # hardware).
         script = machine.succeed(
             "cat /run/current-system/sw/share/omarchy/bin/omarchy-screensaver"
         )
@@ -830,11 +831,11 @@
         # gpu-screen-recorder wrapper tolerance (same class as B16): the
         # wrapped cmdline is a full store path, so "^gpu-screen-recorder"
         # never matches — recording would start but never stop, and the bar
-        # indicator would stay dark (verified on the Flow Z13). The patch
+        # indicator would stay dark (verified on real hardware). The patch
         # must be present in both the script and the QML indicator.
         #
-        # The pattern is bracketed ([/]...) — B18, root-caused on the Z13
-        # with an instrumented shell: Indicators.qml always instantiates BOTH
+        # The pattern is bracketed ([/]...) — B18, root-caused on real
+        # hardware with an instrumented shell: Indicators.qml always instantiates BOTH
         # its horizontal and vertical blocks (visible-gated, Loader still
         # loads), so every indicator exists twice and each instance runs its
         # own statusProc pgrep at session start. pgrep excludes only its own

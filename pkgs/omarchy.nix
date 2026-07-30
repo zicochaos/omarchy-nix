@@ -237,14 +237,16 @@ stdenv.mkDerivation (finalAttrs: {
         # store path (/nix/store/...gpu-screen-recorder-*/bin/.wrapped/
         # gpu-screen-recorder ...) and `pgrep/pkill -f "^gpu-screen-recorder"`
         # never matches — recording starts but the bar indicator stays dark
-        # and --stop-recording silently does nothing (verified on the Z13:
-        # recorder kept capturing after "stop"). Match the path segment with
+        # and --stop-recording silently does nothing (verified on real
+        # hardware: recorder kept capturing after "stop"). Match the path
+        # segment with
         # a trailing space instead: it hits the wrapped cmdline ("...
         # /gpu-screen-recorder -w ...") but NOT gsr-kms-server (whose path
         # continues "-5.x.y/bin/gsr-kms-server", no space after the name).
         #
         # The pattern is bracketed (`[/]`) for a second reason — indicator
-        # self-latching (root-caused on the Z13 via an instrumented shell):
+        # self-latching (root-caused on real hardware via an instrumented
+        # shell):
         # Indicators.qml always instantiates BOTH its horizontal and vertical
         # blocks (visibility-gated, not loader-gated), so every indicator
         # exists twice and each instance runs its own statusProc pgrep at
