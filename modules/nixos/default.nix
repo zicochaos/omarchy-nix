@@ -295,8 +295,8 @@ let
         gsettings-desktop-schemas
         # Adwaita-dark gtk theme dir (gnome-theme.sh sets gtk-theme to it).
         gnome-themes-extra
-        # Yaru-blue icon theme (gnome-theme.sh).
-        yaru-theme
+        # Yaru-* icon themes: shipped via omarchy.appPackages (pkgs/yaru-theme.nix),
+        # not pkgs.yaru-theme — nixpkgs removed that attr (murrine/GTK2, 2026-07-22).
         # xdg-user-dirs-update (finalize-user) + update-desktop-database
         # (omarchy-refresh-applications) + git config (install/user/git.sh).
         xdg-user-dirs

@@ -136,6 +136,8 @@
           hyprland-preview-share-picker = pkgs.callPackage ./pkgs/hyprland-preview-share-picker.nix { };
           omarchy-nvim = pkgs.callPackage ./pkgs/omarchy-nvim.nix { };
           omarchy-fish = pkgs.callPackage ./pkgs/omarchy-fish.nix { };
+          # Icons for stock Omarchy themes (nixpkgs dropped yaru-theme with murrine).
+          yaru-theme = pkgs.callPackage ./pkgs/yaru-theme.nix { };
           default = self.packages.${system}.omarchy;
         }
       );
@@ -192,6 +194,8 @@
                   hyprland-guiutils
                   hyprland-preview-share-picker
                   omarchy-nvim
+                  # Yaru-* icons: not pkgs.yaru-theme (throw-alias on new nixpkgs).
+                  yaru-theme
                 ]
               );
               omarchy.nvimPackage = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.omarchy-nvim;
