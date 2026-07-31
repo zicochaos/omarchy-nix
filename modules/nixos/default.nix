@@ -178,6 +178,10 @@ let
         # --- Audio / video stack (pipewire + wireplumber is the session core) ---
         pipewire
         wireplumber
+        # pactl CLI: omarchy-audio-* scripts resolve sinks via
+        # `pactl get-default-sink` / set-sink-volume. pipewire.pulse provides
+        # the Pulse protocol socket, not the CLI binary (issue #1).
+        pulseaudio
         pamixer
         alsa-utils
         playerctl

@@ -72,11 +72,11 @@
 
       environment.systemPackages = [
         pkgs.pamtester
-        # (10) behavioral contract: pactl for the null-sink OSD trigger,
-        # tesseract+grim for the rendered-notification OCR assertion,
-        # imagemagick for the deterministic OCR preprocessing (raw full-screen
-        # OCR cannot read the bold notification title).
-        pkgs.pulseaudio
+        # (10) behavioral contract: tesseract+grim for the rendered-notification
+        # OCR assertion, imagemagick for the deterministic OCR preprocessing
+        # (raw full-screen OCR cannot read the bold notification title).
+        # pactl is NOT listed here — volume media-key scripts require it from
+        # omarchy runtimeDeps (issue #1 regression guard).
         pkgs.tesseract
         pkgs.imagemagick
       ];
@@ -953,6 +953,11 @@
         # neither call is visible to the menu/autostart/units extraction.
         machine.succeed("command -v omarchy-network-band")
         machine.succeed("command -v iw")
+
+        # Same class: media keys / omarchy-audio-* scripts shell out to pactl
+        # (get-default-sink, set-sink-volume, …). pipewire provides the Pulse
+        # protocol, not the CLI — pactl must come from runtimeDeps.
+        machine.succeed("command -v pactl")
 
         # Shell keywords/builtins/system binaries that are always present and
         # are not the *coverage point* of their action.
