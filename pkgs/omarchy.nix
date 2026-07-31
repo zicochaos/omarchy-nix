@@ -106,17 +106,6 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace shell/plugins/model-usage/scripts/claude_usage_scanner.py \
           --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3'
 
-        # Hyprland >= 2b1723adda forwards descriptor details (min/max) to
-        # Lua-set values, so the vendored group.groupbar.indicator_height = 0
-        # now fails validation ("value 0 is less than the minimum of 1") —
-        # the descriptor min was always 1, only the Lua path skipped the
-        # range check. Upstream ships the invalid 0 and hasn't hit this (Arch
-        # carries an older Hyprland). Clamp to the closest valid value: 1px
-        # keeps the upstream "no visible indicator" intent. Regression
-        # coverage: tests/ux.nix asserts hyprctl configerrors is empty.
-        substituteInPlace default/hypr/looknfeel.lua \
-          --replace-fail 'indicator_height = 0,' 'indicator_height = 1,'
-
         # --- systemd user units: binary + omarchy path adaptation only ---
         # bt-agent lives in bluez-tools on nixpkgs (not bluez).
         substituteInPlace default/systemd/user/bt-agent.service \
@@ -160,6 +149,23 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail \
             '{~/.local,~/.nix-profile,/usr}/share/applications' \
             '{~/.local,~/.nix-profile,/run/current-system/sw,/usr}/share/applications'
+
+        # chromium-flags.conf seed: --load-extension points at the Arch
+        # /usr/share/omarchy. Point it at the system-profile path instead —
+        # stable across rebuilds (/share/omarchy is in environment.pathsToLink,
+        # so /run/current-system/sw/share/omarchy always resolves to the active
+        # omarchy package). HM seeds this file; existing user copies are fixed
+        # by migration adapter 1780517689.sh.
+        substituteInPlace config/chromium-flags.conf \
+          --replace-fail "/usr/share/omarchy" "/run/current-system/sw/share/omarchy"
+
+        # Same durability problem in the native-messaging-host installers:
+        # they embed $OMARCHY_PATH (a store path) into
+        # ~/.config/*/NativeMessagingHosts/*.json, so a rebuild + GC kills
+        # Alt+Shift+D / copy-url silently, and the once-only migrations never
+        # re-register. Point HOST_PATH at the stable system-profile path.
+        substituteInPlace bin/omarchy-install-chromium-ytdlp bin/omarchy-install-chromium-copy-url \
+          --replace-fail 'HOST_PATH="$OMARCHY_PATH/bin/' 'HOST_PATH="/run/current-system/sw/share/omarchy/bin/'
 
         # --- first-run / finalize-user path + platform adaptation ---
         # xcompose.sh tees ~/.XCompose with a hardcoded Arch include path.
@@ -303,6 +309,22 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace install/user/hardware/asus/fix-audio-mixer.sh \
           --replace-fail 'cp "$OMARCHY_PATH/default/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf"' \
                          'cp --no-preserve=mode "$OMARCHY_PATH/default/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf"'
+
+        # omarchy-plugin-clone copies plugin sources out of the store via the
+        # catalog sourceDir with mode-preserving cp -aL: clones land in
+        # ~/.config/omarchy/plugins as 444 files in 555 dirs — uneditable,
+        # and the sed -i rename pass aborts on the read-only dirs. Menu-exposed
+        # via Setup -> Plugin -> Clone since quattro f8835df6 (#6433). Same
+        # L4 read-only-inheritance class as the copies above.
+        substituteInPlace bin/omarchy-plugin-clone \
+          --replace-fail 'cp -aL "$source_dir/." "$target_dir/"' \
+                         'cp -aL --no-preserve=mode "$source_dir/." "$target_dir/"' \
+          --replace-fail 'cp -aL "$manifest" "$target_dir/manifest.json"' \
+                         'cp -aL --no-preserve=mode "$manifest" "$target_dir/manifest.json"' \
+          --replace-fail 'cp -aL "$source_dir/$source/." "$target_dir/$target/"' \
+                         'cp -aL --no-preserve=mode "$source_dir/$source/." "$target_dir/$target/"' \
+          --replace-fail 'cp -aL "$source_dir/$source" "$target_dir/$target"' \
+                         'cp -aL --no-preserve=mode "$source_dir/$source" "$target_dir/$target"'
 
         # --- L4 adaptation: Update / Install / Remove (P4) ---
         # Upstream's package lifecycle is pacman/yay/snapper. On NixOS the

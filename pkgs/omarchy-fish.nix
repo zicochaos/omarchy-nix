@@ -1,7 +1,13 @@
 # Omarchy shell configuration for Fish (upstream: omacom-io/omarchy-fish),
-# vendored as an opt-in profile. Pure vendor pin at
-# v1.5.0 — no patches; Quattro parity gaps (missing helpers cy/mup/rsw/lsw/
-# dsw/tds, the current completion contract) are upstream phase-1 work.
+# vendored as an opt-in profile.
+#
+# Pin: temporarily the zicochaos/omarchy-fish fork rev carrying PR
+# omacom-io/omarchy-fish#7 (Quattro bash parity: cy/mup/rsw/lsw/dsw/tds
+# helpers, cx alignment, ff Kitty branch, ~/.local/bin in PATH, lazy
+# `try init`, the `# omarchy:args=` completion contract, zoxide cd
+# history fix). Upstream merge latency is high (their PR #6 has waited
+# since 2026-05), so the pin tracks the fork until an upstream release
+# contains PR #7 — see docs/decisions/2026-07-31-fish-parity-fork-pin.md.
 #
 # Layout mirrors the canonical PKGBUILD
 # (omacom-io/omarchy-pkgs/pkgbuilds/omarchy-fish): conf.d/functions/
@@ -11,9 +17,6 @@
 # _fzf_search_history.fish and omarchy's version must win.
 #
 # Deviations:
-#   - functions/try.fish is NOT installed: v1.5.0 hard-codes /usr/bin/try,
-#     /usr/bin/env ruby and a pacman install hint, so it is broken on
-#     NixOS. It returns when upstream phase 1 replaces it with `try init`.
 #   - bin/omarchy-setup-fish is replaced by an informational stub:
 #     upstream's script backs up ~/.bashrc and trampolines fish from bash,
 #     which conflicts with the NixOS ownership model — the login shell is a
@@ -26,13 +29,13 @@
 }:
 
 let
-  version = "1.5.0";
+  version = "1.5.0-unstable-2026-07-31";
 
   src = fetchFromGitHub {
-    owner = "omacom-io";
+    owner = "zicochaos";
     repo = "omarchy-fish";
-    rev = "refs/tags/v${version}";
-    hash = "sha256-WOlyf3BGQxD4Khl+jvbWpajgT7Zyh4+A3PLHJ1jUvzc=";
+    rev = "07fc8da701df1f8ec3ba6c2ef75119e14c4a16f7";
+    hash = "sha256-nwSkPlumpBhvY1GZWtXRWaVXnDVftaPGIceO7AMEg3M=";
   };
 
   # Same fzf.fish revision the canonical PKGBUILD bundles.
@@ -89,13 +92,6 @@ stdenvNoCC.mkDerivation {
     for f in functions/*.fish; do install -m644 "$f" "$out/share/fish/vendor_functions.d/"; done
     for f in completions/*.fish; do install -m644 "$f" "$out/share/fish/vendor_completions.d/"; done
     shopt -u dotglob
-
-    # B24: try.fish excluded — v1.5.0 hard-codes /usr/bin/try,
-    # /usr/bin/env ruby and a pacman hint (broken on NixOS until upstream
-    # phase 1). The exclusion stays a no-op when a future release stops
-    # shipping try.fish; the checks.omarchy-fish-package absence assertion
-    # enforces the invariant.
-    rm -f "$out/share/fish/vendor_functions.d/try.fish"
 
     # Docs + licenses (PKGBUILD layout).
     install -dm755 "$out/share/omarchy-fish"

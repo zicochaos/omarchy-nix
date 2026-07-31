@@ -253,6 +253,9 @@
           # foot, session env, default browser, cursor, first-run, systemd user
           # units) on top of the desktop.nix baseline. See tests/ux.nix.
           omarchy-ux = pkgs.testers.nixosTest (loadTest ./tests/ux.nix);
+          # Fish profile acceptance: login shell, vendor dirs, session env,
+          # completion contract, override precedence. See tests/fish.nix.
+          omarchy-fish = pkgs.testers.nixosTest (loadTest ./tests/fish.nix);
           # The packaged agent skill is an intentional NixOS adaptation of
           # upstream's Arch-only default. Keep the repository copy and the
           # installed $OMARCHY_PATH copy byte-identical, and reject the
@@ -556,6 +559,38 @@
             else
               pkgs.runCommand "omarchy-catalog-consistency" { nativeBuildInputs = [ pkgs.python3 ]; } ''
                 python3 ${menuRewireCheck} ${menu} ${catalogJson}
+
+                # Teeth: the exact-token binding must reject a prefix-sibling
+                # ID (substring matching would satisfy entry install.a with
+                # the install.a-b token), and must not false-positive on a
+                # correctly rewired entry.
+                cd "$TMPDIR"
+                cat > catalog-fixture.json <<'EOF'
+                {"entries": {"install.a": {}, "install.a-b": {}}}
+                EOF
+                cat > menu-bad.json <<'EOF'
+                {"install.a": {"action": "x omarchy-nix-add install.a-b"},
+                 "install.a-b": {"action": "x omarchy-nix-add install.a-b"}}
+                EOF
+                if python3 ${menuRewireCheck} menu-bad.json catalog-fixture.json 2>bad.err; then
+                  echo "menu-rewire checker accepted a prefix-sibling token (no teeth)"
+                  exit 1
+                fi
+                grep -q 'install.a is not rewired to an exact omarchy-nix-add token' bad.err || {
+                  echo "menu-rewire checker failed, but not on the exact-token rule:"
+                  cat bad.err
+                  exit 1
+                }
+                cat > menu-ok.json <<'EOF'
+                {"install.a": {"action": "x omarchy-nix-add install.a"},
+                 "install.a-b": {"action": "x omarchy-nix-add install.a-b"}}
+                EOF
+                python3 ${menuRewireCheck} menu-ok.json catalog-fixture.json 2>ok.err || true
+                if grep -q 'install.a is not rewired' ok.err; then
+                  echo "menu-rewire checker false-positives on a correctly rewired entry:"
+                  cat ok.err
+                  exit 1
+                fi
                 touch $out
               '';
           # Migration manifest consistency: every vendored
@@ -663,6 +698,129 @@
               throw "omarchy.binfmtEmulatedSystems does not reach boot.binfmt.emulatedSystems"
             else
               pkgs.runCommand "omarchy-binfmt-eval" { } "touch $out";
+          # Migration parity: the upstream /etc defaults that migrations
+          # 1784568652 (NM-wait-online mask), 1784970000 (logind inhibit
+          # delay) and 1784914435 (Wi-Fi powersave off) apply imperatively on
+          # Arch must be declared natively by the module, and the vendored
+          # chromium-flags.conf seed must carry no Arch /usr/share path (the
+          # postPatch rewrite to the system-profile path).
+          omarchy-migration-parity =
+            let
+              demoCfg = self.nixosConfigurations.demo.config;
+              nmWaitUnit = demoCfg.systemd.units."NetworkManager-wait-online.service";
+              logindConf = demoCfg.environment.etc."systemd/logind.conf".text;
+              logindConfSource = demoCfg.environment.etc."systemd/logind.conf".source;
+              nmConf = demoCfg.environment.etc."NetworkManager/NetworkManager.conf".source;
+              omarchyPkg = self.packages.${system}.omarchy;
+            in
+            if nmWaitUnit.enable then
+              throw "demo config does not mask NetworkManager-wait-online (systemd.services.NetworkManager-wait-online.enable)"
+            else if !(pkgs.lib.hasInfix "InhibitDelayMaxSec=15" logindConf) then
+              throw "demo config logind.conf is missing InhibitDelayMaxSec=15"
+            else
+              pkgs.runCommand "omarchy-migration-parity" { } ''
+                # The masked unit is a /dev/null symlink — the file that lands
+                # at /etc/systemd/system/NetworkManager-wait-online.service.
+                if [ "$(readlink ${nmWaitUnit.unit}/NetworkManager-wait-online.service)" != /dev/null ]; then
+                  echo "NetworkManager-wait-online.service is not masked (not a /dev/null symlink)"
+                  exit 1
+                fi
+                # [connection] wifi.powersave=2 in the generated NM conf.
+                if ! grep -q '^wifi\.powersave=2$' ${nmConf}; then
+                  echo "NetworkManager.conf is missing wifi.powersave=2"
+                  exit 1
+                fi
+                # Exact logind line (a hasInfix would also accept =150).
+                if ! grep -q '^InhibitDelayMaxSec=15$' ${logindConfSource}; then
+                  echo "logind.conf is missing the exact InhibitDelayMaxSec=15 line"
+                  exit 1
+                fi
+                # The packaged seed carries BOTH bundled extensions on the
+                # stable system-profile path, and no Arch /usr/share residue.
+                if ! grep -qF -- '--load-extension=/run/current-system/sw/share/omarchy/default/chromium/extensions/copy-url,/run/current-system/sw/share/omarchy/default/chromium/extensions/yt-dlp' \
+                    ${omarchyPkg}/share/omarchy/config/chromium-flags.conf; then
+                  echo "chromium-flags.conf lost the stable-path load-extension line"
+                  exit 1
+                fi
+                if grep -q '/usr/share' ${omarchyPkg}/share/omarchy/config/chromium-flags.conf; then
+                  echo "chromium-flags.conf still references /usr/share:"
+                  grep '/usr/share' ${omarchyPkg}/share/omarchy/config/chromium-flags.conf
+                  exit 1
+                fi
+                # The native-messaging-host installers embed the stable
+                # system-profile HOST_PATH (a store path in the generated
+                # manifests would die on the first rebuild + GC), and the
+                # adapter references the same path family.
+                for f in \
+                  ${omarchyPkg}/share/omarchy/bin/omarchy-install-chromium-ytdlp \
+                  ${omarchyPkg}/share/omarchy/bin/omarchy-install-chromium-copy-url; do
+                  if ! grep -qF 'HOST_PATH="/run/current-system/sw/share/omarchy/bin/' "$f"; then
+                    echo "$f lost the stable HOST_PATH assignment"
+                    exit 1
+                  fi
+                done
+                if ! grep -q '/run/current-system/sw/share/omarchy' \
+                    ${omarchyPkg}/share/omarchy/migrations-nix/1780517689.sh; then
+                  echo "1780517689.sh lost the stable system-profile path"
+                  exit 1
+                fi
+
+                # Behavioral fixtures for the migration adapter: every
+                # *-flags.conf shape it must handle, plus idempotency.
+                EXT=/run/current-system/sw/share/omarchy/default/chromium/extensions
+                STUB=$TMPDIR/stub
+                mkdir -p "$STUB"
+                printf '#!/bin/sh\nexit 0\n' > "$STUB/omarchy-install-chromium-ytdlp"
+                chmod +x "$STUB/omarchy-install-chromium-ytdlp"
+                export PATH="$STUB:$PATH"
+                H=$TMPDIR/home
+                mkdir -p "$H/.config"
+                run_adapter() {
+                  HOME="$H" bash ${omarchyPkg}/share/omarchy/migrations-nix/1780517689.sh >/dev/null
+                }
+                fail() { echo "$1"; shift; [ $# -eq 0 ] || cat "$@"; exit 1; }
+
+                # 1. Fresh seed with both extensions on the Arch path:
+                #    rewritten to the stable path, no duplicate line.
+                printf '%s\n' '--ozone-platform=wayland' \
+                  "--load-extension=/usr/share/omarchy/default/chromium/extensions/copy-url,/usr/share/omarchy/default/chromium/extensions/yt-dlp" \
+                  > "$H/.config/chromium-flags.conf"
+                run_adapter
+                grep -qF -- "--load-extension=$EXT/copy-url,$EXT/yt-dlp" "$H/.config/chromium-flags.conf" \
+                  || fail "case1: Arch paths not rewritten" "$H/.config/chromium-flags.conf"
+                [ "$(grep -c '^--load-extension=' "$H/.config/chromium-flags.conf")" = 1 ] \
+                  || fail "case1: duplicate load-extension line"
+
+                # 2. copy-url only on the Arch path (the actual upstream
+                #    migration case): yt-dlp appended, not just rewritten.
+                printf '%s\n' "--load-extension=/usr/share/omarchy/default/chromium/extensions/copy-url" \
+                  > "$H/.config/chromium-flags.conf"
+                run_adapter
+                grep -qF -- "--load-extension=$EXT/copy-url,$EXT/yt-dlp" "$H/.config/chromium-flags.conf" \
+                  || fail "case2: yt-dlp not appended to a copy-url-only file" "$H/.config/chromium-flags.conf"
+
+                # 3. A custom --load-extension line: both omarchy extensions
+                #    appended onto it.
+                printf '%s\n' '--load-extension=/home/u/exts/my-ext' > "$H/.config/brave-flags.conf"
+                run_adapter
+                grep -qF -- "--load-extension=/home/u/exts/my-ext,$EXT/copy-url,$EXT/yt-dlp" "$H/.config/brave-flags.conf" \
+                  || fail "case3: extensions not appended to a custom line" "$H/.config/brave-flags.conf"
+
+                # 4. No extension line at all: the full line is appended.
+                printf '%s\n' '--password-store=gnome-libsecret' > "$H/.config/google-chrome-flags.conf"
+                run_adapter
+                grep -qF -- "--load-extension=$EXT/copy-url,$EXT/yt-dlp" "$H/.config/google-chrome-flags.conf" \
+                  || fail "case4: full line not appended" "$H/.config/google-chrome-flags.conf"
+
+                # 5. Idempotent: another run leaves every file byte-identical.
+                find "$H/.config" -type f -exec md5sum {} + | sort > "$TMPDIR/before"
+                run_adapter
+                find "$H/.config" -type f -exec md5sum {} + | sort > "$TMPDIR/after"
+                cmp -s "$TMPDIR/before" "$TMPDIR/after" \
+                  || fail "case5: adapter is not idempotent"
+
+                touch $out
+              '';
           # Disabled-state contract: merely IMPORTING
           # nixosModules.default with omarchy.enable = false must not change
           # the host. Compare a baseline system against one importing the
@@ -1514,8 +1672,10 @@ B";
           # Package contract for the vendored Fish profile:
           # every installed .fish file parses, the vendor dirs are populated
           # (including leading-dot functions), fzf.fish v10.3 is bundled, the
-          # B24 exclusions hold (try.fish absent until upstream phase 1), and
-          # no active file references Arch-only paths or pacman.
+          # Quattro bash-parity helpers ship (fork pin carrying PR
+          # omacom-io/omarchy-fish#7), try.fish carries the lazy `try init`
+          # integration, and no active file references Arch-only paths or
+          # pacman.
           omarchy-fish-package =
             let
               fishPkg = self.packages.${system}.omarchy-fish;
@@ -1545,17 +1705,30 @@ B";
               [ -e share/fish/vendor_functions.d/_fzf_search_git_log.fish ] ||
                 fail "fzf.fish functions not bundled"
 
-              # B24: try.fish stays excluded until upstream phase 1 replaces
-              # it with `try init` support.
-              [ ! -e share/fish/vendor_functions.d/try.fish ] ||
-                fail "try.fish must not ship (B24)"
+              # Quattro bash-parity helpers (PR omacom-io/omarchy-fish#7,
+              # currently via the fork pin — see pkgs/omarchy-fish.nix).
+              for fn in cy mup rsw lsw dsw tds; do
+                [ -e "share/fish/vendor_functions.d/$fn.fish" ] ||
+                  fail "missing $fn.fish (bash-parity helper)"
+              done
 
-              # No active file depends on Arch-only paths or pacman. Recon
-              # (2026-07-29) proved this pattern fires on v1.5.0's try.fish —
-              # with that file excluded the tree is clean.
+              # try.fish ships again: PR #7 replaced the v1.5.0 version
+              # (/usr/bin/try, /usr/bin/env ruby, pacman hint — B24) with a
+              # lazy `try init` integration. Presence + content assertion.
+              [ -e share/fish/vendor_functions.d/try.fish ] ||
+                fail "try.fish missing (lazy try-init integration must ship)"
+              grep -q 'command try init' share/fish/vendor_functions.d/try.fish ||
+                fail "try.fish lacks the try init integration"
+
+              # The omarchy completion implements the `# omarchy:args=`
+              # contract (drives `omarchy <cmd>` argument completion).
+              grep -q 'omarchy:args=' share/fish/vendor_completions.d/omarchy.fish ||
+                fail "omarchy completion lacks the omarchy:args= contract"
+
+              # No active file depends on Arch-only paths or pacman.
               # /usr/bin is forbidden wholesale on purpose: any reference is
-              # a hard-coded path outside the nix store (try.fish's
-              # /usr/bin/env ruby is exactly the violation class).
+              # a hard-coded path outside the nix store (v1.5.0 try.fish's
+              # /usr/bin/env ruby was exactly the violation class).
               if grep -rn -E '/usr/bin|/usr/share/omarchy-fish|pacman' share/fish bin; then
                 fail "Arch-only path/pacman reference in active fish files"
               fi
@@ -1568,6 +1741,88 @@ B";
 
               touch $out
             '';
+          # Bash/fish parity guard: every helper the pinned Quattro bash
+          # profile defines (aliases + functions in default/bash/aliases and
+          # default/bash/fns/*) must have a fish counterpart in the vendored
+          # profile (a vendor_functions.d file or a function defined in
+          # vendor_conf.d). A NEW upstream bash helper fails this check at
+          # bump time until fish gains it or it is consciously allowlisted
+          # in expectedMissing below — see
+          # docs/decisions/2026-07-31-fish-parity-fork-pin.md.
+          omarchy-fish-parity =
+            let
+              fishPkg = self.packages.${system}.omarchy-fish;
+              omarchyPkg = self.packages.${system}.omarchy;
+              # Intentional omissions (bash helper -> why fish needs none):
+              #   "..": omarchy-fish ships "..." and "...." but no "..", and
+              #     fish itself has no builtin ".." — upstream fish-profile
+              #     gap, not a port deviation. Remove from this list if
+              #     omarchy-fish ever adds ...fish (the ".." function file).
+              expectedMissing = [ ".." ];
+            in
+            pkgs.runCommand "omarchy-fish-parity-check" { } ''
+              set -euo pipefail
+              fail() { echo "FAIL: $*" >&2; exit 1; }
+
+              bashDir=${omarchyPkg}/share/omarchy/default/bash
+              fishDir=${fishPkg}/share/fish
+
+              # Bash contract: `alias X=`, `X() {`/`X () (` and `function X`
+              # names from `aliases` and fns/* (leading whitespace tolerant —
+              # a new upstream helper must not escape the guard by style).
+              {
+                grep -hoE '^[[:space:]]*alias[[:space:]]+[A-Za-z0-9_.-]+=' \
+                  "$bashDir/aliases" "$bashDir"/fns/* |
+                  sed -E 's/^[[:space:]]*alias[[:space:]]+//; s/=$//'
+                grep -hoE '^[[:space:]]*[A-Za-z0-9_.-]+[[:space:]]*\(\)' "$bashDir/aliases" "$bashDir"/fns/* |
+                  sed -E 's/^[[:space:]]*//; s/[[:space:]]*\(\)$//'
+                grep -hoE '^[[:space:]]*function[[:space:]]+[A-Za-z0-9_.-]+' "$bashDir/aliases" "$bashDir"/fns/* |
+                  sed -E 's/^[[:space:]]*function[[:space:]]+//' || true
+              } | LC_ALL=C sort -u > bash.txt
+
+              # Fish contract: vendor_functions.d basenames + `function X`
+              # definitions in vendor_conf.d (cd/zd live in conf.d/cd.fish).
+              # dotglob so leading-dot function names (....fish) are seen.
+              shopt -s dotglob
+              {
+                for f in "$fishDir"/vendor_functions.d/*.fish; do basename "$f" .fish; done
+                grep -hoE '^function[[:space:]]+[A-Za-z0-9_.-]+' "$fishDir"/vendor_conf.d/*.fish |
+                  sed -E 's/^function[[:space:]]+//'
+              } | LC_ALL=C sort -u > fish.txt
+              shopt -u dotglob
+
+              printf '%s\n' ${pkgs.lib.escapeShellArgs expectedMissing} | LC_ALL=C sort -u > expected.txt
+
+              # Bash helpers without a fish counterpart, minus the allowlist.
+              comm -23 bash.txt fish.txt > missing.txt
+              comm -23 missing.txt expected.txt > unexpected.txt
+              if [ -s unexpected.txt ]; then
+                echo "bash helpers with no fish counterpart (add to fish or" >&2
+                echo "allowlist in expectedMissing):" >&2
+                cat unexpected.txt >&2
+                fail "bash/fish parity broken"
+              fi
+
+              # Allowlist entries that no longer name a bash helper are stale
+              # (the helper vanished upstream) — prune them at bump time.
+              comm -23 expected.txt bash.txt > stale.txt
+              if [ -s stale.txt ]; then
+                echo "stale expectedMissing entries (no longer bash helpers):" >&2
+                cat stale.txt >&2
+                fail "prune expectedMissing"
+              fi
+
+              # Allowlist entries that meanwhile GAINED a fish counterpart
+              # must leave the allowlist (fish caught up).
+              comm -12 expected.txt fish.txt > covered.txt
+              if [ -s covered.txt ]; then
+                echo "expectedMissing entries now covered by fish (remove them):" >&2
+                cat covered.txt >&2
+                fail "prune expectedMissing"
+              fi
+
+              touch $out
+            '';
           # Fish wiring: with omarchy.fish.enable = true the module
           # sets programs.fish.enable and puts the vendored profile in the
           # system profile; the default (off) adds neither (demo config is the
@@ -1576,25 +1831,33 @@ B";
           omarchy-fish-module =
             let
               fishPkg = self.packages.${system}.omarchy-fish;
-              eval = nixpkgs.lib.nixosSystem {
-                # Same pinned pkgs instance the other module checks use —
-                # carries the scoped unfree predicate the omarchy default
-                # app set needs at eval (obsidian). `inherit system` instead
-                # would re-import nixpkgs without it and fail on unfree.
-                inherit pkgs;
-                modules = [
-                  self.nixosModules.default
-                  {
-                    omarchy.enable = true;
-                    omarchy.fish.enable = true;
-                    fileSystems."/".device = "/dev/null";
-                    fileSystems."/".fsType = "ext4";
-                    boot.loader.grub.device = "nodev";
-                    system.stateVersion = "26.05";
-                  }
-                ];
-              };
-              cfg = eval.config;
+              mkEval =
+                extra:
+                nixpkgs.lib.nixosSystem {
+                  # Same pinned pkgs instance the other module checks use —
+                  # carries the scoped unfree predicate the omarchy default
+                  # app set needs at eval (obsidian). `inherit system` instead
+                  # would re-import nixpkgs without it and fail on unfree.
+                  inherit pkgs;
+                  modules = [
+                    self.nixosModules.default
+                    {
+                      omarchy.enable = true;
+                      omarchy.fish.enable = true;
+                      fileSystems."/".device = "/dev/null";
+                      fileSystems."/".fsType = "ext4";
+                      boot.loader.grub.device = "nodev";
+                      system.stateVersion = "26.05";
+                    }
+                    extra
+                  ];
+                };
+              cfg = (mkEval { }).config;
+              # Consumer overrides EDITOR only: the SUDO_EDITOR indirection
+              # must stay intact so pam_env expands the override at login
+              # (upstream's SUDO_EDITOR="$EDITOR" semantics).
+              editorCfg = (mkEval { environment.sessionVariables.EDITOR = "nvim"; }).config;
+              pamEnv = cfg.environment.etc."pam/environment".source;
               hasFish = builtins.any (p: (p.drvPath or "") == fishPkg.drvPath) cfg.environment.systemPackages;
             in
             if !cfg.programs.fish.enable then
@@ -1603,10 +1866,25 @@ B";
               throw "omarchy-fish package missing from environment.systemPackages"
             else if self.nixosConfigurations.demo.config.programs.fish.enable then
               throw "fish must default to off — demo config has programs.fish.enable"
+            else if cfg.environment.sessionVariables.SUDO_EDITOR != "\${EDITOR}" then
+              throw "SUDO_EDITOR must carry the pam_env \${EDITOR} indirection"
+            else if editorCfg.environment.sessionVariables.SUDO_EDITOR != "\${EDITOR}" then
+              throw "SUDO_EDITOR indirection must survive an EDITOR override"
             else if cfg.system.build.toplevel.drvPath == null then
               throw "unreachable" # forces full evaluation incl. assertions
             else
-              pkgs.runCommand "omarchy-fish-module-check" { } "touch $out";
+              pkgs.runCommand "omarchy-fish-module-check" { } ''
+                # pam_env expands ''${EDITOR} at login in file order — the
+                # EDITOR line must precede the SUDO_EDITOR line, and the
+                # indirection must survive the renderer verbatim.
+                ed=$(grep -n '^EDITOR[[:space:]]' ${pamEnv} | cut -d: -f1)
+                se=$(grep -n '^SUDO_EDITOR[[:space:]]' ${pamEnv} | cut -d: -f1)
+                [ -n "$ed" ] && [ -n "$se" ] || { echo "EDITOR/SUDO_EDITOR missing in pam/environment"; exit 1; }
+                [ "$ed" -lt "$se" ] || { echo "EDITOR line must precede SUDO_EDITOR in pam/environment"; exit 1; }
+                grep -q '^SUDO_EDITOR[[:space:]]*DEFAULT="''${EDITOR}"$' ${pamEnv} || {
+                  echo "SUDO_EDITOR lost the ''${EDITOR} indirection in pam/environment"; exit 1; }
+                touch $out
+              '';
         }
       );
 

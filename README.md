@@ -152,8 +152,10 @@ terminals, gaming, AI, dev toolchains, services) map to opinionated nixpkgs
 choices; Install → Package is a free fzf search over nixpkgs. Choices land in
 `omarchy-packages.json` next to your flake and are folded into the system
 declaratively at rebuild. Removing works the same way. Entries with no
-NixOS analogue (AUR, ONCE, NordVPN) are removed from the menu outright;
-dev-env entries without a catalog mapping (laravel/symfony/phoenix) show a
+NixOS analogue (AUR, ONCE) are removed from the menu outright; NordVPN
+stays out until the pin reaches a revision carrying both the package and
+the module (the backport already reached the 26.05 channel); dev-env
+entries without a catalog mapping (laravel/symfony/phoenix) show a
 declarative note. Update → Omarchy still runs flake update +
 rebuild.
 
@@ -218,7 +220,7 @@ reboot into the desktop).
 
 The default shell stays Bash, exactly like upstream. To opt a user into the
 vendored [omarchy-fish](https://github.com/omacom-io/omarchy-fish) profile
-(pinned v1.5.0 + fzf.fish v10.3):
+(+ fzf.fish v10.3):
 
 ```nix
 omarchy.fish.enable = true;           # installs fish + the Omarchy vendor profile
@@ -227,10 +229,12 @@ users.users.alice.shell = pkgs.fish;  # login shell is your explicit account set
 
 Fish picks the profile up from the system profile's `share/fish/vendor_*`
 directories; nothing is written to `~/.config/fish`, and functions you place
-in `~/.config/fish/functions/` override the vendor ones. Note: pinned
-v1.5.0 predates a few Quattro helpers (`cy`, `mup`, `rsw`, `lsw`, `dsw`,
-`tds`) and the newest `omarchy` completion; parity is upstream work.
-`try` is excluded for now.
+in `~/.config/fish/functions/` override the vendor ones. The profile carries
+the Quattro bash-parity helpers (`cy`, `mup`, `rsw`, `lsw`, `dsw`, `tds`),
+the current `omarchy` completion contract and a lazy `try` integration. It
+is pinned to the fork rev carrying
+[omacom-io/omarchy-fish#7](https://github.com/omacom-io/omarchy-fish/pull/7)
+until an upstream release includes that PR.
 
 ## Testing
 

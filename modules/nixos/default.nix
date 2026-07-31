@@ -268,6 +268,16 @@ let
         # --- Misc utilities used across bin/omarchy-* scripts ---
         socat
         inotify-tools
+        # parted: fish format-drive.fish partitioning (omarchy-fish profile).
+        parted
+        # rsync: fish rsw rsync-on-change watchers (explicit — not just
+        # environment.defaultPackages).
+        rsync
+        # file: fish ff.fish Kitty preview branch calls `file --mime-type`.
+        file
+        # iw: omarchy-network-band (Wi-Fi band toggle in the network panel,
+        # quattro 14f1bb6c) shells out to `iw dev <device> link`.
+        iw
         plocate
         libnotify
         # fwupdmgr for omarchy-update-firmware (service enabled in parity block).
@@ -469,6 +479,18 @@ in
           PATH = [ "${cfg.package}/share/omarchy/bin" ];
           BROWSER = "omarchy-launch-browser";
           TERMINAL = "xdg-terminal-exec";
+          # EDITOR/SUDO_EDITOR mirror default/bash/envs
+          # (EDITOR="${EDITOR:-omarchy-launch-editor --inline}",
+          # SUDO_EDITOR="$EDITOR"). mkDefault mirrors the `:-` soft-default
+          # semantics — any user-set EDITOR wins. SUDO_EDITOR carries the
+          # pam_env indirection ${EDITOR} verbatim into /etc/pam/environment
+          # (the renderer quotes values and only remaps $HOME/$USER), where
+          # pam_env expands it at login — alphabetically the EDITOR line
+          # sorts first, so the expansion sees the effective value. This is
+          # upstream's follows-EDITOR semantics; the module system itself
+          # cannot self-reference inside one attrsOf option (recursion).
+          EDITOR = lib.mkDefault "omarchy-launch-editor --inline";
+          SUDO_EDITOR = lib.mkDefault "\${EDITOR}";
           # See gsettingsSchemaDir above — first-run gnome-theme.sh /
           # gtk-primary-paste.sh call unwrapped gsettings.
           GSETTINGS_SCHEMA_DIR = gsettingsSchemaDir;
@@ -505,12 +527,16 @@ in
         # scripts on PATH too. OMARCHY_PATH/BROWSER/TERMINAL mirror
         # environment.sessionVariables above; OMARCHY_USER_NAME/EMAIL repeat
         # the environment.d values for upstream parity (default/uwsm/default
-        # carries user identity in the session env too).
+        # carries user identity in the session env too). EDITOR/SUDO_EDITOR
+        # mirror default/bash/envs — env.d is shell, so the upstream `:-`
+        # soft default works verbatim here.
         environment.etc."xdg/uwsm/env.d/10-omarchy".text = ''
           export OMARCHY_PATH="${cfg.package}/share/omarchy"
           export PATH="${cfg.package}/share/omarchy/bin:$PATH"
           export BROWSER=omarchy-launch-browser
           export TERMINAL=xdg-terminal-exec
+          export EDITOR="''${EDITOR:-omarchy-launch-editor --inline}"
+          export SUDO_EDITOR="$EDITOR"
           export OMARCHY_USER_NAME=${lib.escapeShellArg cfg.full_name}
           export OMARCHY_USER_EMAIL=${lib.escapeShellArg cfg.email_address}
           export GSETTINGS_SCHEMA_DIR=${lib.escapeShellArg gsettingsSchemaDir}'';
@@ -745,6 +771,29 @@ in
         # a no-op; a consumer's own boot.binfmt.emulatedSystems entries merge
         # with this list (plain list concatenation, no override needed).
         boot.binfmt.emulatedSystems = cfg.binfmtEmulatedSystems;
+
+        # --- Upstream /etc defaults (shipped under upstream's Arch etc/ tree) ---
+
+        # Mask NetworkManager-wait-online (upstream migration 1784568652):
+        # graphical.target was gated on network-online.target because
+        # cups-browsed (enabled above) orders after it, so the desktop waited
+        # for DHCP/Wi-Fi association at boot. Declaring the unit with
+        # enable = false makes nixpkgs link it to /dev/null (a systemd mask).
+        systemd.services.NetworkManager-wait-online.enable = lib.mkDefault false;
+
+        # logind inhibit delay (upstream etc/systemd/logind.conf.d/
+        # 20-inhibit-delay.conf): omarchy-sleep-lock holds a delay inhibitor
+        # so the session is locked before suspend; the 5s default expires
+        # while Quickshell secures the session on lid close. Costs nothing
+        # when locking is healthy (the inhibitor releases in under a second).
+        services.logind.settings.Login.InhibitDelayMaxSec = lib.mkDefault 15;
+
+        # Wi-Fi powersave off (upstream etc/NetworkManager/conf.d/
+        # omarchy-wifi-powersave.conf: [connection] wifi.powersave = 2) —
+        # powersave trades 20-300ms latency spikes for a fraction of a watt,
+        # and Intel BE200/BE211 firmware drops the link outright. Renders as
+        # wifi.powersave=2 under [connection] in NetworkManager.conf.
+        networking.networkmanager.wifi.powersave = lib.mkDefault false;
       }
 
       # (C) SSH must stay reachable.

@@ -763,6 +763,23 @@
             as_demo("test ! -d ~/.local/state/omarchy/current/next-theme")
         )
 
+    # --- (9b) Plugin clone cp -aL patch invariant (L4 class). -----------
+    # omarchy-plugin-clone copies plugin sources out of the store with cp -aL;
+    # without --no-preserve=mode the clone lands as 444 files in 555 dirs and
+    # the sed -i rename pass aborts (menu: Setup -> Plugin -> Clone). This is
+    # a static guard on the packaged script: every cp -aL site must carry the
+    # patch (the count tripwire forces re-audit when upstream adds a site).
+    # Behavioral L4 coverage lives in (9) — a functional plugin-clone run in
+    # the VM is a documented follow-up in TODO.md.
+    with machine.nested("plugin-clone --no-preserve=mode guard"):
+        clone_script = machine.succeed(
+            "cat /run/current-system/sw/share/omarchy/bin/omarchy-plugin-clone"
+        )
+        assert clone_script.count("cp -aL") == 4, \
+            "omarchy-plugin-clone cp -aL site count changed — re-audit the guard"
+        assert clone_script.count("cp -aL --no-preserve=mode") == 4, \
+            "omarchy-plugin-clone lost --no-preserve=mode on a cp -aL site"
+
     # --- (10) User config is editable + refresh is idempotent. --------------
     # hyprland.lua and .luarc.json must be regular files (not store symlinks)
     # and writable so the Setup menu and omarchy-refresh-config can overwrite
@@ -929,6 +946,13 @@
         #/--actions-on-enter save-to-clipboard/--save-after-copy/--copy-command
         # wl-copy); the reference lives in a bash script, not in menu.jsonc.
         machine.succeed("command -v tensaku-edit")
+
+        # Same class: the network panel's Wi-Fi band toggle (quattro 14f1bb6c)
+        # execs omarchy-network-band from QML (shell/plugins/panels/network/
+        # Panel.qml), and the script shells out to `iw dev <device> link` —
+        # neither call is visible to the menu/autostart/units extraction.
+        machine.succeed("command -v omarchy-network-band")
+        machine.succeed("command -v iw")
 
         # Shell keywords/builtins/system binaries that are always present and
         # are not the *coverage point* of their action.

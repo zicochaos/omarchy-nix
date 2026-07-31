@@ -250,8 +250,8 @@ $OMARCHY_PATH/config/omarchy/shell.json
 The shell config hot-reloads. Clone a built-in plugin before modifying it:
 
 ```bash
-omarchy plugin clone omarchy.workspaces local.workspaces --replace
-omarchy plugin rescan
+omarchy plugin clone omarchy.workspaces
+# Edit ~/.config/omarchy/plugins/local.workspaces/; saved changes reload automatically.
 ```
 
 Never edit `$OMARCHY_PATH/shell/plugins/`.
@@ -438,8 +438,8 @@ for:
 - "Run a script every time I change themes" →
   `omarchy hook install theme-set <script>`
 - "Change how workspace labels are rendered" →
-  `omarchy plugin clone omarchy.workspaces local.workspaces --replace`,
-  edit the clone, `omarchy plugin rescan`
+  `omarchy plugin clone omarchy.workspaces`, then edit the clone (saved
+  changes reload automatically)
 - "Lock after ten minutes" → set `idle.lock` to `600` in
   `~/.config/omarchy/shell.json`
 - "Reset the shell/bar to defaults" → ask for confirmation, then

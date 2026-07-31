@@ -22,6 +22,10 @@
   # tmux QoL backfill: keep the ~/.config/tmux edits + gsettings; drop the
   # pacman hardware_packages block (covered natively on NixOS).
   "1784401744.sh" = "adapter";
+  # yt-dlp chromium ext: the package part is declarative (module ships
+  # yt-dlp); the flags rewrite + native messaging host registration are the
+  # user-scope remainder.
+  "1780517689.sh" = "adapter";
 
   # -------------------------------------------------------------- user-safe
   "1780057136.sh" = "user-safe"; # Shift+Enter CSI-u bindings in terminal configs
@@ -44,8 +48,6 @@
 
   # ------------------------------------------------------------------- skip
   "1778623107.sh" = "skip"; # mpv-mpris via omarchy-pkg-add (pacman)
-  "1780517689.sh" = "skip"; # yt-dlp chromium ext: core is omarchy-pkg-add (pacman);
-  #                           # host registration already covered by user-safe 1785166747
   "1780739888.sh" = "skip"; # dua-cli/dust package swap (pacman; module concern)
   "1781286586.sh" = "skip"; # satty->tensaku package swap (pacman; module concern)
   "1781485962.sh" = "skip"; # guarded by Arch stock-config SHAs; never matches NixOS seeds
@@ -56,17 +58,20 @@
   "1784476564.sh" = "skip"; # mkinitcpio vconsole/LUKS layout (Arch initramfs)
   "1784510887.sh" = "skip"; # Brave Origin beta->stable via AUR helpers
   "1784521870.sh" = "skip"; # update-user-notify .path watcher — not shipped; notifier is native
-  "1784568652.sh" = "skip"; # mask NetworkManager-wait-online (system-level; module concern)
+  "1784568652.sh" = "skip"; # mask NetworkManager-wait-online — native in the module
+  #                           # (systemd.services.NetworkManager-wait-online.enable = false)
   "1784672586.sh" = "skip"; # quickshell-git via pacman (we ship nixpkgs quickshell)
   "1784809451.sh" = "skip"; # /etc/updatedb.conf + plocate restart (system-level)
   "1784809452.sh" = "skip"; # snapper timeline cleanup (Arch/Btrfs snapper)
   "1784818437.sh" = "skip"; # PAM fingerprint lid gate (NixOS PAM is declarative)
   "1784909971.sh" = "skip"; # mise wrapper regen (mise model rejected — catalog is final)
-  "1784914435.sh" = "skip"; # NM wifi powersave via sudo nmcli/iw (system-level)
+  "1784914435.sh" = "skip"; # NM wifi powersave — native in the module
+  #                           # (networking.networkmanager.wifi.powersave = false)
   "1784917531.sh" = "skip"; # limine initramfs_async=0 kernel cmdline (Arch boot)
   "1784960000.sh" = "skip"; # XPS speaker tuning via omarchy-pkg-add (pacman)
   "1784961000.sh" = "skip"; # zram sysctl + dev-zram0.swap restart (native in the module)
-  "1784970000.sh" = "skip"; # /etc logind InhibitDelay drop-in (system-level; module concern)
+  "1784970000.sh" = "skip"; # logind InhibitDelay drop-in — native in the module
+  #                           # (services.logind.settings.Login.InhibitDelayMaxSec = 15)
   "1785013000.sh" = "skip"; # archinstall zram-generator.conf leftover (N/A on NixOS)
   "1785090473.sh" = "skip"; # libfprint-git->libfprint via pacman
   "1785095882.sh" = "skip"; # notify user-units switch; module enables omarchy-migrate-notify natively

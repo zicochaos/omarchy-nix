@@ -14,6 +14,7 @@
   stdenv,
   fetchFromGitHub,
   ruby,
+  bash,
   makeBinaryWrapper,
 }:
 
@@ -29,7 +30,20 @@ stdenv.mkDerivation (finalAttrs: {
   };
 
   nativeBuildInputs = [ makeBinaryWrapper ];
-  buildInputs = [ ruby ];
+  buildInputs = [
+    ruby
+    bash
+  ];
+
+  # try.rb emits `/usr/bin/env ruby` (line-1 shebang + the two shell-init
+  # emission sites) and `/usr/bin/env sh` (the two worktree-hook emission
+  # sites) — all broken outside FHS. Rewrite every site to store paths;
+  # patchShebangs then leaves the already-absolute line-1 shebang alone.
+  postPatch = ''
+    substituteInPlace try.rb \
+      --replace-fail '/usr/bin/env ruby' '${ruby}/bin/ruby' \
+      --replace-fail '/usr/bin/env sh' '${bash}/bin/sh'
+  '';
 
   # No build step: try.rb is a Ruby script with `require_relative 'lib/...'`.
   # Install it as `try` in $out/bin with lib/ beside it so the relative
