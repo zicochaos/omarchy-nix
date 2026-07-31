@@ -233,6 +233,29 @@ let
         # enabled above); the whisper model (~150MB) downloads on first
         # `voxtype setup --download` (still run via omarchy-voxtype-install). ---
         voxtype
+        # Arch voxtype-bin installs packaging/voxtype-configure.desktop so
+        # Super+Space → Apps shows "Voxtype Configuration" (TUI via
+        # voxtype-configure-launcher). nixpkgs' voxtype omits that entry;
+        # ship the omarchy equivalent so the launcher matches Arch.
+        (pkgs.makeDesktopItem {
+          name = "voxtype-configure";
+          desktopName = "Voxtype Configuration";
+          genericName = "Voice-to-Text Settings";
+          comment = "Configure voxtype dictation settings (engine, model, hotkey, audio, output)";
+          exec = "omarchy-voxtype-config";
+          icon = "audio-input-microphone";
+          categories = [ "Settings" ];
+          startupWMClass = "voxtype";
+          keywords = [
+            "voxtype"
+            "voice"
+            "dictation"
+            "transcription"
+            "whisper"
+            "settings"
+            "configuration"
+          ];
+        })
         ydotool
 
         # --- Default browser (upstream parity). bin/omarchy-finalize-user

@@ -286,7 +286,10 @@
 
     # --- (4c) Dictation stack (voxtype + ydotool). --------------------------
     # voxtype is shipped declaratively (upstream parity: Install → AI →
-    # Dictation); default/hypr/bindings/voxtype.lua binds F9 + Super+Ctrl+X
+    # Dictation); Arch voxtype-bin also installs Voxtype Configuration.desktop
+    # so Super+Space → Apps can open the TUI — assert that entry is present.
+    machine.succeed("test -f /run/current-system/sw/share/applications/voxtype-configure.desktop")
+    # default/hypr/bindings/voxtype.lua binds F9 + Super+Ctrl+X
     # when the binary is on PATH. [output] mode = "type" needs ydotool, whose
     # daemon is enabled via programs.ydotool.
     machine.succeed("command -v voxtype")
