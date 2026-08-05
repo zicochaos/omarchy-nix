@@ -932,6 +932,16 @@ stdenv.mkDerivation (finalAttrs: {
     EOF
         chmod +x bin/omarchy-update-available
 
+        # Point the failure trap at the full log (issue #55): the
+        # presentation window closes on any key (omarchy-show-done), so the
+        # error text vanishes with it. omarchy-update already tees everything
+        # through `script` into /tmp/omarchy-update.log — say so in the trap
+        # message and closing the window stops being destructive.
+        substituteInPlace bin/omarchy-update \
+          --replace-fail \
+            'correct the error, and retry the update.\n\nIf you need assistance' \
+            'correct the error, and retry the update.\n\nFull log: /tmp/omarchy-update.log\n\nIf you need assistance'
+
         # Snapshot: snapper/limine are Arch. Exit 0 with a note so
         # `omarchy-snapshot create || (($? == 127))` in omarchy-update
         # continues (exit 0 also satisfies the || chain).
