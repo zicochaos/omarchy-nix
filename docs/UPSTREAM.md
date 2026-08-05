@@ -93,7 +93,7 @@ declared by the NixOS module instead.
 
 ## Upstream defaults (from the vendored source)
 
-These are the defaults encoded in the upstream source (rev `283276be`,
+These are the defaults encoded in the upstream source (rev `caeffdc2`,
 `4.0.0.alpha`, quattro branch). Compare against them when verifying
 parity:
 
