@@ -900,11 +900,9 @@ in
 
         # NOFILE limits in both managers (upstream etc/systemd/
         # system.conf.d/20-omarchy-nofile.conf + user.conf.d/
-        # 20-omarchy-nofile.conf).
+        # 20-omarchy-nofile.conf; the user-manager half is set in the
+        # version-dependent block right below — see the comment there).
         systemd.settings.Manager.DefaultLimitNOFILE = lib.mkDefault "65536:524288";
-        systemd.user.extraConfig = lib.mkDefault ''
-          DefaultLimitNOFILE=65536:524288
-        '';
 
         # USB autosuspend off (upstream etc/modprobe.d/
         # omarchy-usb-autosuspend.conf): autosuspend drops flaky receivers
@@ -960,6 +958,24 @@ in
           }
         ];
       }
+
+      # User-manager NOFILE (upstream etc/systemd/user.conf.d/
+      # 20-omarchy-nofile.conf). nixpkgs after 26.05 removed
+      # systemd.user.extraConfig in favor of systemd.user.settings.Manager
+      # (mkRemovedOptionModule), and consumers track both stable and
+      # unstable — pick whichever API the consumer's nixpkgs provides.
+      (
+        if (options.systemd.user ? settings) && (options.systemd.user.settings ? Manager) then
+          {
+            systemd.user.settings.Manager.DefaultLimitNOFILE = lib.mkDefault "65536:524288";
+          }
+        else
+          {
+            systemd.user.extraConfig = lib.mkDefault ''
+              DefaultLimitNOFILE=65536:524288
+            '';
+          }
+      )
 
       # (C) SSH must stay reachable.
       # Applying omarchy via `nixos-rebuild switch --flake` rebuilds the whole

@@ -898,6 +898,27 @@
               throw "demo config missing usbcore autosuspend=-1 (etc/modprobe.d/omarchy-usb-autosuspend.conf)"
             else if (demoCfg.environment.etc."gnupg/dirmngr.conf".source or null) == null then
               throw "demo config missing /etc/gnupg/dirmngr.conf (etc/gnupg/dirmngr.conf)"
+            else if
+              # The user-manager NOFILE limit is set through a
+              # version-dependent API (systemd.user.extraConfig on 26.05,
+              # systemd.user.settings.Manager after the option was
+              # replaced). Guard the newer branch against the nixpkgs the
+              # hyprland input carries (which already has the new API), so a
+              # conditional flip cannot silently drop the limit for
+              # consumers on unstable.
+              ((inputs.hyprland.inputs.nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  self.nixosModules.default
+                  {
+                    omarchy.enable = true;
+                    system.stateVersion = "26.05";
+                  }
+                ];
+              }).config.systemd.user.settings.Manager.DefaultLimitNOFILE or null
+              ) != "65536:524288"
+            then
+              throw "newer nixpkgs (systemd.user.settings.Manager API) lost the user-manager DefaultLimitNOFILE"
             else
               pkgs.runCommand "omarchy-etc-parity" { } ''
                 # Fail-closed inventory, both directions: every file in the
