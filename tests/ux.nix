@@ -1092,6 +1092,21 @@
             binary = line.split("=", 1)[1].split()[0]
             machine.succeed("test -x " + binary)
 
+        # (e) omarchy-migrate user unit: native oneshot that closes the
+        # "rebuild without omarchy-update skips migrations" gap. Assert it
+        # is wired into graphical-session.target and actually ran — the
+        # per-user state dir must exist with (baseline) markers.
+        machine.succeed(
+            "test -L /etc/systemd/user/graphical-session.target.wants/omarchy-migrate.service"
+        )
+        machine.wait_until_succeeds(
+            as_demo("test -d ~/.local/state/omarchy/migrations"), timeout=90
+        )
+        marker_count = machine.succeed(
+            as_demo("ls ~/.local/state/omarchy/migrations | wc -l")
+        ).strip()
+        assert int(marker_count) > 0, "omarchy-migrate produced no markers"
+
     # --- (10) Behavioral desktop contract. ----------------------------------
     # Ported concepts from upstream test/acceptance.d: drive the shell over
     # its IPC and assert observable effects (layer namespaces, windows, lock

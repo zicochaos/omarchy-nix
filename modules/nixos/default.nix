@@ -1007,6 +1007,42 @@ in
           bt-agent.wantedBy = [ "graphical-session.target" ];
           omarchy-fcitx5.wantedBy = [ "graphical-session.target" ];
           omarchy-migrate-notify.wantedBy = [ "graphical-session.target" ];
+          # The migration runner itself. Upstream runs migrations from
+          # omarchy-update, which NixOS consumers bypass when they rebuild
+          # with plain nixos-rebuild — pending user-safe migrations (e.g.
+          # bar-layout jq edits) then never apply, and the runner's
+          # first-run baseline would wrongly swallow them later. Run the
+          # fail-closed runner at every graphical login instead: markers
+          # make it a cheap no-op when nothing is pending, a fresh user
+          # still baselines, and a rebuild + relogin picks up new
+          # migrations automatically. Ordered before the notifier so a
+          # clean run never leaves a stale "migrations pending" alert.
+          # OMARCHY_PATH is pinned to the configured package (not the
+          # session env) so migrations always apply against the new tree.
+          omarchy-migrate = {
+            description = "Run pending Omarchy migrations (omarchy-nix)";
+            wantedBy = [ "graphical-session.target" ];
+            before = [ "omarchy-migrate-notify.service" ];
+            environment.OMARCHY_PATH = "${cfg.package}/share/omarchy";
+            # Unit PATH is sparse; the runner and user-safe migrations call
+            # jq/awk/sed/gsettings/systemctl/hyprctl plus sibling omarchy-*
+            # scripts (the last entry resolves to $pkg/share/omarchy/bin).
+            path = with pkgs; [
+              bash
+              jq
+              gawk
+              gnused
+              coreutils
+              systemd
+              glib
+              hyprland
+              "${cfg.package}/share/omarchy"
+            ];
+            serviceConfig = {
+              Type = "oneshot";
+              ExecStart = "${cfg.package}/share/omarchy/bin/omarchy-migrate";
+            };
+          };
           # sleep-lock script execs bare `bash`, `systemd-inhibit`, and
           # `dbus-monitor`. User-unit PATH is sparse (no /run/current-system
           # unless hyprland setPath is on), so put them on the unit PATH
