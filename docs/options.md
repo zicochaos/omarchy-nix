@@ -35,12 +35,12 @@ Set automatically by the flake when `omarchy.sddm.theme` is true.
 
 ### `omarchy.appPackages` *(listOf package, default `[]`, injected by the flake)*
 
-Upstream-owned Omarchy apps packaged by this flake because they are absent
-from nixpkgs: aether, asdcontrol, omacut, omawrite, tensaku, try,
-hyprland-guiutils, hyprland-preview-share-picker, omarchy-nvim. Set
-automatically by the flake's `nixosModules.default`; override to trim or
-extend the set. Entries are still subject to `omarchy.exclude_packages`
-filtering.
+Upstream-owned Omarchy packages packaged by this flake because they are
+absent from nixpkgs: aether, asdcontrol, omacalc, omacut, omawrite,
+tensaku, try, yaru-theme, hyprland-guiutils,
+hyprland-preview-share-picker, omarchy-nvim. Set automatically by the
+flake's `nixosModules.default`; override to trim or extend the set.
+Entries are still subject to `omarchy.exclude_packages` filtering.
 
 ### `omarchy.nvimPackage` *(nullOr package, default `null`, injected by the flake)*
 
@@ -54,7 +54,9 @@ stubs). Set automatically by the flake; `null` skips nvim config seeding.
 ### `omarchy.fish.enable` *(bool, default `false`)*
 
 Install Fish and the vendored Omarchy Fish profile (`omarchy-fish`, pinned
-v1.5.0 + fzf.fish v10.3): sets `programs.fish.enable` and adds the package
+`1.5.0-unstable-2026-07-31` — the fork rev carrying
+[omacom-io/omarchy-fish#7](https://github.com/omacom-io/omarchy-fish/pull/7)
+— + fzf.fish v10.3): sets `programs.fish.enable` and adds the package
 to the system profile, whose `share/fish/vendor_*` directories Fish reads
 automatically. Does NOT change any account's login shell; that stays an
 explicit per-account setting (`users.users.<name>.shell = pkgs.fish`). Off
@@ -106,6 +108,13 @@ every upstream theme name while blocking path traversal (`../`) and newline
 injection; the name is interpolated into filesystem paths and shell
 commands by the theme engine.
 
+Seed semantics: rendered only on the first Home-Manager activation, when
+`~/.local/state/omarchy/current/theme.name` does not exist. Later changes
+to this option are no-ops until you edit/remove that file (or run
+`omarchy-theme-set <name>` directly). A theme that fails to render (typo,
+or a user theme that cannot exist before first activation) only warns
+during activation instead of failing the whole switch.
+
 ### `omarchy.terminal` *(strMatching `[A-Za-z0-9._-]+`, default `"foot"`)*
 
 Default terminal desktop entry, resolved through `xdg-terminal-exec`. One of
@@ -123,10 +132,17 @@ auto-detect (catch-all `output = ""` only). The catch-all and the
 upstream runtime tooling (`omarchy-hyprland-monitor-scaling`) can persist
 user scaling changes. Example: `[ "DP-1, 2560x1440@120, 0x0, 1" ]`.
 
+Seed semantics: written only on the first Home-Manager activation, when
+`~/.config/hypr/monitors.lua` does not exist. Later changes to this option
+(and to `omarchy.scale`) are no-ops until you edit/remove that file.
+
 Entries are validated and Lua-escaped at evaluation time
 (`modules/lib/omarchy-formats.nix`): fields are
 `output, mode, position, scale, transform` (max 5, everything after output
-optional), scale must be a number or `"auto"`, transform must be `0`-`7`.
+optional), mode must be `WIDTHxHEIGHT` or `WIDTHxHEIGHT@RATE` (or the
+`preferred`/`highres`/`highrr` keywords), position
+must be `XxY` integers or `auto`/`auto-*`, scale must be a number or
+`"auto"`, transform must be `0`-`7`.
 A malformed entry fails the build with a clear error instead of writing a
 `monitors.lua` Hyprland cannot parse; quotes/backslashes/newlines in names
 can no longer break out of the Lua string literal.
@@ -177,6 +193,12 @@ omarchy.managedPackagesFile =
   then ./omarchy-packages.json
   else null;
 ```
+
+Fail-closed: a non-null path that does not exist (or is not valid JSON)
+fails evaluation with an error naming the file — a silent fallback to
+empty sets would drop menu-installed packages on the next rebuild. The
+`pathExists` guard form above is the recommended way to express "not
+installed yet".
 
 For git-based flakes the add/remove scripts register the JSON with
 `git add -N` so the flake snapshot includes it. Where the scripts write:
@@ -235,7 +257,10 @@ SDDM theme.
 Username to auto-login at the SDDM greeter into the Hyprland (uwsm) session.
 `null` (default) keeps the SDDM password prompt. The module wires the NixOS
 `services.displayManager.autoLogin.{enable,user}` + `defaultSession =
-"hyprland-uwsm"` + `sddm.autoLogin.relogin` from this one knob.
+"hyprland-uwsm"` + `sddm.autoLogin.relogin` from this one knob. Note that
+`relogin = true` mirrors upstream: after logging out you are signed
+straight back in — the greeter is unreachable for switching users without
+unsetting this option (and restarting the display manager).
 
 **LUKS single-password flow:** on an encrypted (LUKS) install, the user
 already typed a passphrase to unlock the root disk at boot, so a second SDDM

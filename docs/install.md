@@ -153,6 +153,14 @@ Create `/etc/nixos/flake.nix`:
 (For a local checkout instead of GitHub, point `omarchy-nix.url` at
 `git+file:///path/to/omarchy-nix`.)
 
+> **Name the configuration after your hostname.** The menu Install/Remove
+> actions and `omarchy update` resolve
+> `nixosConfigurations."$(hostname)"` — `my-host` above only works if the
+> host is actually named `my-host` (see `networking.hostName` in
+> `configuration.nix`). If the names differ, the desktop still works but
+> the menu commands fail with a resolver error (the full contract is in
+> the "Installing apps" section below).
+
 ## 4. Apply the config
 
 ```bash

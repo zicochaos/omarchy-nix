@@ -88,7 +88,9 @@ docs/                  # install.md, options.md, UPSTREAM.md, vm.md, nix-best-pr
 
 - Format with `nixfmt-tree` (the `formatter` output).
 - 2-space indent in Nix.
-- Options live under `omarchy.*`, `camelCase` keys.
+- Options live under `omarchy.*`, `camelCase` keys — except the frozen
+  public API trio `full_name` / `email_address` / `exclude_packages`
+  (snake_case, kept for compatibility; do not rename).
 - Follow the Nix code conventions in
   [`docs/nix-best-practices.md`](docs/nix-best-practices.md): quote URLs, prefer
   `let ... in` over `rec`, avoid top-level `with` and `<...>` lookup paths,

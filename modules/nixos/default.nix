@@ -49,14 +49,26 @@ let
   filterExcluded = lib.filter (p: !builtins.elem (pkgAttrName p) excluded);
 
   # Menu-managed packages (omarchy-packages.json), read once and shared by
-  # the (B0) unfree whitelist and the (B0b) managed-packages block. A missing
-  # or null file means empty sets. The catalog ships inside cfg.package
-  # (nix-catalog.json, see pkgs/omarchy-catalog.nix).
+  # the (B0) unfree whitelist and the (B0b) managed-packages block.
+  # null = menu-managed packages disabled (empty sets). A non-null path that
+  # is missing or unparseable fails closed — silent empty sets would drop
+  # menu-installed packages on the next rebuild. Brand-new installs keep the
+  # option at its default null (or the README pathExists-guard → null form)
+  # until omarchy-nix-add creates the file; the catalog itself ships inside
+  # cfg.package (nix-catalog.json, see pkgs/omarchy-catalog.nix).
   managed =
-    if cfg.managedPackagesFile != null && builtins.pathExists cfg.managedPackagesFile then
-      builtins.fromJSON (builtins.readFile cfg.managedPackagesFile)
+    if cfg.managedPackagesFile == null then
+      { }
+    else if !(builtins.pathExists cfg.managedPackagesFile) then
+      throw "${toString cfg.managedPackagesFile}: omarchy.managedPackagesFile points at a missing file. Menu-installed packages would silently vanish from the system on rebuild. Create the file (Install menu / omarchy-nix-add), or set omarchy.managedPackagesFile = null (or the README guard: if builtins.pathExists ./omarchy-packages.json then ./omarchy-packages.json else null)."
     else
-      { };
+      let
+        parsed = builtins.tryEval (builtins.fromJSON (builtins.readFile cfg.managedPackagesFile));
+      in
+      if parsed.success then
+        parsed.value
+      else
+        throw "${toString cfg.managedPackagesFile}: failed to parse as JSON (omarchy.managedPackagesFile). Fix the file or set omarchy.managedPackagesFile = null.";
   managedPkgs = managed.packages or [ ];
   managedFeatures = managed.features or [ ];
 
@@ -449,9 +461,13 @@ let
   # NixOS chromium ships as chromium-browser.desktop; Arch/upstream
   # finalize-user sets default-web-browser chromium.desktop. Alias the
   # Arch name so xdg-settings + omarchy-launch-browser match the oracle.
+  # NoDisplay=true keeps the alias for binary association without a second
+  # Chromium entry in the app menu (chromium-browser.desktop stays visible).
   chromiumDesktopAlias = pkgs.runCommand "chromium-desktop-alias" { } ''
     mkdir -p "$out/share/applications"
     cp ${pkgs.chromium}/share/applications/chromium-browser.desktop \
+      "$out/share/applications/chromium.desktop"
+    sed -i '/^\[Desktop Entry\]/a NoDisplay=true' \
       "$out/share/applications/chromium.desktop"
   '';
 
@@ -494,8 +510,9 @@ in
         # same way upstream's default/bash/env-bootstrap does in dev-link mode.
         # Without this every omarchy-* lookup exits 127 — Super+Enter, the
         # theme renderer, first-run hooks, quickshell's omarchy-shell calls all
-        # break. mkBefore so omarchy's own omarchy-X wins over any same-named
-        # system binary.
+        # break. PATH is a list here: NixOS prepends each entry to the session
+        # PATH (same effect as mkBefore), so omarchy's own omarchy-X wins over
+        # any same-named system binary.
         #
         # BROWSER/TERMINAL mirror default/uwsm/default (upstream session env).
         # GSETTINGS_SCHEMA_DIR: see gsettingsSchemaDir above — first-run
@@ -508,10 +525,14 @@ in
         # They reach the desktop session via uwsm env.d (below) and login
         # shells via /etc/profile (extraInit below that).
         environment.sessionVariables = {
+          # Plain (not mkDefault): every omarchy-* script and quickshell
+          # resolve the vendored tree via OMARCHY_PATH; a consumer override
+          # that loses the package path breaks the desktop. Override
+          # omarchy.package instead if a different tree is needed.
           OMARCHY_PATH = "${cfg.package}/share/omarchy";
           PATH = [ "${cfg.package}/share/omarchy/bin" ];
-          BROWSER = "omarchy-launch-browser";
-          TERMINAL = "xdg-terminal-exec";
+          BROWSER = lib.mkDefault "omarchy-launch-browser";
+          TERMINAL = lib.mkDefault "xdg-terminal-exec";
           # EDITOR/SUDO_EDITOR mirror default/bash/envs
           # (EDITOR="${EDITOR:-omarchy-launch-editor --inline}",
           # SUDO_EDITOR="$EDITOR"). mkDefault mirrors the `:-` soft-default
@@ -923,7 +944,11 @@ in
 
         # dirmngr keyservers + quick connect timeout (upstream
         # etc/gnupg/dirmngr.conf), verbatim from the vendored tree.
-        environment.etc."gnupg/dirmngr.conf".source = "${cfg.package}/share/omarchy/etc/gnupg/dirmngr.conf";
+        # Guarded: omarchy.package = null is legal and must not force a
+        # string coercion of null (same pattern as (A)/(B1)/(H)/(J)).
+        environment.etc."gnupg/dirmngr.conf" = lib.mkIf (cfg.package != null) {
+          source = "${cfg.package}/share/omarchy/etc/gnupg/dirmngr.conf";
+        };
 
         # sudo parity (upstream etc/sudoers.d/omarchy-passwd-tries,
         # omarchy-asdcontrol, omarchy-tzupdate): 10 password tries; NOPASSWD
@@ -1082,9 +1107,11 @@ in
         # The vendored drop-ins pin the pressure thresholds; the app.slice
         # drop-in (kill candidates = user apps only, never the compositor)
         # rides along systemd.packages from the omarchy package itself.
+        # Drop-in source is package-gated: omarchy.package = null is legal.
         systemd.oomd.enable = lib.mkDefault true;
-        environment.etc."systemd/oomd.conf.d/10-omarchy.conf".source =
-          "${cfg.package}/share/omarchy/etc/systemd/oomd.conf.d/10-omarchy.conf";
+        environment.etc."systemd/oomd.conf.d/10-omarchy.conf" = lib.mkIf (cfg.package != null) {
+          source = "${cfg.package}/share/omarchy/etc/systemd/oomd.conf.d/10-omarchy.conf";
+        };
       }
 
       # (E) Plymouth boot-splash theme.
@@ -1156,36 +1183,50 @@ in
           omarchy-fcitx5.wantedBy = [ "graphical-session.target" ];
           omarchy-migrate-notify.wantedBy = [ "graphical-session.target" ];
           # The migration runner itself. Upstream runs migrations from
-          # omarchy-update, which NixOS consumers bypass when they rebuild
-          # with plain nixos-rebuild — pending user-safe migrations (e.g.
-          # bar-layout jq edits) then never apply, and the runner's
-          # first-run baseline would wrongly swallow them later. Run the
-          # fail-closed runner at every graphical login instead: markers
-          # make it a cheap no-op when nothing is pending, a fresh user
-          # still baselines, and a rebuild + relogin picks up new
-          # migrations automatically. Ordered before the notifier so a
-          # clean run never leaves a stale "migrations pending" alert.
-          # OMARCHY_PATH is pinned to the configured package (not the
-          # session env) so migrations always apply against the new tree.
+          # omarchy-update (before the session), which NixOS consumers bypass
+          # when they rebuild with plain nixos-rebuild — pending user-safe
+          # migrations (e.g. bar-layout jq edits) then never apply, and the
+          # runner's first-run baseline would wrongly swallow them later. Run
+          # the fail-closed runner at every graphical login instead: markers
+          # make it a cheap no-op when nothing is pending, a fresh user still
+          # baselines, and a rebuild + relogin picks up new migrations
+          # automatically. wantedBy + before graphical-session.target makes
+          # this oneshot finish before the session target activates (and thus
+          # before quickshell reads bar-layout/config), mirroring upstream's
+          # pre-session migrate from omarchy-update. Also before the notifier
+          # so a clean run never leaves a stale "migrations pending" alert.
+          # No After=/Requires= on anything ordered after graphical-session
+          # (avoids a dependency cycle). OMARCHY_PATH is pinned to the
+          # configured package (not the session env) so migrations always
+          # apply against the new tree.
           omarchy-migrate = {
             description = "Run pending Omarchy migrations (omarchy-nix)";
             wantedBy = [ "graphical-session.target" ];
-            before = [ "omarchy-migrate-notify.service" ];
+            before = [
+              "graphical-session.target"
+              "omarchy-migrate-notify.service"
+            ];
             environment.OMARCHY_PATH = "${cfg.package}/share/omarchy";
             # Unit PATH is sparse; the runner and user-safe migrations call
             # jq/awk/sed/gsettings/systemctl/hyprctl plus sibling omarchy-*
             # scripts (the last entry resolves to $pkg/share/omarchy/bin).
-            path = with pkgs; [
-              bash
-              jq
-              gawk
-              gnused
-              coreutils
-              systemd
-              glib
-              hyprland
-              "${cfg.package}/share/omarchy"
-            ];
+            # Use programs.hyprland.package (flake/input-pinned, apply-wrapped
+            # final package) — not pkgs.hyprland (nixpkgs 0.52.x) — so hyprctl
+            # matches the running compositor (>=0.56).
+            path =
+              (with pkgs; [
+                bash
+                jq
+                gawk
+                gnused
+                coreutils
+                systemd
+                glib
+              ])
+              ++ [
+                config.programs.hyprland.package
+                "${cfg.package}/share/omarchy"
+              ];
             serviceConfig = {
               Type = "oneshot";
               ExecStart = "${cfg.package}/share/omarchy/bin/omarchy-migrate";

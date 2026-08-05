@@ -4,6 +4,9 @@ result-*
 .direnv/
 .envrc.local
 
+# Secrets
+.env
+
 # Editor / agent working state
 .zcode/
 .codex/

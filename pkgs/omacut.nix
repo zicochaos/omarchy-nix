@@ -33,10 +33,15 @@ stdenv.mkDerivation (finalAttrs: {
 
   enableParallelBuilding = true;
 
-  # omacut.pro defines no install targets, so install the built binary by hand.
+  # omacut.pro defines no install targets, so install by hand (matches
+  # pkgbuild/PKGBUILD: binary + desktop file + scalable icon).
   installPhase = ''
     runHook preInstall
     install -Dm555 omacut "$out/bin/omacut"
+    install -Dm644 pkgbuild/omacut.svg \
+      "$out/share/icons/hicolor/scalable/apps/omacut.svg"
+    install -Dm644 pkgbuild/omacut.desktop \
+      "$out/share/applications/omacut.desktop"
     runHook postInstall
   '';
 

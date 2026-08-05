@@ -352,6 +352,12 @@ stdenv.mkDerivation (finalAttrs: {
         stub_declarative() {
           local path="$1"
           local name
+          # Fail-closed: never create orphan stubs if upstream renamed/removed
+          # the script — a missing target must surface at build time.
+          if [[ ! -e "$path" ]]; then
+            echo "omarchy-nix: stub_declarative target missing (upstream rename?): $path" >&2
+            exit 1
+          fi
           name=$(basename "$path")
           cat >"$path" <<EOF
     #!/bin/bash
@@ -365,6 +371,12 @@ stdenv.mkDerivation (finalAttrs: {
         stub_handled() {
           local path="$1"
           local name
+          # Fail-closed: never create orphan stubs if upstream renamed/removed
+          # the script — a missing target must surface at build time.
+          if [[ ! -e "$path" ]]; then
+            echo "omarchy-nix: stub_handled target missing (upstream rename?): $path" >&2
+            exit 1
+          fi
           name=$(basename "$path")
           cat >"$path" <<EOF
     #!/bin/bash
@@ -768,13 +780,34 @@ stdenv.mkDerivation (finalAttrs: {
         # omarchy-install-dev-env: drop the /etc/php mutations from the PHP
         # flow (php.ini + xdebug.ini are declarative on NixOS); the mise-based
         # per-user toolchain install and the Composer PATH setup stay.
-        sed -i \
-          -e '/local php_ini_path=/d' \
-          -e '/local extensions_to_enable=(/,/^  )$/d' \
-          -e '/# Enable Xdebug/,+4d' \
-          -e '/# Enable some extensions/d' \
-          -e '/for ext in "/,+2d' \
-          bin/omarchy-install-dev-env
+        # Anchors are verified and deleted as an explicit line range (no open
+        # `,+Nd` patterns) so an upstream restructure fails the build instead
+        # of silently deleting unrelated user-state logic.
+        {
+          dev_env=bin/omarchy-install-dev-env
+          # Fixed-string anchors (unique within install_php); fail-closed.
+          for pat in \
+            '  # Enable some extensions' \
+            'local php_ini_path="/etc/php/php.ini"' \
+            'local extensions_to_enable=(' \
+            '  # Enable Xdebug' \
+            'for ext in "''${extensions_to_enable[@]}"' \
+            '/etc/php/conf.d/xdebug.ini'
+          do
+            grep -qF "$pat" "$dev_env" || {
+              echo "omarchy-install-dev-env: expected PHP-mutation anchor missing: $pat" >&2
+              exit 1
+            }
+          done
+          start=$(grep -nF '  # Enable some extensions' "$dev_env" | head -1 | cut -d: -f1)
+          # The for-ext loop's closing `done` is the last line of the block.
+          end=$(awk -v s="$start" 'NR > s && /^  done$/ { print NR; exit }' "$dev_env")
+          if [[ -z "$start" || -z "$end" || "$end" -le "$start" ]]; then
+            echo "omarchy-install-dev-env: could not resolve PHP-mutation line range (start=$start end=$end)" >&2
+            exit 1
+          fi
+          sed -i "''${start},''${end}d" "$dev_env"
+        }
         substituteInPlace bin/omarchy-install-dev-env \
           --replace-fail \
             $'install_php() {\n  omarchy-pkg-add' \
@@ -1299,10 +1332,29 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-retroarch" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-remove install.gaming.retroarch'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-minecraft" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-remove install.gaming.minecraft'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-heroic" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-remove install.gaming.heroic'" \
-          --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-lutris" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-remove install.gaming.lutris'"
+          --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-lutris" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-remove install.gaming.lutris'" \
+          --replace-fail "'omarchy-remove-dev-env ruby'" "'omarchy-nix-remove install.development.rails'" \
+          --replace-fail "'omarchy-remove-dev-env go'" "'omarchy-nix-remove install.development.go'" \
+          --replace-fail "'omarchy-remove-dev-env python'" "'omarchy-nix-remove install.development.python'" \
+          --replace-fail "'omarchy-remove-dev-env zig'" "'omarchy-nix-remove install.development.zig'" \
+          --replace-fail "'omarchy-remove-dev-env rust'" "'omarchy-nix-remove install.development.rust'" \
+          --replace-fail "'omarchy-remove-dev-env java'" "'omarchy-nix-remove install.development.java'" \
+          --replace-fail "'omarchy-remove-dev-env dotnet'" "'omarchy-nix-remove install.development.dotnet'" \
+          --replace-fail "'omarchy-remove-dev-env ocaml'" "'omarchy-nix-remove install.development.ocaml'" \
+          --replace-fail "'omarchy-remove-dev-env clojure'" "'omarchy-nix-remove install.development.clojure'" \
+          --replace-fail "'omarchy-remove-dev-env scala'" "'omarchy-nix-remove install.development.scala'" \
+          --replace-fail "'omarchy-remove-dev-env node'" "'omarchy-nix-remove install.development.javascript.node'" \
+          --replace-fail "'omarchy-remove-dev-env bun'" "'omarchy-nix-remove install.development.javascript.bun'" \
+          --replace-fail "'omarchy-remove-dev-env deno'" "'omarchy-nix-remove install.development.javascript.deno'" \
+          --replace-fail "'omarchy-remove-dev-env php'" "'omarchy-nix-remove install.development.php.php'" \
+          --replace-fail "'omarchy-remove-dev-env elixir'" "'omarchy-nix-remove install.development.elixir.elixir'" \
+          --replace-fail "'omarchy-remove-dev-env laravel'" "omarchy-nix-declarative-note" \
+          --replace-fail "'omarchy-remove-dev-env symfony'" "omarchy-nix-declarative-note" \
+          --replace-fail "'omarchy-remove-dev-env phoenix'" "omarchy-nix-declarative-note"
 
         # Development entries: replace mise-dir / rustup / opam guards with
         # pkg-present probes (php's guard is already pkg-present upstream).
+        # Install side uses the negated form; remove side uses the positive form.
         substituteInPlace default/omarchy/omarchy-menu.jsonc \
           --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/ruby ]]' '! omarchy-pkg-present ruby' \
           --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/go ]]' '! omarchy-pkg-present go' \
@@ -1317,7 +1369,21 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/node ]]' '! omarchy-pkg-present node' \
           --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/bun ]]' '! omarchy-pkg-present bun' \
           --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/deno ]]' '! omarchy-pkg-present deno' \
-          --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/elixir ]]' '! omarchy-pkg-present elixir'
+          --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/elixir ]]' '! omarchy-pkg-present elixir' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/ruby ]]' 'omarchy-pkg-present ruby' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/go ]]' 'omarchy-pkg-present go' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/python ]]' 'omarchy-pkg-present python' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/zig ]]' 'omarchy-pkg-present zig' \
+          --replace-fail '[[ -d $HOME/.rustup ]]' 'omarchy-pkg-present rust' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/java ]]' 'omarchy-pkg-present java' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/dotnet ]]' 'omarchy-pkg-present dotnet' \
+          --replace-fail '[[ -d $HOME/.opam ]]' 'omarchy-pkg-present ocaml' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/clojure ]]' 'omarchy-pkg-present clojure' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/scala ]]' 'omarchy-pkg-present scala' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/node ]]' 'omarchy-pkg-present node' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/bun ]]' 'omarchy-pkg-present bun' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/deno ]]' 'omarchy-pkg-present deno' \
+          --replace-fail '[[ -d $HOME/.local/share/mise/installs/elixir ]]' 'omarchy-pkg-present elixir'
 
         # omp (oh-my-pi) is not in nixpkgs — drop its default-agent menu
         # entry (grep guard keeps this fail-closed, like --replace-fail).
@@ -1330,6 +1396,24 @@ stdenv.mkDerivation (finalAttrs: {
         # model requires one menu entry per catalog id. The lines live in
         # agentMenuEntries (let) and are inserted after the ollama entry
         # (grep guard keeps this fail-closed, like --replace-fail).
+        # Pre-insert: fail if upstream already ships any of the keys we insert
+        # (duplicate-key protection; install.ai.ollama / install.ai.lm-studio
+        # are upstream-owned and not in this list).
+        for key in \
+          install.ai.claude \
+          install.ai.codex \
+          install.ai.copilot \
+          install.ai.crush \
+          install.ai.gemini \
+          install.ai.grok \
+          install.ai.opencode \
+          install.ai.pi
+        do
+          if grep -q "\"$key\":" default/omarchy/omarchy-menu.jsonc; then
+            echo "omarchy-menu.jsonc: $key already present (duplicate insert)" >&2
+            exit 1
+          fi
+        done
         grep -q '"install.ai.ollama":' default/omarchy/omarchy-menu.jsonc
         sed -i '/"install.ai.ollama":/r ${agentMenuEntries}' default/omarchy/omarchy-menu.jsonc
 

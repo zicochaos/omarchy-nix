@@ -58,11 +58,6 @@
       # derivation paths, meta) sees the clean value.
       omarchyVersion = nixpkgs.lib.strings.trim (builtins.readFile "${omarchy-src}/version");
 
-      # Shared omarchy.* option schema. Imported by both the NixOS module and
-      # the Home-Manager module so consumers set options once at the system
-      # level and HM mirrors them via osConfig.
-      omarchyOptions = import ./config.nix;
-
       # External pkgs for packages/demo/tests. Global allowUnfree is
       # intentionally NOT set — it used to mask the real consumer path
       # (B0 allowUnfreePredicate) and let broken catalog unfreeNames slip
@@ -166,58 +161,62 @@
             ./modules/nixos/default.nix
           ];
 
-          config = lib.mkMerge [
-            {
-              # Inject the vendored omarchy derivation as the module default.
-              # Consumers can override with omarchy.package = <derivation>.
-              omarchy.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.omarchy;
-              # Inject the system-theme packages (Plymouth + SDDM) so the pure
-              # module can wire them without referencing the flake.
-              omarchy.plymouthPackage =
-                lib.mkDefault
-                  self.packages.${pkgs.stdenv.hostPlatform.system}.plymouth-omarchy-theme;
-              omarchy.sddmPackage =
-                lib.mkDefault
-                  self.packages.${pkgs.stdenv.hostPlatform.system}.sddm-omarchy-theme;
+          config =
+            let
+              # Package set for this host. Unsupported systems fail here with a
+              # clear message instead of "attribute '…' missing" on self.packages.
+              hostSystem = pkgs.stdenv.hostPlatform.system;
+              hostPackages =
+                self.packages.${hostSystem} or (throw "omarchy-nix supports x86_64-linux only (got ${hostSystem})");
+            in
+            lib.mkMerge [
+              {
+                # Inject the vendored omarchy derivation as the module default.
+                # Consumers can override with omarchy.package = <derivation>.
+                omarchy.package = lib.mkDefault hostPackages.omarchy;
+                # Inject the system-theme packages (Plymouth + SDDM) so the pure
+                # module can wire them without referencing the flake.
+                omarchy.plymouthPackage = lib.mkDefault hostPackages.plymouth-omarchy-theme;
+                omarchy.sddmPackage = lib.mkDefault hostPackages.sddm-omarchy-theme;
 
-              # Inject the upstream-owned apps (not in nixpkgs, built under
-              # pkgs/) so the pure module ships them without referencing the
-              # flake. Consumers can drop entries with omarchy.exclude_packages
-              # or override the whole list.
-              omarchy.appPackages = lib.mkDefault (
-                with self.packages.${pkgs.stdenv.hostPlatform.system};
-                [
-                  aether
-                  asdcontrol
-                  omacalc
-                  omacut
-                  omawrite
-                  tensaku
-                  try
-                  hyprland-guiutils
-                  hyprland-preview-share-picker
-                  omarchy-nvim
-                  # Yaru-* icons: not pkgs.yaru-theme (throw-alias on new nixpkgs).
-                  yaru-theme
-                ]
-              );
-              omarchy.nvimPackage = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.omarchy-nvim;
-              omarchy.fish.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.omarchy-fish;
-            }
+                # Inject the upstream-owned apps (not in nixpkgs, built under
+                # pkgs/) so the pure module ships them without referencing the
+                # flake. Consumers can drop entries with omarchy.exclude_packages
+                # or override the whole list.
+                omarchy.appPackages = lib.mkDefault (
+                  with hostPackages;
+                  [
+                    aether
+                    asdcontrol
+                    omacalc
+                    omacut
+                    omawrite
+                    tensaku
+                    try
+                    hyprland-guiutils
+                    hyprland-preview-share-picker
+                    omarchy-nvim
+                    # Yaru-* icons: not pkgs.yaru-theme (throw-alias on new nixpkgs).
+                    yaru-theme
+                  ]
+                );
+                omarchy.nvimPackage = lib.mkDefault hostPackages.omarchy-nvim;
+                omarchy.fish.package = lib.mkDefault hostPackages.omarchy-fish;
+              }
 
-            # Pin mesa to the hyprland input's nixpkgs. Stable nixpkgs mesa
-            # can lag behind the Hyprland flake's expectations, causing 3D lag
-            # in GPU apps. Using the same mesa Hyprland itself builds against
-            # avoids the mismatch. mkOverride 500 wins over nixpkgs' mkDefault
-            # (1000) but a consumer's plain = (100) still overrides this.
-            # Guarded by omarchy.enable: merely IMPORTING the module
-            # must not change the host's Mesa.
-            (lib.mkIf config.omarchy.enable {
-              hardware.graphics.package =
-                lib.mkOverride 500
-                  inputs.hyprland.inputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system}.mesa;
-            })
-          ];
+              # Pin mesa to the hyprland input's nixpkgs. Stable nixpkgs mesa
+              # can lag behind the Hyprland flake's expectations, causing 3D lag
+              # in GPU apps. Using the same mesa Hyprland itself builds against
+              # avoids the mismatch. mkOverride 500 wins over nixpkgs' mkDefault
+              # (1000) but a consumer's plain = (100) still overrides this.
+              # Guarded by omarchy.enable: merely IMPORTING the module
+              # must not change the host's Mesa.
+              (lib.mkIf config.omarchy.enable {
+                hardware.graphics.package =
+                  lib.mkOverride 500
+                    inputs.hyprland.inputs.nixpkgs.legacyPackages.${pkgs.stdenv.hostPlatform.system}.mesa;
+              })
+            ];
         };
 
       # Home-Manager module: seeds the Hyprland Lua entry point and the user
@@ -366,8 +365,10 @@
               menu = "${self.packages.${system}.omarchy}/share/omarchy/default/omarchy/omarchy-menu.jsonc";
 
               # Feature name → attrs to force for the drvPath probe.
-              # Dotted paths are resolved with lib.attrByPath (kernel module
-              # packages live under linuxPackages, e.g. xpadneo).
+              # Keys MUST equal catalog.features (asserted below): a new catalog
+              # feature without a probe entry would otherwise pass checks with no
+              # consumer-path .drvPath probing. Dotted paths resolve via
+              # lib.attrByPath. Module-only features with no package attrs use [].
               featureProbeAttrs = {
                 steam = [ "steam" ];
                 onepassword = [
@@ -376,8 +377,16 @@
                 ];
                 tailscale = [ "tailscale" ];
                 ollama = [ "ollama" ];
-                xpadneo = [ "linuxPackages.xpadneo" ];
+                # xpadneo is module-only (hardware.xpadneo.enable); catalog
+                # unfreePkgs is empty — probe matches that, not linuxPackages.
+                xpadneo = [ ];
               };
+
+              # Fail closed if catalog.features and featureProbeAttrs diverge.
+              catalogFeatureNames = builtins.attrNames catalog.features;
+              probeFeatureNames = builtins.attrNames featureProbeAttrs;
+              missingFeatureProbes = lib.subtractLists probeFeatureNames catalogFeatureNames;
+              extraFeatureProbes = lib.subtractLists catalogFeatureNames probeFeatureNames;
 
               getName = pkg: pkg.pname or ((builtins.parseDrvName pkg.name).name);
 
@@ -514,7 +523,10 @@
                 # Per-entry binding for removes: entry "remove.<suffix>" must
                 # itself invoke "omarchy-nix-remove install.<suffix>" (entries
                 # still pointing at legacy omarchy-remove-* scripts carry no
-                # omarchy-nix token and are skipped).
+                # omarchy-nix token and are skipped). After the development
+                # menu rewire, remove.development.* entries carry
+                # omarchy-nix-remove install.development.* tokens, so this
+                # generic token check covers them — no separate development path.
                 for entry_id, entry in menu.items():
                     if not isinstance(entry, dict) or not entry_id.startswith("remove."):
                         continue
@@ -532,6 +544,9 @@
                 if extra_adds:
                     errors.append("menu add-rewires with unknown catalog id: " + ", ".join(sorted(extra_adds)))
 
+                # Manual sync point with the menu rewires in pkgs/omarchy.nix.
+                # Re-check on every omarchy-src bump (and whenever install/remove
+                # menu entries are rewired to omarchy-nix-{add,remove}).
                 expected_removes = {
                     "install.browser.chrome",
                     "install.browser.edge",
@@ -545,6 +560,21 @@
                     "install.gaming.heroic",
                     "install.gaming.lutris",
                     "install.gaming.xbox-controllers",
+                    "install.development.rails",
+                    "install.development.go",
+                    "install.development.python",
+                    "install.development.zig",
+                    "install.development.rust",
+                    "install.development.java",
+                    "install.development.dotnet",
+                    "install.development.ocaml",
+                    "install.development.clojure",
+                    "install.development.scala",
+                    "install.development.javascript.node",
+                    "install.development.javascript.bun",
+                    "install.development.javascript.deno",
+                    "install.development.php.php",
+                    "install.development.elixir.elixir",
                 }
                 missing_removes = expected_removes - remove_ids
                 if missing_removes:
@@ -561,6 +591,8 @@
             in
             if missing != [ ] then
               throw "omarchy-catalog.nix: attributes missing from pinned nixpkgs: ${builtins.concatStringsSep ", " missing}"
+            else if missingFeatureProbes != [ ] || extraFeatureProbes != [ ] then
+              throw "featureProbeAttrs out of sync with catalog.features: missing from probe [${builtins.concatStringsSep ", " missingFeatureProbes}]; extra in probe [${builtins.concatStringsSep ", " extraFeatureProbes}]"
             else if probeFailures != [ ] then
               throw "omarchy-catalog.nix: consumer-path drvPath probe failed:\n  ${builtins.concatStringsSep "\n  " probeFailures}"
             else
@@ -906,6 +938,13 @@
               # hyprland input carries (which already has the new API), so a
               # conditional flip cannot silently drop the limit for
               # consumers on unstable.
+              #
+              # Cost/fragility: this instantiates a second nixpkgs (the
+              # hyprland input's) and evaluates a full nixosSystem per
+              # `nix flake check` just to probe one option path. It is
+              # intentionally narrow; if the hyprland nixpkgs pin drifts or
+              # the option moves again, this branch is the first thing to
+              # re-check — do not broaden it into a general dual-nixpkgs suite.
               ((inputs.hyprland.inputs.nixpkgs.lib.nixosSystem {
                 inherit system;
                 modules = [
@@ -1013,24 +1052,30 @@
             else
               pkgs.runCommand "omarchy-disabled-state" { } "touch $out";
           # Runtime mutator quarantine: scan every packaged bin/
-          # script for forbidden Arch mutation patterns. A script with a hit
-          # must be classified in pkgs/omarchy-runtime-manifest.nix;
-          # declarative-note/nixos-adapted classes must scan clean, user-safe
-          # may only keep its declared `allow` groups. A NEW upstream mutator
-          # is unclassified and FAILS the build — classification is forced at
-          # bump time. Also verifies the hidden menu ids are gone and no menu
-          # entry references a stubbed mutator.
+          # script (and user-safe migrations/*.sh) for forbidden Arch mutation
+          # patterns. A bin script with a hit must be classified in
+          # pkgs/omarchy-runtime-manifest.nix; declarative-note/nixos-adapted
+          # classes must scan clean, user-safe may only keep its declared
+          # `allow` groups. A NEW upstream mutator is unclassified and FAILS
+          # the build — classification is forced at bump time. Also verifies
+          # the hidden menu ids are gone and no menu entry references a
+          # stubbed mutator.
           omarchy-runtime =
             let
               omarchyPkg = self.packages.${system}.omarchy;
               manifestJson = pkgs.writeText "omarchy-runtime-manifest.json" (
                 builtins.toJSON (import ./pkgs/omarchy-runtime-manifest.nix)
               );
+              migrationsJson = pkgs.writeText "migrations-nix.json" (
+                builtins.toJSON (import ./pkgs/omarchy-migrations.nix)
+              );
             in
             pkgs.runCommand "omarchy-runtime-check" { nativeBuildInputs = [ pkgs.jq ]; } ''
               bin=${omarchyPkg}/share/omarchy/bin
+              migrations=${omarchyPkg}/share/omarchy/migrations
               menu=${omarchyPkg}/share/omarchy/default/omarchy/omarchy-menu.jsonc
               manifest=${manifestJson}
+              migManifest=${migrationsJson}
               bad=0
 
               declare -A pat
@@ -1092,6 +1137,29 @@
                   echo "classified $class script still contains forbidden patterns: $name ->$hits"
                   bad=1
                 fi
+              done
+
+              # user-safe migrations run at login as-is; scan them with the
+              # same patterns. systemctl --user is part of the user-safe class
+              # definition (see pkgs/omarchy-migrations.nix) and is allowed;
+              # any other hit means a misclassification (e.g. sudo /etc write).
+              for f in "$migrations"/*.sh; do
+                [[ -f $f ]] || continue
+                name=$(basename "$f")
+                class=$(jq -r --arg n "$name" '.[$n] // ""' "$migManifest")
+                [[ $class == user-safe ]] || continue
+                grep -v '^[[:space:]]*#' "$f" > scan.txt || true
+                hits=""
+                for g in "''${!pat[@]}"; do
+                  if grep -Eq "''${pat[$g]}" scan.txt; then hits="$hits $g"; fi
+                done
+                hits=''${hits# }
+                for g in $hits; do
+                  if [[ $g != systemctl-user ]]; then
+                    echo "user-safe migration $name keeps forbidden pattern group: $g"
+                    bad=1
+                  fi
+                done
               done
 
               # stale manifest keys (upstream dropped a script -> revisit)

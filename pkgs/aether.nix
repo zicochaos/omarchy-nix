@@ -126,6 +126,16 @@ buildGoModule (finalAttrs: {
   # GUI app — tests need a display/running instance; not meaningful sandboxed.
   doCheck = false;
 
+  # Desktop integration (matches AUR package(): build/linux/aether.desktop +
+  # icon.png). Source icon is 622x561; install under the closest standard
+  # hicolor size so Icon=aether resolves from the applications entry.
+  postInstall = ''
+    install -Dm644 build/linux/aether.desktop \
+      "$out/share/applications/aether.desktop"
+    install -Dm644 icon.png \
+      "$out/share/icons/hicolor/512x512/apps/aether.png"
+  '';
+
   meta = {
     description = "Native Omarchy theming app — extract wallpaper colors and apply cohesive desktop themes";
     homepage = "https://github.com/bjarneo/aether";

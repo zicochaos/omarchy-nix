@@ -311,6 +311,17 @@ diff <(old-rev)/install/omarchy-base.packages \
 New packages in upstream's list need mapping to nixpkgs (or an
 explicit exclusion with rationale).
 
+**Doc counters and menu sync points:**
+
+- `ls "$SRC/themes" | wc -l` — the "22 stock themes" figure is baked
+  into README.md, `example/configuration.nix`, `config.nix` and
+  `docs/options.md`; bump all four if it changed.
+- Compare the `omarchy.appPackages` list in `flake.nix` against the
+  lists in README.md, `docs/options.md` and the `config.nix` comment.
+- `expected_removes` (flake.nix) is a manual sync point with the menu
+  rewires in `pkgs/omarchy.nix` — re-check both sides whenever menu
+  entries are added/renamed upstream.
+
 ### 3. Behavioral re-verify
 
 Verify behaviorally (not just processes):

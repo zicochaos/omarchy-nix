@@ -309,6 +309,9 @@
     machine.fail("omarchy-pkg-present microsoft-edge-stable-bin")
 
     # --- (4e) omarchy-nix-add / omarchy-nix-remove (DRY-RUN, no rebuild) ----
+    # Declaration limit: OMARCHY_NIX_UPDATE_DRY_RUN=1 exercises JSON mutation
+    # + git intent-to-add only; it does not run a real nixos-rebuild / flake
+    # switch, so rebuild-time failures remain out of scope for this section.
     machine.succeed("mkdir -p /tmp/consumer-flake")
     machine.succeed("touch /tmp/consumer-flake/flake.nix")
     env = "OMARCHY_NIX_FLAKE=/tmp/consumer-flake OMARCHY_NIX_UPDATE_DRY_RUN=1 "
@@ -730,6 +733,9 @@
     # --no-preserve=mode patches in pkgs/omarchy.nix fix). Headless mode
     # skips session-integration flakiness (shell IPC, restart commands) and
     # exercises only the file copy/mv/template path the regression affects.
+    # Declaration limit: OMARCHY_THEME_HEADLESS=1 does not verify live-session
+    # colors (bar/quickshell IPC, wallpaper apply, running client themes) —
+    # only on-disk theme.name / colors.toml / writability after the switch.
     with machine.nested("theme switch x2: read-only store regression"):
         headless = "OMARCHY_THEME_HEADLESS=1 OMARCHY_THEME_SKIP_BACKGROUND=1"
 
@@ -905,9 +911,12 @@
             "-c 'exec -a \"pgrep --quiet -f [/]gpu-screen-recorder \" "
             "/run/current-system/sw/bin/bash -c \"/run/current-system/sw/bin/sleep 30 & wait\"'"
         )
-        # systemd-run only queues the job — give the unit a moment to exec
-        # before judging what the pattern does NOT match.
-        machine.sleep(1)
+        # systemd-run only queues the job. Prove the decoy actually exec'd
+        # before the negative assertion — otherwise a slow host can pass
+        # vacuously (pattern "doesn't match" because nothing has started).
+        machine.wait_until_succeeds(
+            "systemctl is-active --quiet b18-decoy", timeout=10
+        )
         st_decoy, _ = machine.execute("pgrep --quiet -f '[/]gpu-screen-recorder '")
         assert st_decoy != 0, \
             "gsr pattern matches a sibling-pgrep-shaped cmdline (boot latch regression)"
@@ -962,6 +971,28 @@
         # (get-default-sink, set-sink-volume, …). pipewire provides the Pulse
         # protocol, not the CLI — pactl must come from runtimeDeps.
         machine.succeed("command -v pactl")
+
+        # Tripwire over vendored shell/ QML exec-ish call sites (Quickshell
+        # Process { … } plus Quickshell/Util.execDetached). The five probes
+        # above are manual; this count forces a re-audit when upstream adds
+        # sites. New upstream execs must be reviewed (and any new binaries
+        # probed) before the baseline is bumped deliberately. Double quotes
+        # only — as_demo wraps cmd in single quotes.
+        qml_exec_baseline = 114
+        qml_exec_count = int(machine.succeed(
+            as_demo(
+                "grep -rE --include=\"*.qml\" "
+                "-e \"Process \\{\" "
+                "-e \"Quickshell\\.execDetached\" "
+                "-e \"Util\\.execDetached\" "
+                "$OMARCHY_PATH/shell | wc -l"
+            )
+        ).strip())
+        assert qml_exec_count == qml_exec_baseline, (
+            "shell/ QML exec-ish site count is %d, expected %d — review new "
+            "upstream execs and bump the baseline deliberately"
+            % (qml_exec_count, qml_exec_baseline)
+        )
 
         # Shell keywords/builtins/system binaries that are always present and
         # are not the *coverage point* of their action.
@@ -1030,12 +1061,30 @@
         actions = re.findall(r'"action"\s*:\s*"([^"]*)"', menu)
         # Min-count guard: if upstream renames the file or changes the menu
         # schema, extraction silently empties and every PATH check below
-        # passes vacuously. Pin a conservative floor (currently 234 actions).
-        assert len(actions) >= 100, \
-            "menu action extraction yielded only %d (file/schema moved?)" % len(actions)
+        # passes vacuously. Conservative floor (>=100); live count is in the
+        # failure message so the sticky total stays self-maintaining.
+        assert len(actions) >= 100, (
+            "menu action extraction yielded only %d actions (need >= 100; "
+            "file/schema moved?)" % len(actions)
+        )
         candidates = set()
         for action in actions:
             candidates |= extract_commands(action)
+
+        # Menu `when:` guards also shell out to omarchy-* helpers
+        # (omarchy-toggle-enabled, omarchy-hibernation-available, omarchy-hw-*,
+        # omarchy-cmd-present, omarchy-pkg-present, …). First token of each
+        # when command (after a leading `!`) must resolve on PATH too.
+        whens = re.findall(r'"when"\s*:\s*"([^"]*)"', menu)
+        for when in whens:
+            s = when.strip()
+            while s.startswith("!"):
+                s = s[1:].strip()
+            if not s:
+                continue
+            word = s.split()[0].strip("'\"")
+            if word.startswith("omarchy-"):
+                candidates.add(word)
 
         # (b) Autostart.lua — hl.exec_cmd("...") and o.launch("...") strings.
         auto = machine.succeed(
@@ -1080,11 +1129,40 @@
         # (d) Systemd user unit ExecStarts resolve.
         # The 7 vendored units are path-adapted in pkgs/omarchy.nix (store
         # paths replace /usr/bin/*). Each ExecStart binary must exist.
+        # Tripwire: pkgs/omarchy.nix installs units via
+        # `install … default/systemd/user/*.service` — an 8th upstream unit
+        # would ship unadapted and unchecked if we only asserted this list.
+        # Mirror the cp -aL count tripwire: package unit dir must match
+        # unit_names exactly (count + names).
         unit_names = [
             "bt-agent", "omarchy-fcitx5", "omarchy-migrate-notify",
             "omarchy-recover-internal-monitor", "omarchy-sleep-lock",
             "omarchy-speaker-tuning", "omarchy-tailscale-receive",
         ]
+        # Derive package root from OMARCHY_PATH ($out/share/omarchy) in
+        # Python so we never put a shell parameter-expansion brace form
+        # inside this Nix testScript string (Nix would interpolate it).
+        omarchy_path = machine.succeed(as_demo("printenv OMARCHY_PATH")).strip()
+        assert omarchy_path.endswith("/share/omarchy"), omarchy_path
+        units_dir = omarchy_path[: -len("/share/omarchy")] + "/lib/systemd/user"
+        shipped = machine.succeed(
+            "ls -1 " + units_dir + "/*.service | xargs -n1 basename "
+            "| sed 's/\\.service$//' | sort"
+        ).strip().splitlines()
+        expected = sorted(unit_names)
+        missing_units = sorted(set(expected) - set(shipped))
+        unexpected_units = sorted(set(shipped) - set(expected))
+        assert shipped == expected, (
+            "package systemd user unit set drifted (count %d vs %d): "
+            "missing=%s unexpected=%s — update unit_names and "
+            "pkgs/omarchy.nix path adaptation together"
+            % (
+                len(shipped),
+                len(expected),
+                missing_units or "[]",
+                unexpected_units or "[]",
+            )
+        )
         for unit in unit_names:
             unit_path = "/etc/systemd/user/" + unit + ".service"
             line = machine.succeed(
@@ -1133,14 +1211,51 @@
     def lock_log_seen(pattern):
         return "grep -Eq '" + pattern + "' /run/user/1000/quickshell/by-id/*/log.log"
 
+    # Bounded retry for QMP send_chars single-shots (focus races under QEMU).
+    # Re-checks `ready` each attempt, types `text` + Enter, then waits for
+    # `success`. Optional `before_retry` resets UI state between attempts
+    # (e.g. re-summon the menu so search text does not accumulate). Used only
+    # at the three password/search injection sites below.
+    def send_chars_retry(
+        text, ready, success, attempts=3, per_try_timeout=15, before_retry=None
+    ):
+        last = None
+        for attempt in range(1, attempts + 1):
+            if attempt > 1 and before_retry is not None:
+                before_retry()
+            machine.succeed(ready)
+            machine.send_chars(text)
+            machine.send_key("ret")
+            try:
+                machine.wait_until_succeeds(success, timeout=per_try_timeout)
+                return
+            except Exception as e:
+                last = e
+                machine.log(
+                    "send_chars_retry %d/%d for %r did not meet success"
+                    % (attempt, attempts, text)
+                )
+        raise last
+
     with machine.nested("menu IPC: apps search launches the top hit"):
         machine.succeed(as_demo("omarchy-menu summon apps"))
         machine.wait_until_succeeds(layer_probe("omarchy-menu", True), timeout=30)
-        machine.send_chars("foot")
-        machine.send_key("ret")
-        machine.wait_until_succeeds(
-            as_demo("hyprctl -j clients | jq -e \"map(select(.class == \\\"foot\\\")) | length > 0\""),
-            timeout=60,
+
+        def re_summon_apps_menu():
+            machine.succeed(as_demo("omarchy-shell shell hide omarchy.menu || true"))
+            machine.sleep(1)
+            machine.succeed(as_demo("omarchy-menu summon apps"))
+            machine.wait_until_succeeds(layer_probe("omarchy-menu", True), timeout=30)
+
+        send_chars_retry(
+            "foot",
+            ready=layer_probe("omarchy-menu", True),
+            success=as_demo(
+                "hyprctl -j clients | jq -e \"map(select(.class == \\\"foot\\\")) | length > 0\""
+            ),
+            attempts=3,
+            per_try_timeout=20,
+            before_retry=re_summon_apps_menu,
         )
         machine.screenshot("behavioral-menu-apps-foot")
         # Upstream asserts the menu closes after launching; under QEMU the
@@ -1250,10 +1365,12 @@
             )
             raise
         machine.screenshot("behavioral-lock")
-        machine.send_chars("demo")
-        machine.send_key("ret")
-        machine.wait_until_succeeds(
-            lock_log_seen("omarchy lock .*unlocked"), timeout=30
+        send_chars_retry(
+            "demo",
+            ready=lock_log_seen("omarchy lock .*secure=true"),
+            success=lock_log_seen("omarchy lock .*unlocked"),
+            attempts=3,
+            per_try_timeout=15,
         )
 
     with machine.nested("polkit prompt authenticates (agent round trip)"):
@@ -1280,9 +1397,13 @@
             )
             raise
         machine.screenshot("behavioral-polkit")
-        machine.send_chars("demo")
-        machine.send_key("ret")
-        machine.wait_until_succeeds("grep -q \"^0$\" /tmp/pkexec.out", timeout=30)
+        send_chars_retry(
+            "demo",
+            ready=layer_probe("omarchy-polkit", True),
+            success="grep -q \"^0$\" /tmp/pkexec.out",
+            attempts=3,
+            per_try_timeout=15,
+        )
         machine.wait_until_succeeds(layer_probe("omarchy-polkit", False), timeout=30)
 
     # --- (8) Screenshot for diagnostics. -----------------------------------

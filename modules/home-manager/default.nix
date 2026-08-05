@@ -124,8 +124,36 @@ in
         # generation-specific store path. A one-shot link therefore keeps the
         # old package after an update and eventually becomes dangling after
         # garbage collection. Home Manager owns the same upstream paths and
-        # refreshes them to the active package at every switch. `force` also
-        # adopts links made by finalize-user before this module was deployed.
+        # refreshes them to the active package at every switch.
+        #
+        # Create all four agent skill dirs unconditionally (not gated on which
+        # agents the user has installed) so the links match upstream finalize-user.
+        #
+        # Real files/dirs at these paths are relocated before linkGeneration
+        # (omarchySkillLinkSafety) so a user-owned skill clone is never deleted.
+        # Existing symlinks are left for HM to replace; force is still required
+        # because linkGeneration cannot adopt unmanaged symlinks without it.
+        home.activation.omarchySkillLinkSafety = lib.hm.dag.entryBefore [ "linkGeneration" ] ''
+          # Relocate real skill targets so home.file cannot delete user data.
+          # Symlinks are left alone — force = true adopts/replaces them.
+          omarchy_skill_ts="$(date -u +%Y%m%dT%H%M%SZ)"
+          for omarchy_skill_rel in \
+            .agents/skills/omarchy \
+            .claude/skills/omarchy \
+            .codex/skills/omarchy \
+            .pi/agent/skills/omarchy
+          do
+            omarchy_skill_target="$HOME/$omarchy_skill_rel"
+            # -e is false for a dangling symlink; -L catches those too, but we
+            # only relocate real files/dirs — leave every symlink for force.
+            if [ -e "$omarchy_skill_target" ] && [ ! -L "$omarchy_skill_target" ]; then
+              omarchy_skill_backup="''${omarchy_skill_target}.hm-backup-''${omarchy_skill_ts}"
+              echo "warning: omarchy skill target $omarchy_skill_target is a real file/directory; moving aside to $omarchy_skill_backup before linking" >&2
+              mv "$omarchy_skill_target" "$omarchy_skill_backup"
+            fi
+          done
+        '';
+
         home.file =
           lib.genAttrs
             [
@@ -297,7 +325,8 @@ in
                 PATH="$omarchy_pkg/bin:$PATH" \
                 OMARCHY_PATH="$omarchy_pkg" \
                 OMARCHY_THEME_HEADLESS=1 \
-                  "$omarchy_pkg/bin/omarchy-theme-set" "${effTheme}" >/dev/null
+                  "$omarchy_pkg/bin/omarchy-theme-set" "${effTheme}" >/dev/null 2>&1 \
+                  || echo "warning: failed to render omarchy theme '${effTheme}'; apply later with: omarchy-theme-set ${effTheme}" >&2 || true
               fi
             '';
 

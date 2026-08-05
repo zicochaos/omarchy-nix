@@ -21,16 +21,18 @@ the desktop you get is the real Omarchy desktop, not a reimplementation.
 2026-07-28 the port reproduces the real Omarchy desktop: Hyprland
 session via uwsm, quickshell bar/menus, Super+Enter terminal, theme
 switching with live colors (not just wallpaper), editable user configs,
-first-run hooks, the full upstream package set (including the 9
-upstream-owned apps absent from nixpkgs, packaged under `pkgs/`), and a
-NixOS-native `omarchy update` flow. All of it was verified in a running
-session on real Intel GPU hardware, not inferred from processes.
+first-run hooks, the full upstream package set (including the 11
+upstream-owned packages absent from nixpkgs, packaged under `pkgs/`),
+and a NixOS-native `omarchy update` flow. All of it was verified in a
+running session on real Intel GPU hardware, not inferred from processes.
 
 Automated NixOS tests run under `nix flake check`:
-`checks.omarchy-desktop` (stack comes up) and `checks.omarchy-ux`
+`checks.omarchy-desktop` (stack comes up), `checks.omarchy-ux`
 (behavioral acceptance: Super+Enter opens foot, theme switching, config
-editability, and binary coverage of every menu/autostart/systemd
-command).
+editability, and binary coverage of every menu action and `when:` guard,
+autostart, and systemd command — `bash -c` interiors and QML exec sites
+are guarded by count tripwires), and `checks.omarchy-fish` (vendor
+profile parity).
 
 > The Quattro desktop is still alpha upstream (version `4.0.0.alpha`).
 > Expect rough edges. Not for production.
@@ -91,6 +93,12 @@ modules. One `omarchy.enable = true` wires the whole desktop:
 }
 ```
 
+> The attribute name must match the machine's hostname: the menu
+> Install/Remove actions and `omarchy update` resolve
+> `nixosConfigurations."$(hostname)"`. Naming it `my-host` while the host
+> is called something else still gives a working desktop, but those
+> commands fail with a resolver error (see the resolver contract below).
+
 and in `configuration.nix`:
 
 ```nix
@@ -144,6 +152,15 @@ SSH-able over the LAN. Both are plain `mkDefault`s: set
 `services.openssh.settings.PasswordAuthentication = true;` if you really
 want password logins.
 
+Other security-relevant defaults mirror upstream on purpose:
+`nix.settings.trusted-users` includes `@wheel` (every wheel user is a
+trusted Nix user, as on Arch Omarchy); `omarchy-tzupdate` gets NOPASSWD
+sudo (runtime timezone changes fight the declarative `time.timeZone` —
+the rebuild wins); the lock-screen PAM stack keeps upstream's `nullok`
+(accounts without a password unlock with an empty one); and SDDM
+autologin uses `relogin = true` (see `omarchy.autologin.user` in
+[`docs/options.md`](docs/options.md)).
+
 ### Installing and updating (the NixOS way)
 
 Super+Space → Install/Remove works the upstream way: pick an entry and the
@@ -172,7 +189,10 @@ omarchy.managedPackagesFile =
 
 The `pathExists` guard keeps evaluation working before the first menu
 install. For git-based flakes the add/remove scripts register the JSON with
-`git add -N` automatically, so the flake snapshot can see it.
+`git add -N` automatically, so the flake snapshot can see it. A non-null
+but missing (or unparseable) file fails evaluation loudly with the file
+path — silently falling back to empty sets would drop menu-installed
+packages on the next rebuild.
 
 All NixOS-specific commands (update, add, remove, presence checks, search)
 share one resolver for the consumer flake: `$OMARCHY_NIX_FLAKE` (either a
@@ -191,9 +211,9 @@ with diagnostics rather than falling back to another checkout.
 System (NixOS module): the vendored upstream tree on the system profile
 with `OMARCHY_PATH` set as a session variable, the full upstream default
 package set from nixpkgs (foot, neovim, btop, lazygit, chromium, nautilus,
-libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 9
-upstream-owned apps packaged by this flake (aether, omacut, omawrite,
-tensaku, try, asdcontrol, hyprland-guiutils,
+libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 11
+upstream-owned packages packaged by this flake (aether, omacut, omawrite,
+omacalc, tensaku, try, asdcontrol, yaru-theme, hyprland-guiutils,
 hyprland-preview-share-picker, omarchy-nvim), the parity services
 (avahi, printing, docker, gnome-keyring, fwupd, udiskie, …, all
 `mkDefault`), a uwsm-managed Hyprland session (≥0.56 for the
@@ -209,7 +229,10 @@ rendered into `~/.local/state/omarchy/current/theme`, all as mutable
 copies: user edits (and upstream tooling writes, e.g. theme switches)
 survive rebuilds. It also keeps the package-owned `omarchy` agent skill
 linked into Agents, Claude, Codex, and Pi on every activation, so links
-follow the active Nix store generation after updates.
+follow the active Nix store generation after updates. Real, user-owned
+files or directories at those link paths are never overwritten:
+activation moves them aside to `<path>.hm-backup-<timestamp>` first
+(existing symlinks are simply adopted).
 
 See [`docs/options.md`](docs/options.md) for the full `omarchy.*` option
 reference, and [`docs/install.md`](docs/install.md) for the "fresh NixOS
@@ -242,7 +265,7 @@ The desktop is verified by an automated NixOS test that runs under
 `nix flake check`:
 
 ```bash
-nix flake check                # runs checks.omarchy-desktop + checks.omarchy-ux
+nix flake check                # runs checks.omarchy-desktop + checks.omarchy-ux + checks.omarchy-fish
 nix build .#checks.x86_64-linux.omarchy-desktop.driver   # just the test driver
 ```
 
@@ -261,16 +284,19 @@ limitations.
 ```
 flake.nix              # inputs + outputs (packages, modules, checks, configs)
 config.nix             # omarchy.* option schema
-pkgs/                  # vendoring + theme derivations + 9 upstream-owned apps:
+pkgs/                  # vendoring + themes + 11 upstream-owned packages:
   omarchy.nix          #   the upstream tree -> $out/share/omarchy
-  plymouth-omarchy-theme.nix
-  sddm-omarchy-theme.nix
-  aether.nix asdcontrol.nix omacut.nix omawrite.nix tensaku.nix try.nix
-  hyprland-guiutils.nix hyprland-preview-share-picker.nix omarchy-nvim.nix
+  plymouth-omarchy-theme.nix sddm-omarchy-theme.nix yaru-theme.nix
+  aether.nix asdcontrol.nix omacalc.nix omacut.nix omawrite.nix tensaku.nix
+  try.nix hyprland-guiutils.nix hyprland-preview-share-picker.nix
+  omarchy-nvim.nix omarchy-fish.nix
+  omarchy-catalog.nix  #   Install/Remove menu catalog (nix-catalog.json)
+  omarchy-migrations.nix + migrations-nix/  # migration classes + NixOS adapters
+  omarchy-etc-manifest.nix omarchy-runtime-manifest.nix  # fail-closed manifests
 modules/nixos/         # NixOS module: env, runtime deps, services, Hyprland, themes
 modules/home-manager/  # HM module: per-user config seeds (mutable)
 skills/omarchy/        # NixOS-native end-user agent skill (packaged + linked by HM)
-tests/                 # desktop.nix (stack) + ux.nix (behavioral acceptance)
+tests/                 # desktop.nix (stack) + ux.nix (behavioral) + fish.nix
 example/               # demo consumer flake
 docs/                  # install.md, options.md, UPSTREAM.md, vm.md, nix-best-practices.md
 ```

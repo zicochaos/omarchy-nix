@@ -66,11 +66,12 @@
       '';
     };
 
-    # Upstream-owned apps not available in nixpkgs, built under pkgs/ and
-    # injected by the flake wrapper (aether, asdcontrol, omacut, omawrite,
-    # tensaku, try, hyprland-guiutils, hyprland-preview-share-picker,
-    # omarchy-nvim). Added to environment.systemPackages; entries are still
-    # subject to omarchy.exclude_packages filtering.
+    # Upstream-owned packages not available in nixpkgs, built under pkgs/
+    # and injected by the flake wrapper (aether, asdcontrol, omacalc,
+    # omacut, omawrite, tensaku, try, yaru-theme, hyprland-guiutils,
+    # hyprland-preview-share-picker, omarchy-nvim). Added to
+    # environment.systemPackages; entries are still subject to
+    # omarchy.exclude_packages filtering.
     appPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = [ ];
@@ -199,7 +200,14 @@
     theme = lib.mkOption {
       type = lib.types.strMatching "[A-Za-z0-9._-]+";
       default = "ethereal";
-      description = "Default Omarchy theme name (matches a dir in upstream themes/).";
+      description = ''
+        Default Omarchy theme name (matches a dir in upstream themes/, or a
+        user theme under ~/.config/omarchy/themes/). Applied only on first
+        activation when ~/.local/state/omarchy/current/theme.name does not
+        exist; later changes to this option are no-ops until you edit/remove
+        that file or re-run with it removed (then use omarchy-theme-set, or
+        let the next activation re-render).
+      '';
     };
 
     # Default terminal resolved through xdg-terminal-exec. Quattro ships foot
@@ -226,7 +234,12 @@
     monitors = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
-      description = "Hyprland monitor directives (written to ~/.config/hypr/monitors.lua).";
+      description = ''
+        Hyprland monitor directives (seeded into ~/.config/hypr/monitors.lua).
+        Applied only on first activation when that file does not exist; later
+        changes to this option are no-ops until you edit/remove
+        ~/.config/hypr/monitors.lua or re-run with the file removed.
+      '';
     };
 
     # Display scale factor for the Hyprland monitor config and the omarchy
@@ -240,7 +253,13 @@
         2
       ];
       default = 1;
-      description = "Display scale factor (1 for 1x displays, 2 for 2x displays).";
+      description = ''
+        Display scale factor (1 for 1x displays, 2 for 2x displays). Used when
+        seeding ~/.config/hypr/monitors.lua. Applied only on first activation
+        when that file does not exist; later changes to this option are no-ops
+        until you edit/remove ~/.config/hypr/monitors.lua or re-run with the
+        file removed.
+      '';
     };
 
     # Cross-architecture execution (upstream parity: qemu-user-static-binfmt

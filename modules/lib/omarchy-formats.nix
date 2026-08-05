@@ -58,6 +58,21 @@ let
       position = f 2;
       scaleStr = f 3;
       transform = f 4;
+      # WIDTHxHEIGHT or WIDTHxHEIGHT@RATE (RATE may be fractional, e.g.
+      # 59.94), or a Hyprland mode keyword (preferred/highres/highrr — the
+      # same set the catch-all and upstream tooling use).
+      isMode =
+        s:
+        builtins.match "[0-9]+x[0-9]+(@[0-9]+(\\.[0-9]+)?)?" s != null
+        || builtins.elem s [
+          "preferred"
+          "highres"
+          "highrr"
+        ];
+      # Absolute XxY (optional leading - for multi-monitor layouts) or the
+      # auto / auto-* keywords Hyprland accepts (and that the catch-all uses).
+      isPosition =
+        s: builtins.match "-?[0-9]+x-?[0-9]+" s != null || builtins.match "auto(-[A-Za-z]+)?" s != null;
       scale =
         if scaleStr == null then
           null
@@ -80,6 +95,20 @@ let
           transform
         else
           throw "omarchy.monitors: unsupported transform '${transform}' in '${entry}' (want 0-7)";
+      checkedMode =
+        if mode == null then
+          null
+        else if isMode mode then
+          mode
+        else
+          throw "omarchy.monitors: unsupported mode '${mode}' in '${entry}' (want WIDTHxHEIGHT or WIDTHxHEIGHT@RATE, e.g. 2560x1440@144, or preferred/highres/highrr)";
+      checkedPosition =
+        if position == null then
+          null
+        else if isPosition position then
+          position
+        else
+          throw "omarchy.monitors: unsupported position '${position}' in '${entry}' (want XxY integers, e.g. 0x0, or 'auto'/'auto-right'/...)";
     in
     if n > 5 then
       throw "omarchy.monitors: entry has ${toString n} comma-separated fields (max 5: output, mode, position, scale, transform): '${entry}'"
@@ -87,12 +116,9 @@ let
       throw "omarchy.monitors: empty output name (first field) in '${entry}'"
     else
       {
-        inherit
-          output
-          mode
-          position
-          scale
-          ;
+        inherit output scale;
+        mode = checkedMode;
+        position = checkedPosition;
         transform = checkedTransform;
       };
 
