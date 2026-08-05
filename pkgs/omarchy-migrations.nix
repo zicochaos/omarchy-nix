@@ -45,6 +45,9 @@
   "1785344985.sh" = "user-safe"; # shell.json bar layout via jq: insert omarchy.model-usage widget
   #                           # (idempotent, $HOME-only; HM seeds shell.json once and never
   #                           # refreshes it, so existing users need the in-place edit)
+  "1785543725.sh" = "user-safe"; # WhatsApp Slim ext in *-flags.conf ($HOME only)
+  "1785608166.sh" = "user-safe"; # omarchy-sleep-lock drop-in in ~/.config/systemd/user + systemctl --user
+  "1785633225.sh" = "user-safe"; # foot.ini scrollback multiplier ($HOME only)
 
   # ------------------------------------------------------------------- skip
   "1778623107.sh" = "skip"; # mpv-mpris via omarchy-pkg-add (pacman)
@@ -80,4 +83,14 @@
   "1785351479.sh" = "skip"; # pacman -Rns kvantum/kvantum-qt5 (Arch package mutation; the intent —
   #                           # drop kvantum from Qt theming — is applied declaratively in the
   #                           # omarchy-src bump)
+  "1785424256.sh" = "skip"; # systemd-oomd enable (native in the module: systemd.oomd.enable
+  #                           # + vendored oomd.conf.d / app.slice.d drop-ins via environment.etc)
+  "1785511354.sh" = "skip"; # qrencode via omarchy-pkg-add (pacman; module ships qrencode)
+  "1785608251.sh" = "skip"; # ddcutil via omarchy-pkg-add (pacman; module ships ddcutil + hardware.i2c)
+  "1785617047.sh" = "skip"; # omp via mise wrapper (mise model rejected — catalog is final;
+  #                           # oh-my-pi is not in nixpkgs, menu entry hidden)
+  "1785637426.sh" = "skip"; # omacalc/gnome-calculator swap via pacman (declarative: module ships
+  #                           # omacalc and dropped gnome-calculator)
+  "1785846769.sh" = "skip"; # agent mise wrappers (mise model rejected — agents install via the
+  #                           # nix catalog: Menu > Install > AI)
 }

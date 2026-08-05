@@ -305,6 +305,11 @@ let
         # iw: omarchy-network-band (Wi-Fi band toggle in the network panel,
         # quattro 14f1bb6c) shells out to `iw dev <device> link`.
         iw
+        # qrencode: omarchy-network-qr renders the Wi-Fi QR matrix (Setup >
+        # Network > QR Code). ddcutil: omarchy-brightness-display-ddc drives
+        # external monitor brightness over DDC/CI (needs hardware.i2c, below).
+        qrencode
+        ddcutil
         plocate
         libnotify
         # fwupdmgr for omarchy-update-firmware (service enabled in parity block).
@@ -365,7 +370,8 @@ let
         xournalpp
         localsend
         moonlight-qt
-        gnome-calculator
+        # omacalc replaced gnome-calculator upstream (quattro "Switch to
+        # Omacalc"); it ships via omarchy.appPackages (pkgs/omacalc.nix).
         gnome-disk-utility
         # sushi (not gnome-sushi — the attr was renamed upstream).
         sushi
@@ -384,8 +390,8 @@ let
         python3Packages.terminaltexteffects
 
         # --- Upstream parity: dev toolchains ---
-        cargo
-        rustc
+        # (rust removed upstream from base packages: "We don't need rust any
+        # longer"; the Rust dev env stays available via the Install menu.)
         clang
         llvm
         ruby
@@ -916,6 +922,21 @@ in
         # headless/special-networking host can disable them.
         networking.networkmanager.enable = lib.mkDefault true;
         hardware.bluetooth.enable = lib.mkDefault true;
+
+        # External monitor brightness over DDC/CI (omarchy-brightness-display-ddc).
+        # Loads i2c-dev and creates the i2c group; the user still needs to be
+        # in that group (consumer's users.users.<name>.extraGroups, same model
+        # as ydotool above).
+        hardware.i2c.enable = lib.mkDefault true;
+
+        # systemd-oomd: let the OOM daemon kill a runaway app instead of
+        # losing the whole session (upstream install/config/enable-services.sh).
+        # The vendored drop-ins pin the pressure thresholds; the app.slice
+        # drop-in (kill candidates = user apps only, never the compositor)
+        # rides along systemd.packages from the omarchy package itself.
+        systemd.oomd.enable = lib.mkDefault true;
+        environment.etc."systemd/oomd.conf.d/10-omarchy.conf".source =
+          "${cfg.package}/share/omarchy/etc/systemd/oomd.conf.d/10-omarchy.conf";
       }
 
       # (E) Plymouth boot-splash theme.

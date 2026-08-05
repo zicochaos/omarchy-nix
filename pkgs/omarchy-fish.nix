@@ -26,6 +26,7 @@
   stdenvNoCC,
   fetchFromGitHub,
   writeShellScript,
+  writeText,
 }:
 
 let
@@ -68,6 +69,16 @@ let
     and functions in ~/.config/fish/functions override the vendor ones.
     EOF
   '';
+
+  # Bash parity gap filler: Quattro's bash profile gained
+  # `alias a='omarchy-launch-agent --inline'` (default coding agent) after
+  # the pinned fork rev. Port-level supplement until the fork picks it up —
+  # drop this file when the pin advances past the fix.
+  agentAliasFn = writeText "a.fish" ''
+    function a --wraps omarchy-launch-agent --description 'Launch the default coding agent inline'
+        omarchy-launch-agent --inline $argv
+    end
+  '';
 in
 stdenvNoCC.mkDerivation {
   pname = "omarchy-fish";
@@ -102,6 +113,9 @@ stdenvNoCC.mkDerivation {
 
     # NixOS informational stub replaces upstream's mutating setup script.
     install -Dm755 "${setupStub}" "$out/bin/omarchy-setup-fish"
+
+    # Port-level bash-parity supplement (see agentAliasFn in let).
+    install -m644 "${agentAliasFn}" "$out/share/fish/vendor_functions.d/a.fish"
 
     runHook postInstall
   '';

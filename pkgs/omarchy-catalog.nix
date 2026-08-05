@@ -8,7 +8,7 @@
 #   - the NixOS module (unfree whitelist + insecure permit via
 #     `unfreeNames` / `insecureNames` + features.*.unfreeNames).
 # Attribute names and unfree/insecure lists verified against this flake's
-# nixos-26.05 pin (2026-07-28): each entry's pkgs forced via .drvPath under
+# nixos-26.05 pin (2026-07-28; the install.ai.* agent entries 2026-08-05): each entry's pkgs forced via .drvPath under
 # allowUnfreePredicate = [ "obsidian" ] ++ unfreeNames and
 # permittedInsecurePackages = insecureNames. getName may differ from the
 # attr name (e.g. sublime4 → sublimetext4); wrappers may pull extra unfree
@@ -174,6 +174,46 @@
       pkgs = [ "crush" ];
       binaries = [ "crush" ];
       unfreeNames = [ "crush" ];
+    };
+    # --- Default coding agents (Setup > Defaults > Agent) ---
+    # Upstream lazy-installs these with `mise use -g`; here they are catalog
+    # entries, installed declaratively and then selectable as the default.
+    "install.ai.claude" = {
+      arch = "claude-code";
+      pkgs = [ "claude-code" ];
+      binaries = [ "claude" ];
+      unfreeNames = [ "claude-code" ];
+    };
+    "install.ai.codex" = {
+      arch = "codex-cli";
+      pkgs = [ "codex" ];
+      binaries = [ "codex" ];
+    };
+    "install.ai.copilot" = {
+      arch = "github-copilot-cli";
+      pkgs = [ "github-copilot-cli" ];
+      binaries = [ "copilot" ];
+      unfreeNames = [ "github-copilot-cli" ];
+    };
+    "install.ai.gemini" = {
+      arch = "gemini-cli";
+      pkgs = [ "gemini-cli" ];
+      binaries = [ "gemini" ];
+    };
+    "install.ai.grok" = {
+      arch = "grok-cli";
+      pkgs = [ "grok-cli" ];
+      binaries = [ "grok" ];
+    };
+    "install.ai.opencode" = {
+      arch = "opencode";
+      pkgs = [ "opencode" ];
+      binaries = [ "opencode" ];
+    };
+    "install.ai.pi" = {
+      arch = "pi-coding-agent";
+      pkgs = [ "pi-coding-agent" ];
+      binaries = [ "pi" ];
     };
     # --- Gaming ---
     "install.gaming.steam" = {

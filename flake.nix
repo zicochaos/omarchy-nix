@@ -121,13 +121,15 @@
           };
           # Upstream-owned apps that are not in nixpkgs.
           # aether: theme generator (Wails). asdcontrol: Apple Studio Display
-          # brightness. omacut: video cutter (needs ffmpeg on PATH at runtime).
+          # brightness. omacalc: calculator. omacut: video cutter (needs
+          # ffmpeg on PATH at runtime).
           # omawrite: markdown writer. tensaku: screenshot annotator.
           # try: tobi's experiment-worktree CLI. hyprland-guiutils: hyprwm
           # dialog/run/welcome tools. hyprland-preview-share-picker: xdp
           # screencopy picker. omarchy-nvim: LazyVim starter + omarchy overlay.
           aether = pkgs.callPackage ./pkgs/aether.nix { };
           asdcontrol = pkgs.callPackage ./pkgs/asdcontrol.nix { };
+          omacalc = pkgs.callPackage ./pkgs/omacalc.nix { };
           omacut = pkgs.callPackage ./pkgs/omacut.nix { };
           omawrite = pkgs.callPackage ./pkgs/omawrite.nix { };
           tensaku = pkgs.callPackage ./pkgs/tensaku.nix { };
@@ -187,6 +189,7 @@
                 [
                   aether
                   asdcontrol
+                  omacalc
                   omacut
                   omawrite
                   tensaku

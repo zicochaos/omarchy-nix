@@ -67,6 +67,21 @@ let
   # the manifest against the packaged tree (fail-closed on new upstream
   # mutators at bump time).
   runtimeManifest = import ./omarchy-runtime-manifest.nix;
+
+  # Menu lines for the cataloged coding agents, inserted into
+  # default/omarchy/omarchy-menu.jsonc after the install.ai.ollama entry in
+  # postPatch. One entry per install.ai.* catalog id (the catalog-consistency
+  # check requires every catalog id to appear in the menu).
+  agentMenuEntries = writeText "agent-menu-entries.jsonc" ''
+    "install.ai.claude": {"icon":"󱚤","label":"Claude Code","when":"! omarchy-pkg-present claude-code","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.claude'"},
+    "install.ai.codex": {"icon":"󱚤","label":"Codex","when":"! omarchy-pkg-present codex-cli","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.codex'"},
+    "install.ai.copilot": {"icon":"󱚤","label":"GitHub Copilot","when":"! omarchy-pkg-present github-copilot-cli","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.copilot'"},
+    "install.ai.crush": {"icon":"󱚤","label":"Crush","when":"! omarchy-pkg-present crush-bin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.crush'"},
+    "install.ai.gemini": {"icon":"󱚤","label":"Gemini","when":"! omarchy-pkg-present gemini-cli","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.gemini'"},
+    "install.ai.grok": {"icon":"󱚤","label":"Grok","when":"! omarchy-pkg-present grok-cli","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.grok'"},
+    "install.ai.opencode": {"icon":"󱚤","label":"OpenCode","when":"! omarchy-pkg-present opencode","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.opencode'"},
+    "install.ai.pi": {"icon":"󱚤","label":"Pi","when":"! omarchy-pkg-present pi-coding-agent","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.pi'"},
+  '';
 in
 
 stdenv.mkDerivation (finalAttrs: {
@@ -1251,7 +1266,6 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "'omarchy-install-terminal kitty'" "'omarchy-nix-add install.terminal.kitty'" \
           --replace-fail "omarchy-install-app 'LM Studio' lmstudio-bin" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.lm-studio'" \
           --replace-fail 'if omarchy-cmd-present nvidia-smi; then ollama_pkg=ollama-cuda; elif omarchy-cmd-present rocminfo; then ollama_pkg=ollama-rocm; else ollama_pkg=ollama; fi; omarchy-install-app Ollama \"$ollama_pkg\"' "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.ollama'" \
-          --replace-fail "omarchy-install-app Crush crush-bin" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.crush'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-steam" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.gaming.steam'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-retroarch" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.gaming.retroarch'" \
           --replace-fail "omarchy-install-and-launch Minecraft minecraft-launcher minecraft-launcher" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.gaming.minecraft'" \
@@ -1304,6 +1318,38 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/bun ]]' '! omarchy-pkg-present bun' \
           --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/deno ]]' '! omarchy-pkg-present deno' \
           --replace-fail '[[ ! -d $HOME/.local/share/mise/installs/elixir ]]' '! omarchy-pkg-present elixir'
+
+        # omp (oh-my-pi) is not in nixpkgs — drop its default-agent menu
+        # entry (grep guard keeps this fail-closed, like --replace-fail).
+        grep -q '"setup.default.agent.omp":' default/omarchy/omarchy-menu.jsonc
+        sed -i '/"setup.default.agent.omp":/d' default/omarchy/omarchy-menu.jsonc
+
+        # Install > AI entries for the selectable default agents (Setup >
+        # Defaults > Agent). Upstream lazy-installs agents via mise and needs
+        # no menu entries (it also dropped install.ai.crush); the nix catalog
+        # model requires one menu entry per catalog id. The lines live in
+        # agentMenuEntries (let) and are inserted after the ollama entry
+        # (grep guard keeps this fail-closed, like --replace-fail).
+        grep -q '"install.ai.ollama":' default/omarchy/omarchy-menu.jsonc
+        sed -i '/"install.ai.ollama":/r ${agentMenuEntries}' default/omarchy/omarchy-menu.jsonc
+
+        # omarchy-default-agent: upstream lazy-installs agents with
+        # `mise use -g`; mise-fetched prebuilt binaries don't run on NixOS, so
+        # route installation through the nix catalog instead. Probe the PATH
+        # (an agent installed via the catalog or by hand counts), send missing
+        # agents to Menu > Install > AI, and only write the default once the
+        # binary exists.
+        substituteInPlace bin/omarchy-default-agent \
+          --replace-fail 'if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; then' \
+                         'if [[ $installing == "false" ]] && omarchy-cmd-missing "$agent"; then' \
+          --replace-fail 'exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"' \
+                         'exec omarchy-launch-floating-terminal-with-presentation "omarchy-nix-add install.ai.$agent"' \
+          --replace-fail 'if ! mise use -g "$agent_package"; then' \
+                         'if omarchy-cmd-missing "$agent"; then' \
+          --replace-fail 'echo "Could not install $name with mise" >&2' \
+                         'echo "$name is not installed — add it with Menu > Install > AI > $name." >&2' \
+          --replace-fail 'echo "Could not set $name as the default coding agent" >&2' \
+                         'echo "$name is not installed — add it with Menu > Install > AI > $name." >&2'
   '';
 
   # No configure/build step — the upstream tree is consumed as-is.
@@ -1400,6 +1446,9 @@ stdenv.mkDerivation (finalAttrs: {
     # $out/lib/systemd/user/* into /etc/systemd/user. Upstream ships them
     # under default/systemd/user/ (pacman → /usr/lib/systemd/user/).
     install -Dm644 default/systemd/user/*.service -t "$out/lib/systemd/user"
+    # app.slice.d/10-oomd.conf drop-in: marks user app scopes as the only
+    # systemd-oomd kill candidates (the compositor lives in session.slice).
+    install -Dm644 default/systemd/user/app.slice.d/10-oomd.conf -t "$out/lib/systemd/user/app.slice.d"
 
     # P4: presentation helper for Install/Remove Package/AUR menu entries.
     # Lives only in the package tree (not upstream); documents declarative

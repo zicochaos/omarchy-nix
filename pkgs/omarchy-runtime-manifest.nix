@@ -258,5 +258,13 @@
     "install.browser.brave-origin"
     "remove.browser.zen"
     "remove.browser.brave-origin"
+    # Setup > Network > DNS: omarchy-dns writes /etc/NetworkManager and
+    # /etc/systemd/resolved.conf imperatively (stubbed declarative-note);
+    # DNS on NixOS is services.resolved / networking.nameservers.
+    "setup.network.dns"
+    "setup.network.dns.dhcp"
+    "setup.network.dns.cloudflare"
+    "setup.network.dns.google"
+    "setup.network.dns.custom"
   ];
 }
