@@ -72,7 +72,9 @@
   #                           # (networking.networkmanager.wifi.powersave = false)
   "1784917531.sh" = "skip"; # limine initramfs_async=0 kernel cmdline (Arch boot)
   "1784960000.sh" = "skip"; # XPS speaker tuning via omarchy-pkg-add (pacman)
-  "1784961000.sh" = "skip"; # zram sysctl + dev-zram0.swap restart (native in the module)
+  "1784961000.sh" = "skip"; # zram sysctl apply + dev-zram0.swap restart — native in the
+  #                           # module (boot.kernel.sysctl, etc/sysctl.d/99-omarchy-sysctl.conf
+  #                           # parity; zramSwap owns the device)
   "1784970000.sh" = "skip"; # logind InhibitDelay drop-in — native in the module
   #                           # (services.logind.settings.Login.InhibitDelayMaxSec = 15)
   "1785013000.sh" = "skip"; # archinstall zram-generator.conf leftover (N/A on NixOS)

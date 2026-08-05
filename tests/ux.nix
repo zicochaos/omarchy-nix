@@ -819,6 +819,7 @@
             "~/.local/share/nautilus-python/extensions/localsend.py",
             "~/.local/share/nautilus-python/extensions/transcode.py",
             "~/.local/state/tensaku/state.toml",
+            "~/.config/fastfetch/config.jsonc",
         ]:
             machine.succeed(as_demo("test -f " + path))
             machine.succeed(as_demo("test ! -L " + path))

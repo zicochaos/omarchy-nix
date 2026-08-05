@@ -828,6 +828,120 @@
 
                 touch $out
               '';
+          # /etc overlay parity: upstream's Arch etc/ tree (classified in
+          # pkgs/omarchy-etc-manifest.nix) must match the manifest exactly
+          # (fail-closed both directions: a new or removed upstream file
+          # turns this check red until classified), and every adaptation
+          # must actually reach the demo system (eval assertions + greps on
+          # the generated files).
+          omarchy-etc-parity =
+            let
+              demoCfg = self.nixosConfigurations.demo.config;
+              omarchyPkg = self.packages.${system}.omarchy;
+              manifest = import ./pkgs/omarchy-etc-manifest.nix;
+              manifestKeys = builtins.sort (a: b: a < b) (builtins.attrNames manifest);
+              allowedClasses = [
+                "native"
+                "vendored"
+                "seed"
+                "covered"
+                "na"
+              ];
+              badClasses = builtins.filter (c: !(builtins.elem c allowedClasses)) (builtins.attrValues manifest);
+              sysctl = demoCfg.boot.kernel.sysctl;
+              inherit (pkgs.lib) hasInfix;
+              logindConf = demoCfg.environment.etc."systemd/logind.conf".text;
+              userConf = demoCfg.environment.etc."systemd/user.conf".text;
+              hasSudoCmd =
+                cmd:
+                builtins.any (r: builtins.any (c: c.command == cmd) r.commands) demoCfg.security.sudo.extraRules;
+            in
+            if badClasses != [ ] then
+              throw "omarchy-etc-manifest.nix has unknown classes: ${toString badClasses}"
+            else if sysctl."vm.swappiness" != 150 then
+              throw "demo config missing vm.swappiness=150 (etc/sysctl.d/99-omarchy-sysctl.conf)"
+            else if sysctl."vm.page-cluster" != 0 then
+              throw "demo config missing vm.page-cluster=0 (etc/sysctl.d/99-omarchy-sysctl.conf)"
+            else if sysctl."vm.dirty_bytes" != 268435456 then
+              throw "demo config missing vm.dirty_bytes (etc/sysctl.d/99-omarchy-sysctl.conf)"
+            else if sysctl."net.ipv4.tcp_mtu_probing" != 1 then
+              throw "demo config missing net.ipv4.tcp_mtu_probing=1 (etc/sysctl.d/99-omarchy-sysctl.conf)"
+            else if sysctl."fs.inotify.max_user_watches" != 524288 then
+              throw "demo config lost fs.inotify.max_user_watches=524288 (nixpkgs sysctl.nix default changed)"
+            else if !(hasInfix "HandlePowerKey=ignore" logindConf) then
+              throw "demo config logind.conf missing HandlePowerKey=ignore (etc/systemd/logind.conf.d/10-ignore-power-button.conf)"
+            else if demoCfg.systemd.settings.Manager.DefaultTimeoutStopSec != "5s" then
+              throw "demo config missing DefaultTimeoutStopSec=5s (etc/systemd/system.conf.d/10-faster-shutdown.conf)"
+            else if demoCfg.systemd.settings.Manager.DefaultLimitNOFILE != "65536:524288" then
+              throw "demo config missing DefaultLimitNOFILE (etc/systemd/system.conf.d/20-omarchy-nofile.conf)"
+            else if !(hasInfix "DefaultLimitNOFILE=65536:524288" userConf) then
+              throw "demo config user.conf missing DefaultLimitNOFILE (etc/systemd/user.conf.d/20-omarchy-nofile.conf)"
+            else if demoCfg.systemd.services.docker.unitConfig.DefaultDependencies != false then
+              throw "demo config missing docker DefaultDependencies=no (etc/systemd/system/docker.service.d/no-block-boot.conf)"
+            else if demoCfg.systemd.services.update-locatedb.unitConfig.ConditionACPower != true then
+              throw "demo config missing update-locatedb ConditionACPower=true (etc/systemd/system/plocate-updatedb.service.d/ac-only.conf)"
+            else if demoCfg.systemd.services."user@".serviceConfig.TimeoutStopSec != "5s" then
+              throw "demo config missing user@ TimeoutStopSec=5s (etc/systemd/system/user@.service.d/10-faster-shutdown.conf)"
+            else if demoCfg.virtualisation.docker.daemon.settings.log-driver != "json-file" then
+              throw "demo config missing docker log rotation (etc/docker/daemon.json)"
+            else if !(hasSudoCmd "/run/current-system/sw/bin/asdcontrol") then
+              throw "demo config missing NOPASSWD asdcontrol (etc/sudoers.d/omarchy-asdcontrol)"
+            else if !(hasSudoCmd "/run/current-system/sw/bin/tzupdate") then
+              throw "demo config missing NOPASSWD tzupdate (etc/sudoers.d/omarchy-tzupdate)"
+            else if !(hasSudoCmd "/run/current-system/sw/bin/timedatectl set-timezone *") then
+              throw "demo config missing NOPASSWD timedatectl set-timezone (etc/sudoers.d/omarchy-tzupdate)"
+            else if !(hasInfix "passwd_tries=10" demoCfg.security.sudo.extraConfig) then
+              throw "demo config missing passwd_tries=10 (etc/sudoers.d/omarchy-passwd-tries)"
+            else if !(hasInfix "CreateRemotePrinters Yes" demoCfg.services.printing.browsedConf) then
+              throw "demo config missing CreateRemotePrinters Yes (etc/cups/cups-browsed.conf)"
+            else if !(hasInfix "autosuspend=-1" demoCfg.boot.extraModprobeConfig) then
+              throw "demo config missing usbcore autosuspend=-1 (etc/modprobe.d/omarchy-usb-autosuspend.conf)"
+            else if (demoCfg.environment.etc."gnupg/dirmngr.conf".source or null) == null then
+              throw "demo config missing /etc/gnupg/dirmngr.conf (etc/gnupg/dirmngr.conf)"
+            else
+              pkgs.runCommand "omarchy-etc-parity" { } ''
+                # Fail-closed inventory, both directions: every file in the
+                # vendored etc/ tree must be classified in the manifest and
+                # every manifest key must still exist upstream.
+                cd ${omarchyPkg}/share/omarchy/etc
+                find . -type f | sed 's|^\./||' | LC_ALL=C sort > $TMPDIR/upstream-files
+                diff -u ${
+                  pkgs.writeText "etc-manifest-keys" (builtins.concatStringsSep "\n" manifestKeys + "\n")
+                } $TMPDIR/upstream-files || {
+                  echo "etc/ inventory mismatch — classify new files in pkgs/omarchy-etc-manifest.nix"
+                  exit 1
+                }
+
+                # Generated-file greps (the eval assertions above pin the
+                # options; these pin what actually lands in /etc).
+                if ! grep -q '^HandlePowerKey=ignore$' ${demoCfg.environment.etc."systemd/logind.conf".source}; then
+                  echo "logind.conf is missing the exact HandlePowerKey=ignore line"
+                  exit 1
+                fi
+                if ! grep -q '^DefaultLimitNOFILE=65536:524288$' ${
+                  demoCfg.environment.etc."systemd/user.conf".source
+                }; then
+                  echo "user.conf is missing DefaultLimitNOFILE=65536:524288"
+                  exit 1
+                fi
+                if ! grep -q '^options usbcore autosuspend=-1$' ${
+                  demoCfg.environment.etc."modprobe.d/nixos.conf".source
+                }; then
+                  echo "modprobe.d/nixos.conf is missing usbcore autosuspend=-1"
+                  exit 1
+                fi
+
+                # The vendored sources the module/seeds point at must exist
+                # in the package (a path typo would only fail at runtime).
+                for f in etc/fastfetch/config.jsonc etc/gnupg/dirmngr.conf; do
+                  if [ ! -f "${omarchyPkg}/share/omarchy/$f" ]; then
+                    echo "package is missing share/omarchy/$f"
+                    exit 1
+                  fi
+                done
+
+                touch $out
+              '';
           # Disabled-state contract: merely IMPORTING
           # nixosModules.default with omarchy.enable = false must not change
           # the host. Compare a baseline system against one importing the

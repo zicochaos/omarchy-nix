@@ -234,6 +234,13 @@ in
           # (runtimeDeps), so seed the default config up front — the install
           # script's later cp is then a no-op over identical content.
           ${seedStubFrom "${omarchyPathOf effPkg}/default/voxtype/config.toml" "voxtype/config.toml"}
+
+          # --- fastfetch config (upstream etc/fastfetch/config.jsonc; on Arch
+          # the ISO copies it to /etc/fastfetch). Gives omarchy-launch-about
+          # the branded layout (logo from ~/.config/omarchy/branding/about.txt
+          # seeded above, omarchy-version* command modules). Mutable seed —
+          # users can restyle fastfetch without a rebuild.
+          ${seedStubFrom "${omarchyPathOf effPkg}/etc/fastfetch/config.jsonc" "fastfetch/config.jsonc"}
         '';
 
         # --- Class 2: omarchy-nvim starter (seeded once) ---

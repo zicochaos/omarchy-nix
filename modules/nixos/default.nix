@@ -827,6 +827,138 @@ in
         # and Intel BE200/BE211 firmware drops the link outright. Renders as
         # wifi.powersave=2 under [connection] in NetworkManager.conf.
         networking.networkmanager.wifi.powersave = lib.mkDefault false;
+
+        # Power button ignored by logind (upstream etc/systemd/
+        # logind.conf.d/10-ignore-power-button.conf): the desktop shell owns
+        # the action (quickshell power menu), a stray press must not power
+        # off the machine.
+        services.logind.settings.Login.HandlePowerKey = lib.mkDefault "ignore";
+
+        # inotify watcher ceiling (upstream etc/sysctl.d/
+        # 90-omarchy-file-watchers.conf): covered by nixpkgs itself —
+        # config/sysctl.nix already ships the identical
+        # fs.inotify.max_user_watches=524288 as mkDefault, and redefining
+        # it here would collide (sysctl values must be unique).
+        #
+        # zram-era VM tuning (upstream etc/sysctl.d/99-omarchy-sysctl.conf):
+        # reclaim tuned for swap-on-zram (see zramSwap above), page-cache
+        # kept, bounded writeback bursts; tcp_mtu_probing fixes SSH stalls on
+        # flaky links. Migration 1784961000 applies the same file on Arch.
+        boot.kernel.sysctl = lib.mapAttrs (_: lib.mkDefault) {
+          "net.ipv4.tcp_mtu_probing" = 1;
+          "vm.swappiness" = 150;
+          "vm.vfs_cache_pressure" = 50;
+          "vm.page-cluster" = 0;
+          "vm.watermark_boost_factor" = 0;
+          "vm.watermark_scale_factor" = 125;
+          "vm.dirty_background_bytes" = 67108864;
+          "vm.dirty_bytes" = 268435456;
+          "vm.dirty_writeback_centisecs" = 1500;
+        };
+
+        # NOT adapted: etc/systemd/resolved.conf.d/{10-disable-multicast,
+        # 20-docker-dns}.conf — systemd-resolved is NOT enabled on NixOS
+        # (NetworkManager owns DNS), so the drop-ins would be inert, and the
+        # paired docker dns=172.17.0.1 below would BREAK container DNS with
+        # no stub listener on the bridge. LLMNR/mDNS are already off by
+        # resolved simply not running; mDNS is avahi's job (nssmdns4 above).
+        # Consumers who flip networking.networkmanager.dns =
+        # "systemd-resolved" can restore full upstream parity with
+        # services.resolved.llmnr/extraConfig (see docs/UPSTREAM.md).
+
+        # Docker daemon (upstream etc/docker/daemon.json): bounded json-file
+        # logs (10 MiB × 5). Upstream's dns/bip pins are deliberately
+        # dropped — they exist for the resolved bridge integration above;
+        # docker's defaults already use 172.17.0.0/16 and pass the host
+        # resolver through to containers. log-driver goes through
+        # virtualisation.docker.logDriver (nixpkgs feeds it into
+        # daemon.settings with per-key mkDefault; a whole-attrset mkDefault
+        # on daemon.settings would lose to nixpkgs's plain definition).
+        virtualisation.docker.logDriver = lib.mkDefault "json-file";
+        virtualisation.docker.daemon.settings.log-opts = lib.mkDefault {
+          max-size = "10m";
+          max-file = "5";
+        };
+        # Docker must not hold up boot (upstream etc/systemd/system/
+        # docker.service.d/no-block-boot.conf).
+        systemd.services.docker.unitConfig.DefaultDependencies = lib.mkDefault false;
+
+        # updatedb only on AC power (upstream etc/systemd/system/
+        # plocate-updatedb.service.d/ac-only.conf): crawling the whole tree
+        # on battery trades runtime for a slightly stale index. nixpkgs names
+        # the unit update-locatedb (not plocate-updatedb); its locate module
+        # defaults to plocate.
+        services.locate.enable = lib.mkDefault true;
+        systemd.services.update-locatedb.unitConfig.ConditionACPower = lib.mkDefault true;
+
+        # Faster shutdown (upstream etc/systemd/system.conf.d/
+        # 10-faster-shutdown.conf + system/user@.service.d/
+        # 10-faster-shutdown.conf): 5s stop timeout in the system manager and
+        # for the user@ stub.
+        systemd.settings.Manager.DefaultTimeoutStopSec = lib.mkDefault "5s";
+        systemd.services."user@".serviceConfig.TimeoutStopSec = lib.mkDefault "5s";
+
+        # NOFILE limits in both managers (upstream etc/systemd/
+        # system.conf.d/20-omarchy-nofile.conf + user.conf.d/
+        # 20-omarchy-nofile.conf).
+        systemd.settings.Manager.DefaultLimitNOFILE = lib.mkDefault "65536:524288";
+        systemd.user.extraConfig = lib.mkDefault ''
+          DefaultLimitNOFILE=65536:524288
+        '';
+
+        # USB autosuspend off (upstream etc/modprobe.d/
+        # omarchy-usb-autosuspend.conf): autosuspend drops flaky receivers
+        # and devices; -1 disables it. Plain assignment, not mkDefault:
+        # nixpkgs defines extraModprobeConfig at normal priority elsewhere,
+        # which would silently drop an mkDefault; lines concatenate.
+        boot.extraModprobeConfig = ''
+          options usbcore autosuspend=-1
+        '';
+
+        # Auto-register remote IPP printers discovered via Avahi (upstream
+        # etc/cups/cups-browsed.conf): nixpkgs renders browsedConf to
+        # /etc/cups/cups-browsed.conf; without it cups-browsed 2.x does not
+        # create queues for discovered printers.
+        services.printing.browsedConf = lib.mkDefault ''
+          CreateRemotePrinters Yes
+        '';
+
+        # dirmngr keyservers + quick connect timeout (upstream
+        # etc/gnupg/dirmngr.conf), verbatim from the vendored tree.
+        environment.etc."gnupg/dirmngr.conf".source = "${cfg.package}/share/omarchy/etc/gnupg/dirmngr.conf";
+
+        # sudo parity (upstream etc/sudoers.d/omarchy-passwd-tries,
+        # omarchy-asdcontrol, omarchy-tzupdate): 10 password tries; NOPASSWD
+        # for asdcontrol (Apple Studio Display brightness from the bar),
+        # tzupdate and timedatectl set-timezone (menu Setup → Timezone).
+        # Profile paths (not store paths) so exclude_packages filtering
+        # still works — an uninstalled command makes the rule inert instead
+        # of a closure reference. Plain assignment, not mkDefault: nixpkgs
+        # defines its own default extraRules/extraConfig at normal priority,
+        # which would silently drop mkDefault content; same-priority
+        # definitions concatenate.
+        security.sudo.extraConfig = ''
+          Defaults passwd_tries=10
+        '';
+        security.sudo.extraRules = [
+          {
+            groups = [ "wheel" ];
+            commands = [
+              {
+                command = "/run/current-system/sw/bin/asdcontrol";
+                options = [ "NOPASSWD" ];
+              }
+              {
+                command = "/run/current-system/sw/bin/tzupdate";
+                options = [ "NOPASSWD" ];
+              }
+              {
+                command = "/run/current-system/sw/bin/timedatectl set-timezone *";
+                options = [ "NOPASSWD" ];
+              }
+            ];
+          }
+        ];
       }
 
       # (C) SSH must stay reachable.

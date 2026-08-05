@@ -164,6 +164,45 @@ build); this table is the feature-level summary.
 | **Deferred** | Possible on NixOS, not done | NordVPN service (menu entry deleted; verified 2026-07-31: the package + `services.nordvpn` already reached the 26.05 channel after our `2f5a153c27` pin — re-add as a catalog feature once the pin reaches a revision carrying both); zen / brave-origin browsers (AUR-only, no nixpkgs attrs on the 26.05 pin; menu entries deleted) |
 | **Blocked / untested** | Needs an external precondition | Fingerprint **reader** on real hardware (the PAM services themselves are declared and pamtester-verified in `checks.omarchy-ux`); real-hardware specifics of the behavioral surface; menu IPC, notifications, OSD, lock and polkit are covered in the VM by `checks.omarchy-ux` section (10) since 2026-07-29, but multi-monitor lock, fingerprint dialog and panel interactions still need a real-hardware pass |
 
+### Arch `/etc` overlay (33 files)
+
+Upstream's `etc/` tree (copied to `/etc` by the Arch ISO installer) is
+classified file-by-file in `pkgs/omarchy-etc-manifest.nix`, enforced
+fail-closed by `checks.omarchy-etc-parity` (a new or removed upstream
+file fails the build until classified). Summary by class:
+
+- **native** (declared in the module's "Upstream /etc defaults" block):
+  Wi-Fi powersave, logind `InhibitDelayMaxSec=15` +
+  `HandlePowerKey=ignore`, zram-era sysctls + `tcp_mtu_probing`,
+  faster-shutdown (`DefaultTimeoutStopSec=5s` system + `user@`),
+  `DefaultLimitNOFILE=65536:524288` both managers, docker log rotation
+  (`logDriver=json-file` + `log-opts` 10m×5) + docker
+  `DefaultDependencies=no`, plocate with `ConditionACPower=true`, USB
+  autosuspend off, sudo `passwd_tries=10` + NOPASSWD asdcontrol /
+  tzupdate / `timedatectl set-timezone`, cups-browsed
+  `CreateRemotePrinters Yes`, Plymouth + SDDM theme/wayland,
+  zswap-off tmpfiles rule.
+- **vendored** (`environment.etc` `.source` from the package):
+  `systemd/oomd.conf.d/10-omarchy.conf`, `gnupg/dirmngr.conf`.
+- **seed** (per-user, mutable): `fastfetch/config.jsonc` →
+  `~/.config/fastfetch/config.jsonc` (branded `omarchy-launch-about`).
+- **covered**: `security/faillock.conf` (`deny=10` inline in the PAM
+  lock services); `profile.d/omarchy.sh` (env-bootstrap deliberately
+  not sourced — see the table above); `sysctl.d/90-file-watchers`
+  (nixpkgs `config/sysctl.nix` already ships the identical
+  `fs.inotify.max_user_watches=524288`).
+- **N/A**: limine-entry-tool, mkinitcpio hooks/thunderbolt (Arch boot
+  stack), `nsswitch.conf` (nixpkgs generates it; avahi covers mDNS),
+  and the two `resolved.conf.d` drop-ins — **systemd-resolved is not
+  enabled** (NetworkManager owns DNS on NixOS). Consequently the
+  `docker/daemon.json` `dns`/`bip` pins are dropped: they exist only
+  for the resolved bridge integration and would break container DNS
+  without it. Consumers wanting full upstream parity can set
+  `networking.networkmanager.dns = "systemd-resolved"` and restore
+  `services.resolved.llmnr = "false"` + `extraConfig`
+  (`MulticastDNS=no`, `DNSStubListenerExtra=172.17.0.1`) plus the
+  daemon.json pins.
+
 ## When upstream updates
 
 ```bash

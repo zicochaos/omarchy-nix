@@ -1371,7 +1371,12 @@ stdenv.mkDerivation (finalAttrs: {
     # ~/.local/share/applications). Arch-only installer trees under install/
     # (packaging, login, post-install, hardware/* system-level) are unused on
     # NixOS but harmless to ship; first-run only sources install/user/.
-    cp -a default bin shell themes config migrations install applications "$dest/"
+    # etc/ is upstream's Arch /etc overlay (ISO copies it to /etc). On NixOS
+    # the module declares the equivalents natively; the few drop-ins without
+    # a clean native option plus the fastfetch seed take .source straight
+    # from here, verbatim upstream, refreshed with every omarchy-src bump.
+    # See pkgs/omarchy-etc-manifest.nix for the per-file classification.
+    cp -a default bin shell themes config migrations install applications etc "$dest/"
 
     # B21: the upstream skill is Arch-specific (/usr/share/omarchy,
     # pacman/AUR, Arch package lifecycle). Replace it with the omarchy-nix
