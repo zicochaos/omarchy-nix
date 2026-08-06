@@ -1282,7 +1282,11 @@ stdenv.mkDerivation (finalAttrs: {
         # NordVPN and ONCE lines are deleted outright (same rule as
         # install.aur): ONCE is AUR-only, and NordVPN's nixpkgs package +
         # services.nordvpn module landed only in the 26.11 cycle — re-add as
-        # a catalog feature once our stable pin catches up.
+        # a catalog feature once our stable pin catches up. The OPR move
+        # (fd1034f, label lost "[AUR]") does not change that: upstream still
+        # installs the same nordvpn-bin package and enables nordvpnd by hand,
+        # while our NixOS analogue (catalog feature, services.nordvpn) needs
+        # the module that our pinned nixpkgs lacks.
         substituteInPlace default/omarchy/omarchy-menu.jsonc \
           --replace-fail "'omarchy-install-browser chrome'" "'omarchy-nix-add install.browser.chrome'" \
           --replace-fail "'omarchy-install-browser edge'" "'omarchy-nix-add install.browser.edge'" \
@@ -1293,7 +1297,7 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-service-spotify" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.service.spotify'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-service-signal" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.service.signal'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-service-tailscale" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.service.tailscale'" \
-          --replace-fail '  "install.service.nordvpn": {"icon":"󱇱","label":"NordVPN [AUR]","when":"! omarchy-pkg-present nordvpn-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-nordvpn"},' "" \
+          --replace-fail '  "install.service.nordvpn": {"icon":"󱇱","label":"NordVPN","when":"! omarchy-pkg-present nordvpn-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-nordvpn"},' "" \
           --replace-fail '  "install.service.once": {"icon":"󰏖","label":"ONCE","when":"! omarchy-pkg-present once-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-once"},' "" \
           --replace-fail "omarchy-install-and-launch Bitwarden 'bitwarden bitwarden-cli' bitwarden" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.service.bitwarden'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-editor-vscode" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.editor.vscode'" \
