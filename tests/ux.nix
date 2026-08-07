@@ -244,6 +244,25 @@
     assert pam_warnings.strip() == "0", \
         "pam_env 'Expandable variables' warnings in journal: %s" % pam_warnings
 
+    # --- (5c) GSETTINGS_SCHEMA_DIR: gtk3 FileChooser present (issue #62). ---
+    # The session var exists so first-run scripts can call bare gsettings, but
+    # GSETTINGS_SCHEMA_DIR is a *single* directory: pointing it only at
+    # gsettings-desktop-schemas drops gtk3 schemas, and Qt apps with
+    # QT_QPA_PLATFORMTHEME=gtk3 (upstream envs) then SIGABRT in Save/Open
+    # dialogs (org.gtk.Settings.FileChooser missing). The module merges
+    # desktop-schemas + gtk3 into one compiled dir; run the check with the
+    # session's own variable so a drift between env and content fails here.
+    gtk_keys = machine.succeed(as_demo(
+        "gsettings list-keys org.gtk.Settings.FileChooser"
+    )).split()
+    assert "last-folder-uri" in gtk_keys, \
+        "org.gtk.Settings.FileChooser keys missing under session GSETTINGS_SCHEMA_DIR (issue #62): %r" % gtk_keys
+    color_scheme = machine.succeed(as_demo(
+        "gsettings get org.gnome.desktop.interface color-scheme"
+    )).strip()
+    assert color_scheme in ("'default'", "'prefer-dark'", "'prefer-light'"), \
+        "org.gnome.desktop.interface broken under session GSETTINGS_SCHEMA_DIR: %r" % color_scheme
+
     # --- (5b) Wired omarchy.* options: timezone + terminal list. -----------
     # omarchy.timezone -> time.timeZone (mkDefault; nothing else in this test
     # config sets it, so the module default Etc/UTC must win through).
