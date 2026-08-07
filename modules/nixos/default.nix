@@ -474,9 +474,33 @@ let
   # Bare `gsettings` (unwrapped glib CLI) does not see Nix store schemas
   # unless GSETTINGS_SCHEMA_DIR points at the compiled schema dir.
   # wrapGAppsHook only fixes app wrappers; first-run scripts call the
-  # system gsettings binary. Directory layout:
-  #   $out/share/gsettings-schemas/<name>/glib-2.0/schemas/gschemas.compiled
-  gsettingsSchemaDir = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}/glib-2.0/schemas";
+  # system gsettings binary.
+  #
+  # GSETTINGS_SCHEMA_DIR is a *single* directory (not a path list). Pointing
+  # it only at gsettings-desktop-schemas drops GTK3 schemas — then Qt apps
+  # with QT_QPA_PLATFORMTHEME=gtk3 (upstream hypr envs.lua) SIGABRT in
+  # Save/Open dialogs when gtk_file_chooser touches
+  # org.gtk.Settings.FileChooser (omawrite, etc.). Merge desktop-schemas +
+  # gtk3 and recompile so first-run gsettings and GTK3 file choosers both work.
+  # Layout: $out/gschemas.compiled (+ xml).
+  gsettingsSchemaDir =
+    pkgs.runCommand "omarchy-gsettings-schemas"
+      {
+        nativeBuildInputs = [ pkgs.glib ];
+      }
+      ''
+        mkdir -p "$out"
+        for d in \
+          ${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/*/glib-2.0/schemas \
+          ${pkgs.gtk3}/share/gsettings-schemas/*/glib-2.0/schemas
+        do
+          [ -d "$d" ] || continue
+          # Store files are mode 0444; allow overwrite when merging packages.
+          cp -a --no-preserve=mode "$d"/. "$out"/
+        done
+        rm -f "$out/gschemas.compiled"
+        glib-compile-schemas "$out"
+      '';
 in
 {
   options.omarchy = (import ../../config.nix { inherit lib; }).omarchyOptions;
