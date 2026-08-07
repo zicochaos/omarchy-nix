@@ -210,6 +210,13 @@
         "BROWSER=omarchy-launch-browser missing from session env"
     assert "TERMINAL=xdg-terminal-exec" in env.splitlines(), \
         "TERMINAL=xdg-terminal-exec missing from session env"
+    # Issue #60: without NAUTILUS_4_EXTENSION_DIR Nautilus never loads
+    # libnautilus-python.so and the seeded Python extensions (localsend.py,
+    # transcode.py, user extensions) are dead. Delivered via
+    # environment.sessionVariables + uwsm env.d/10-omarchy.
+    assert "NAUTILUS_4_EXTENSION_DIR=/run/current-system/sw/lib/nautilus/extensions-4" \
+        in env.splitlines(), \
+        "NAUTILUS_4_EXTENSION_DIR missing from session env (issue #60)"
 
     # OMARCHY_USER_NAME/EMAIL arrive via the systemd user manager's own
     # environment.d processing — deliberately NOT via

@@ -548,6 +548,15 @@ in
           # See gsettingsSchemaDir above — first-run gnome-theme.sh /
           # gtk-primary-paste.sh call unwrapped gsettings.
           GSETTINGS_SCHEMA_DIR = gsettingsSchemaDir;
+          # Nautilus 4 loads native extension .so files ONLY from
+          # NAUTILUS_4_EXTENSION_DIR (compile-time default: the nautilus
+          # package's $out/lib/nautilus/extensions-4 — image-properties +
+          # totem, but NOT libnautilus-python.so). nautilus-python is in
+          # systemPackages, so its loader lands in the system merge path;
+          # point there so HM's seeded localsend.py/transcode.py (and any
+          # user extension in ~/.local/share/nautilus-python/extensions/)
+          # actually load. Issue #60.
+          NAUTILUS_4_EXTENSION_DIR = "/run/current-system/sw/lib/nautilus/extensions-4";
         };
 
         # Login-shell route for OMARCHY_USER_NAME/EMAIL (feeds
@@ -593,7 +602,11 @@ in
           export SUDO_EDITOR="$EDITOR"
           export OMARCHY_USER_NAME=${lib.escapeShellArg cfg.full_name}
           export OMARCHY_USER_EMAIL=${lib.escapeShellArg cfg.email_address}
-          export GSETTINGS_SCHEMA_DIR=${lib.escapeShellArg gsettingsSchemaDir}'';
+          export GSETTINGS_SCHEMA_DIR=${lib.escapeShellArg gsettingsSchemaDir}
+          # Issue #60: Nautilus only scans NAUTILUS_4_EXTENSION_DIR for native
+          # extension loaders — without it libnautilus-python.so never loads
+          # and the seeded Python context-menu extensions are dead.
+          export NAUTILUS_4_EXTENSION_DIR=/run/current-system/sw/lib/nautilus/extensions-4'';
 
         # Path-adapted user units from pkgs/omarchy.nix ($out/lib/systemd/user).
         # generateUnits (type=user) symlinks systemd.packages' lib/systemd/user
