@@ -2132,6 +2132,67 @@ c";
                   echo "SUDO_EDITOR lost the ''${EDITOR} indirection in pam/environment"; exit 1; }
                 touch $out
               '';
+          # omarchy-nix-add writes raw nixpkgs attribute *paths* (including
+          # nested ones like kdePackages.dolphin) into omarchy-packages.json.
+          # The module must resolve dotted paths the same way catalog probes
+          # do (lib.attrByPath), not pkgs.${n} (a single top-level attr named
+          # with a literal dot). Regression: add + rebuild used to fail with
+          # "unknown nixpkgs attribute 'kdePackages.dolphin'" even though
+          # pkgs.kdePackages.dolphin exists.
+          omarchy-managed-nested-attrs =
+            let
+              inherit (pkgs) lib;
+              mkEval =
+                packages:
+                nixpkgs.lib.nixosSystem {
+                  inherit pkgs;
+                  modules = [
+                    self.nixosModules.default
+                    {
+                      omarchy.enable = true;
+                      omarchy.managedPackagesFile = builtins.toFile "omarchy-packages.json" (
+                        builtins.toJSON {
+                          inherit packages;
+                          features = [ ];
+                        }
+                      );
+                      fileSystems."/".device = "/dev/null";
+                      fileSystems."/".fsType = "ext4";
+                      boot.loader.grub.device = "nodev";
+                      system.stateVersion = "26.05";
+                    }
+                  ];
+                };
+              pkgIn =
+                needle: cfg: builtins.any (p: (p.drvPath or "") == needle.drvPath) cfg.environment.systemPackages;
+              good =
+                (mkEval [
+                  "hello"
+                  "kdePackages.dolphin"
+                ]).config;
+              missingNested = builtins.tryEval (
+                builtins.seq (builtins.concatStringsSep "" (
+                  map (p: p.drvPath or "")
+                    (mkEval [ "kdePackages.definitely-not-a-real-pkg-xyz" ]).config.environment.systemPackages
+                )) true
+              );
+              missingTop = builtins.tryEval (
+                builtins.seq (builtins.concatStringsSep "" (
+                  map (p: p.drvPath or "")
+                    (mkEval [ "definitely-not-a-real-attr-xyz" ]).config.environment.systemPackages
+                )) true
+              );
+            in
+            if !(pkgIn pkgs.hello good) then
+              throw "top-level managed attr 'hello' missing from environment.systemPackages"
+            else if !(pkgIn pkgs.kdePackages.dolphin good) then
+              throw "nested managed attr 'kdePackages.dolphin' missing from environment.systemPackages"
+            else if missingNested.success then
+              throw "unknown nested attr kdePackages.definitely-not-a-real-pkg-xyz should fail eval"
+            else if missingTop.success then
+              throw "unknown top-level attr definitely-not-a-real-attr-xyz should fail eval"
+            else
+              pkgs.runCommand "omarchy-managed-nested-attrs" { } "touch $out";
         }
       );
 

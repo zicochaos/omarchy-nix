@@ -180,7 +180,9 @@ the Install/Remove menu actions (`omarchy-nix-add/remove`). When set, the
 module folds the JSON's `packages` into `environment.systemPackages` and
 its `features` into the matching feature blocks (steam, tailscale,
 1password, ollama, …) at evaluation time, so menu installs are declarative
-and rollback-safe. `null` disables menu-managed packages.
+and rollback-safe. `packages` entries are nixpkgs attribute paths: a
+top-level name (`"firefox"`) or a dotted nested path
+(`"kdePackages.dolphin"`). `null` disables menu-managed packages.
 
 There is no filesystem auto-detection: flake evaluation is pure, so
 `builtins.pathExists` cannot see absolute paths outside the flake

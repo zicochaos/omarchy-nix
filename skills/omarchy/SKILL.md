@@ -175,9 +175,10 @@ omarchy-nix-remove [catalog-id-or-nixpkgs-attribute]
 
 They update `omarchy-packages.json` beside the consumer flake and rebuild.
 Use `omarchy-nix-search` for an interactive nixpkgs search. Use a catalog ID
-when automating an opinionated menu choice. If the consumer manages packages
-directly in Nix, edit its configuration and follow its own validation and
-deployment instructions.
+when automating an opinionated menu choice. Raw nixpkgs names may be
+top-level (`ripgrep`) or nested attribute paths (`kdePackages.dolphin`).
+If the consumer manages packages directly in Nix, edit its configuration
+and follow its own validation and deployment instructions.
 
 Add/remove operations are transactional: a per-file lock serializes them,
 the JSON is written atomically, a failed rebuild rolls back only that
@@ -429,6 +430,8 @@ for:
 - "Change the UI font" → `omarchy font list`, then `omarchy font set <name>`
 - "Install Firefox" → `omarchy-nix-add install.browser.firefox` (or
   `omarchy-nix-search` interactively), never `omarchy pkg add`
+- "Install Dolphin" → `omarchy-nix-add kdePackages.dolphin` (nested
+  nixpkgs attribute path; not a catalog ID)
 - "Install a dev database" → no catalog entry exists for databases/docker:
   enable them in the consumer flake (e.g. `virtualisation.docker.enable =
   true;`) and rebuild; a direct `omarchy install ...` may be a

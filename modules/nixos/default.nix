@@ -726,6 +726,12 @@ in
       # blocks (Task 5). Unknown names throw an eval error naming the file —
       # in the normal flow omarchy-nix-add validates before writing.
       #
+      # Names are nixpkgs attribute *paths*, not only top-level attrs:
+      # omarchy-nix-add accepts `nixpkgs#kdePackages.dolphin` (flake attr
+      # paths) and writes that string into the JSON. Resolve with
+      # attrByPath so a literal-dot pkgs.${n} lookup cannot reject a real
+      # nested package. Same split as catalog-consistency probes.
+      #
       # IMPORTANT: managedFeatures is config-dependent (it reads
       # cfg.managedPackagesFile). Referencing it at the mkMerge LIST level
       # would force it during the module system's property-pushing phase,
@@ -751,7 +757,14 @@ in
                   throw "${toString cfg.managedPackagesFile}: unknown feature '${builtins.head unknown}' (known: ${builtins.concatStringsSep ", " (builtins.attrNames managedFeatureDefs)})"
                 else
                   map (
-                    n: pkgs.${n} or (throw "${toString cfg.managedPackagesFile}: unknown nixpkgs attribute '${n}'")
+                    n:
+                    let
+                      path = lib.splitString "." n;
+                    in
+                    if lib.hasAttrByPath path pkgs then
+                      lib.getAttrFromPath path pkgs
+                    else
+                      throw "${toString cfg.managedPackagesFile}: unknown nixpkgs attribute '${n}'"
                   ) managedPkgs;
             }
           ]

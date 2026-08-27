@@ -321,7 +321,9 @@
       '';
       description = ''
         Path to the menu-managed package list (omarchy-packages.json) folded
-        into the system at eval time. null disables menu-managed packages.
+        into the system at eval time. packages entries are nixpkgs attribute
+        paths (top-level or dotted, e.g. kdePackages.dolphin). null disables
+        menu-managed packages.
 
         There is no filesystem auto-detection: flake evaluation is pure, so
         builtins.pathExists cannot see absolute paths outside the flake
