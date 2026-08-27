@@ -168,11 +168,13 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "/usr/bin/omarchy-tailscale-receive" \
             "$out/share/omarchy/bin/omarchy-tailscale-receive"
 
-        # omarchy-launch-browser resolves the .desktop via a fixed brace list of
-        # data dirs. Arch has /usr/share/applications; NixOS puts system apps in
-        # /run/current-system/sw/share/applications. Add that path so chromium
-        # (and any other default) resolves after xdg-settings.
-        substituteInPlace bin/omarchy-launch-browser \
+        # omarchy-launch-browser and omarchy-launch-webapp resolve the .desktop
+        # via a fixed brace list of data dirs. Arch has /usr/share/applications;
+        # NixOS puts system apps in /run/current-system/sw/share/applications.
+        # Add that path so chromium (and any other default) resolves after
+        # xdg-settings. Webapps used to skip the Exec= lookup and hand
+        # --app=https://… to uwsm-app as the application path.
+        substituteInPlace bin/omarchy-launch-browser bin/omarchy-launch-webapp \
           --replace-fail \
             '{~/.local,~/.nix-profile,/usr}/share/applications' \
             '{~/.local,~/.nix-profile,/run/current-system/sw,/usr}/share/applications'
