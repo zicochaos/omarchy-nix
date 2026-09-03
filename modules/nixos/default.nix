@@ -1144,6 +1144,20 @@ in
         networking.networkmanager.enable = lib.mkDefault true;
         hardware.bluetooth.enable = lib.mkDefault true;
 
+        # Order NetworkManager ahead of the display manager -- and so ahead
+        # of the graphical session and quickshell. The shell binds its
+        # Quickshell.Networking backend to NetworkManager's D-Bus name once,
+        # at process start, and quickshell 0.3.0 has no NameOwnerChanged
+        # recovery (basecamp/omarchy#7324). If the session wins the startup
+        # race on a first boot, the network panel shows NOT CONNECTED while
+        # the link is up (live IP/ping stats from the status poller), and the
+        # first-run DHCP click no-ops until the shell is restarted.
+        # Before= is ordering only -- no Requires= -- so a failed
+        # NetworkManager never blocks reaching the login screen.
+        systemd.services.NetworkManager = lib.mkIf config.networking.networkmanager.enable {
+          before = [ "display-manager.service" ];
+        };
+
         # External monitor brightness over DDC/CI (omarchy-brightness-display-ddc).
         # Loads i2c-dev and creates the i2c group; the user still needs to be
         # in that group (consumer's users.users.<name>.extraGroups, same model
