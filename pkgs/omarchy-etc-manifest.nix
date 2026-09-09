@@ -13,6 +13,9 @@
 #   covered  — satisfied by an already-existing mechanism (see comment)
 #   na       — Arch-stack specific, no NixOS counterpart (reason in comment)
 {
+  # v4.0.3: mise tool_alias config exposing Cursor's launcher without its
+  # bundled Node (mise model rejected — the catalog is final).
+  "mise/conf.d/omarchy.toml" = "na";
   # v4.0.2: upstream hardened the CUPS account separation and then removed
   # automatic printer discovery entirely (migration 1788009111 drops
   # cups-browsed). NixOS matches: services.printing stays on, browsed is
@@ -57,5 +60,7 @@
   "systemd/system/plocate-updatedb.service.d/ac-only.conf" = "native"; # services.locate (plocate) + systemd.services.update-locatedb ConditionACPower (nixpkgs unit name)
   "systemd/system/user@.service.d/10-faster-shutdown.conf" = "native"; # systemd.services."user@".serviceConfig.TimeoutStopSec = "5s"
   "systemd/user.conf.d/20-omarchy-nofile.conf" = "native"; # systemd.user.settings.Manager (post-26.05) / systemd.user.extraConfig (26.05) DefaultLimitNOFILE — version-dependent
+  "tmpfiles.d/omarchy-nopasswd-sudo.conf" = "na"; # boot-time cleanup of transient sudoers grants from omarchy-sudo-passwordless — that script is a declarative-note stub on NixOS, so no grant is ever written
   "tmpfiles.d/omarchy-zswap.conf" = "native"; # systemd.tmpfiles.rules: w! zswap enabled=N (boot-only)
+  "xdg/kitty/kitty.conf" = "vendored"; # environment.etc."xdg/kitty/kitty.conf" — v4.0.3 moved kitty's base defaults here; the user seed became a thin include/override file on top
 }

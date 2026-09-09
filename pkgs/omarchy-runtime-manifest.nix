@@ -227,6 +227,28 @@
     };
 
     # --- user-safe: kept verbatim; `allow` lists the audited leftovers ------
+    # v4.0.3 AI wave. The Hermes pair is unreachable on NixOS (hermes is not
+    # on the pin — the menu entries are dropped); kept verbatim with their
+    # user-scope leftovers declared. OpenClaw IS installable here (catalog
+    # entry install.ai.openclaw): systemctl --user disable --now of the
+    # per-user openclaw-gateway unit, plus $HOME config cleanup — user scope
+    # only, package removal routes into omarchy-pkg-drop.
+    omarchy-install-ai-hermes = {
+      class = "user-safe";
+      # systemctl --user enable/start of the per-user hermes gateway unit.
+      allow = [ "systemctl-user" ];
+    };
+    omarchy-remove-ai-hermes = {
+      class = "user-safe";
+      # systemctl --user disable/stop of the per-user hermes gateway unit.
+      allow = [ "systemctl-user" ];
+    };
+    omarchy-remove-ai-openclaw = {
+      class = "user-safe";
+      # systemctl --user disable --now of the per-user openclaw-gateway
+      # unit + daemon-reload/reset-failed (all --user scope).
+      allow = [ "systemctl-user" ];
+    };
     omarchy-audio-tuning = {
       class = "user-safe";
       # systemctl --user manages ONLY the per-user omarchy-speaker-tuning

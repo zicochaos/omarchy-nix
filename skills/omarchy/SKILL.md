@@ -228,9 +228,9 @@ hyprctl configerrors
 Resolve every reported error before declaring success.
 
 Before rebinding a key, inspect current bindings with
-`omarchy menu keybindings --print`. If the key already exists, call
-`hl.unbind(...)` before the new `o.bind(...)` and tell the user what it
-previously did.
+`omarchy menu keybindings --print`. If the key already exists, use
+`o.rebind(...)` to replace it (and tell the user what it previously did);
+use `o.bind(...)` only to add a genuinely new key.
 
 Window-rule syntax changes frequently. Check the documentation for the
 installed Hyprland version before writing rules. Prefer Omarchy's
@@ -420,7 +420,7 @@ for:
 
 - "Change my theme to catppuccin" → `omarchy theme set catppuccin`
 - "Add a keybinding for Super+E to open the file manager" → check existing
-  bindings first, `hl.unbind` if needed, then `o.bind` in
+  bindings first, then `o.rebind` to replace one or `o.bind` to add one in
   `~/.config/hypr/bindings.lua`
 - "Configure my external monitor" → edit `~/.config/hypr/monitors.lua`,
   then `hyprctl reload` + `hyprctl configerrors`

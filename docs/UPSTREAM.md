@@ -8,7 +8,7 @@ either deliberate NixOS-isms or known gaps, not features.
 
 Omarchy is DHH's "Beautiful, Modern & Opinionated Linux", a Wayland
 desktop distribution, currently on the Quattro generation
-(`v4.0.2` released 2026-09; the `quattro` branch is upstream's default
+(`v4.0.3` released 2026-09; the `quattro` branch is upstream's default
 and this port tracks it — the vendored `version` file still reads
 `4.0.0.alpha`). This port
 tracks that branch via the `omarchy-src` flake input.
@@ -25,7 +25,7 @@ repo:
 - **Lua-based Hyprland config (≥0.56).** `~/.config/hypr/hyprland.lua`
   `dofile`s `$OMARCHY_PATH/default/hypr/bootstrap.lua`, then `require()s
   default.hypr.omarchy` (defaults) + `hypr.*` (user overrides).
-- **~444 `omarchy-*` bash scripts** in `bin/` do everything. Dispatched
+- **~455 `omarchy-*` bash scripts** in `bin/` do everything. Dispatched
   via the `omarchy` router or called bare from PATH.
 - **TOML + sed template theme engine.** `omarchy-theme-set` copies a
   theme's `colors.toml` into a staging dir, runs
@@ -98,8 +98,8 @@ declared by the NixOS module instead.
 
 ## Upstream defaults (from the vendored source)
 
-These are the defaults encoded in the upstream source (rev `110cb8f5`,
-post-v4.0.2 quattro branch). Compare against them when verifying
+These are the defaults encoded in the upstream source (rev `5b91db50`,
+post-v4.0.3 quattro branch). Compare against them when verifying
 parity:
 
 - **Theme**: `ethereal` (22 rendered files in `current/theme/`).
@@ -168,10 +168,10 @@ build); this table is the feature-level summary.
 |---|---|---|
 | **Adapted** | Works, in a NixOS-native form | Install/Remove menu (catalog → `omarchy-nix-add/remove` → `omarchy-packages.json` → rebuild, transactional with audit logs); Update → Omarchy (flake update + `nixos-rebuild switch`); migrations (fail-closed classifier, NixOS adapters); firmware update (`fwupdmgr`); presence checks (`omarchy-pkg-present` via catalog + PATH); first-run / finalize-user (vendored, runs on first login); systemd user units (path-adapted, enabled); lock-screen PAM (declared natively); zram swap (`zramSwap`, upstream's zstd/full-RAM profile); cross-arch execution (opt-in `omarchy.binfmtEmulatedSystems` → `boot.binfmt.emulatedSystems`); sshd key add/remove; `omarchy-update-restart` (compares `/run/{booted,current}-system/kernel`); install-dev-env (without `/etc/php` edits); snapshots (print a NixOS generations note); the three system-level defaults behind skipped upstream migrations (logind `InhibitDelayMaxSec=15` via `services.logind.settings`, `NetworkManager-wait-online` mask, Wi-Fi powersave off via `networking.networkmanager.wifi.powersave`); bundled Chromium extensions (`--load-extension` in the seeded `chromium-flags.conf` path-adapted to `/run/current-system/sw/share/omarchy`, existing user files rewritten by migration adapter `1780517689.sh`) |
 | **N/A** | No NixOS analogue; removed or stubbed | AUR (menu entry deleted; `omarchy-pkg-aur-accessible` always exits 1); pacman channels/mirrors (`omarchy-channel-current` prints `nixos`); limine + snapper (systemd-boot + boot generations instead); direct-boot, hybrid-gpu, hibernation-setup, DNS, fido2, passwordless-sudo, plymouth/timezone refresh, sunshine (declarative-note stubs; their menu entries are deleted); pacman keyring/orphans/reinstall helpers; `mise` dev-tool manager (Arch tarballs under `/opt/packages`; `mise.sh`/`mise-work.sh` no-op'd; **rejected** as a feature: the dev menu installs global Nix packages via the catalog, which is the final model) |
-| **Deferred** | Possible on NixOS, not done | NordVPN service (menu entry deleted; verified 2026-07-31: the package + `services.nordvpn` already reached the 26.05 channel after our `2f5a153c27` pin — re-add as a catalog feature once the pin reaches a revision carrying both); zen / brave-origin browsers (AUR-only, no nixpkgs attrs on the 26.05 pin; menu entries deleted) |
+| **Deferred** | Possible on NixOS, not done | NordVPN service (menu entry deleted; verified 2026-07-31: the package + `services.nordvpn` already reached the 26.05 channel after our `2f5a153c27` pin — re-add as a catalog feature once the pin reaches a revision carrying both); zen / brave-origin browsers (AUR-only, no nixpkgs attrs on the 26.05 pin; menu entries deleted); Cursor CLI + Muse Code default-agent choices and the Perplexity app (v4.0.3; no nixpkgs attrs on the pin — the nixpkgs `muse` attr is the MusE audio sequencer, a name collision — menu entries deleted; revisit when attrs land) |
 | **Blocked / untested** | Needs an external precondition | Fingerprint **reader** on real hardware (the PAM services themselves are declared and pamtester-verified in `checks.omarchy-ux`); real-hardware specifics of the behavioral surface; menu IPC, notifications, OSD, lock and polkit are covered in the VM by `checks.omarchy-ux` section (10) since 2026-07-29, but multi-monitor lock, fingerprint dialog and panel interactions still need a real-hardware pass |
 
-### Arch `/etc` overlay (37 files)
+### Arch `/etc` overlay (40 files)
 
 Upstream's `etc/` tree (copied to `/etc` by the Arch ISO installer) is
 classified file-by-file in `pkgs/omarchy-etc-manifest.nix`, enforced
@@ -215,7 +215,15 @@ file fails the build until classified). Summary by class:
   — upstream removed automatic printer discovery and the module sets
   `services.printing.browsed.enable = false`) and the
   `sudoers.d/omarchy-dns` / `omarchy-theme-browser` passwordless grants
-  (DNS and browser policy dirs are declarative here).
+  (DNS and browser policy dirs are declarative here). v4.0.3 additions,
+  also N/A: `mise/conf.d/omarchy.toml` (Cursor tool_alias; the mise model
+  is rejected here) and `tmpfiles.d/omarchy-nopasswd-sudo.conf`
+  (boot-time cleanup of transient sudoers grants from
+  `omarchy-sudo-passwordless`, which is a declarative-note stub here).
+  The third new file, `xdg/kitty/kitty.conf` (kitty's base defaults,
+  moved out of the user config in v4.0.3), is **vendored** via
+  `environment.etc."xdg/kitty/kitty.conf"` — kitty reads it through
+  XDG_CONFIG_DIRS, keeping upstream's override layering.
 
 ## When upstream updates
 

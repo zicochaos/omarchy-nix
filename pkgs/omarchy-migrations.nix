@@ -87,7 +87,9 @@
   "1784568652.sh" = "skip"; # mask NetworkManager-wait-online — native in the module
   #                           # (systemd.services.NetworkManager-wait-online.enable = false)
   "1784672586.sh" = "skip"; # quickshell-git via pacman (we ship nixpkgs quickshell)
-  "1784809451.sh" = "skip"; # /etc/updatedb.conf + plocate restart (system-level)
+  # v4.0.3: 1784809451 (/etc/updatedb.conf + plocate restart) was dropped
+  # upstream, superseded by the plocate-updatedb.service.d drop-in (vendored,
+  # system unit — services.locate is native here)
   "1784809452.sh" = "skip"; # snapper timeline cleanup (Arch/Btrfs snapper)
   "1784818437.sh" = "skip"; # PAM fingerprint lid gate (NixOS PAM is declarative)
   "1784909971.sh" = "skip"; # mise wrapper regen (mise model rejected — catalog is final)
@@ -178,4 +180,26 @@
   #                           # is declarative; omarchy-setup-security-sshd is nixos-adapted)
   "1788596255.sh" = "skip"; # vi via omarchy-pkg-add (declarative: module ships nvi as the `vi`
   #                           # command; the pin has no `vi` attr)
+  # --- v4.0.3 wave ---
+  "1786609204.sh" = "skip"; # qt6-multimedia via omarchy-pkg-add (declarative: module ships
+  #                           # qt6.qtmultimedia — native video wallpaper playback)
+  "1787215483.sh" = "skip"; # mise settings upgrade.auto_prune (mise model rejected — catalog is
+  #                           # final)
+  "1788577553.sh" = "skip"; # cursor-agent via mise wrapper (mise model rejected; cursor-agent
+  #                           # not on the pin — setup.default.agent.cursor-agent dropped)
+  "1788619462.sh" = "skip"; # Hermes theme hand-over (hermes not in nixpkgs; pkg-present
+  #                           # self-gates to exit 0, and omarchy-theme-set-hermes is $HOME-only)
+  "1788662350.sh" = "skip"; # repair root-owned system-sleep hooks + supergfxd drop-in
+  #                           # (/usr/lib/systemd — NixOS owns system units declaratively)
+  "1788724825.sh" = "skip"; # Muse Code via mise wrapper (mise model rejected; Meta's muse is
+  #                           # NOT the nixpkgs `muse` attr — that is the MusE audio sequencer;
+  #                           # setup.default.agent.muse dropped)
+  "1788745941.sh" = "user-safe"; # Kitty config repair: stock-sha refresh via
+  #                           # omarchy-refresh-config + commenting out unrestricted
+  #                           # allow_remote_control ($HOME only)
+  "1788848726.sh" = "skip"; # retire the legacy user icon font (guards on the Arch path
+  #                           # /usr/share/fonts/omarchy/omarchy.ttf; NixOS installs never ran
+  #                           # the quattro upgrader and the module ships the font declaratively)
+  "1788862626.sh" = "skip"; # Elgato Cam Link 4K v4l2 relay setup (Arch hardware fixup: system
+  #                           # units, udev trigger, setfacl)
 }

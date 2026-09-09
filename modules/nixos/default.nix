@@ -334,6 +334,11 @@ let
         # for the shell — v4.0.2 stores theme backgrounds as webp
         # (migration 1787133200 installs the Arch package; we ship it).
         qt6.qtimageformats
+        # qt6-multimedia (nixpkgs attr qt6.qtmultimedia): native video
+        # wallpaper playback — v4.0.3 (migration 1786609204 installs the
+        # Arch qt6-multimedia + qt6-multimedia-ffmpeg pair; nixpkgs builds
+        # qtmultimedia with the ffmpeg backend included).
+        qt6.qtmultimedia
         # vi: a standard terminal editor (v4.0.2; migration 1788596255
         # installs the Arch `vi` package). The nixpkgs 26.05 pin has no `vi`
         # attr — nvi provides the same `vi` command.
@@ -1021,6 +1026,16 @@ in
         # string coercion of null (same pattern as (A)/(B1)/(H)/(J)).
         environment.etc."gnupg/dirmngr.conf" = lib.mkIf (cfg.package != null) {
           source = "${cfg.package}/share/omarchy/etc/gnupg/dirmngr.conf";
+        };
+
+        # Kitty base defaults (upstream etc/xdg/kitty/kitty.conf, v4.0.3):
+        # upstream moved the stock config (font, window, keybindings,
+        # listen_on) to the system XDG dir and reduced the user seed to a
+        # thin include/override file. kitty reads /etc/xdg via
+        # XDG_CONFIG_DIRS, so vendoring keeps upstream's layering — user
+        # overrides in ~/.config/kitty keep winning.
+        environment.etc."xdg/kitty/kitty.conf" = lib.mkIf (cfg.package != null) {
+          source = "${cfg.package}/share/omarchy/etc/xdg/kitty/kitty.conf";
         };
 
         # sudo parity (upstream etc/sudoers.d/omarchy-passwd-tries and

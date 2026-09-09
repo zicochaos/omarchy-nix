@@ -21,7 +21,7 @@ Quattro generation, [upstream PR #6231](https://github.com/basecamp/omarchy/pull
 Upstream Quattro's "desktop" is a **single `quickshell` process** that provides
 the bar, launcher, menus, notifications, OSDs, control panels, lock screen,
 and polkit agent as plugins, plus a **Lua-based Hyprland config** (≥0.56),
-~383 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
+~455 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
 engine**. Waybar/wofi/mako/hyprlock/hyprpaper/swaybg/polkit-gnome are gone
 in Quattro. This port packages the upstream tree at `$out/share/omarchy`,
 exports `OMARCHY_PATH`, and seeds `~/.config/hypr/hyprland.lua` so Hyprland's
@@ -52,7 +52,8 @@ docs/                  # install.md, options.md, UPSTREAM.md, vm.md, nix-best-pr
 - `nixpkgs` → `nixos-26.05` (stable, so consumers on a stable NixOS install
   do NOT get shifted to unstable by `nixos-rebuild switch --flake`).
 - `omarchy-src` → `github:basecamp/omarchy/quattro`, `flake = false` (it is not
-  a flake; we vendor it).
+  a flake; we vendor it). Upstream renamed the org to `omacom/omarchy`
+  (2026-09); the old URL redirects, so the input is unchanged.
 - `hyprland` → `github:hyprwm/Hyprland` (needs ≥0.56 for Lua config).
 - `home-manager` → `github:nix-community/home-manager`, follows `nixpkgs`.
 - `quickshell`: `pkgs.quickshell` (nixpkgs, v0.3.0). Sufficient for the

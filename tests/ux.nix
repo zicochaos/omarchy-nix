@@ -1032,7 +1032,13 @@
         # gained the captive-portal sign-in action
         # (["omarchy-launch-browser", Model.captivePortalUrl] — url validated
         # upstream; launcher resolves the NixOS .desktop glob).
-        qml_exec_baseline = 122
+        # v4.0.3: 122 → 124 — lock/Service.qml gained a fingerprint
+        # pre-check (bash -c guards on /etc/pam.d/omarchy-lock-fingerprint +
+        # command -v fprintd-list, echoes no and skips the whole path when
+        # either is absent — fingerprint stays out of scope here) and
+        # battery/Service.qml gained powerprofilesctl get (argv form; the
+        # module enables power-profiles-daemon, so the CLI is on PATH).
+        qml_exec_baseline = 124
         qml_exec_count = int(machine.succeed(
             as_demo(
                 "grep -rE --include=\"*.qml\" "
@@ -1357,8 +1363,17 @@
 
     with machine.nested("notification renders (OCR) and dismisses"):
         machine.succeed(as_demo("omarchy-shell notifications dismissAll || true"))
+        # -u critical: Service.qml's durationFor() returns 0 for critical
+        # urgency (never expires); every other urgency is capped at
+        # maxPopupDuration=30s regardless of the requested expire-time.
+        # In-VM OCR retries are slow enough (grim+magick+tesseract on a
+        # 2560x1600 frame ≈ 10s each) that a normal-urgency popup expired
+        # mid-loop on the v4.0.3 bump — the layer unmaps, later grims
+        # capture a cardless desktop, and the wait times out chasing a
+        # popup that is already gone. Critical keeps the card on screen
+        # for the whole assertion window; dismissal below still ends it.
         machine.succeed(
-            as_demo("omarchy-notification-send \"Acceptance notification\" \"Shell notification rendering\" --expire-time=120000")
+            as_demo("omarchy-notification-send -u critical \"Acceptance notification\" \"Shell notification rendering\"")
         )
         machine.wait_until_succeeds(layer_probe("omarchy-notifications", True), timeout=30)
         machine.screenshot("behavioral-notification")
@@ -1372,10 +1387,21 @@
         # it is OCR fragility, not a font fallback). Grayscale + 200%
         # upscale + -normalize made the title 10/10 in the same run, same
         # popup. A region crop proved unnecessary (10/10 without), so the
-        # pipeline stays layout-independent (no hardcoded screen region).
+        # pipeline stayed layout-independent (no hardcoded screen region).
+        # v4.0.3 re-tune: the bump's wallpaper/rasterization changes made
+        # the FULL-FRAME -normalize histogram lose the popup text again
+        # (0/2 strings, bar-only reads; reproduced deterministically
+        # outside the VM with the pinned tesseract on the VM's own grim
+        # artifact). The notifications layer surface itself is full-screen
+        # (the popup floats inside it), so layer geometry cannot drive a
+        # crop — instead crop the top-right quadrant where the popup
+        # anchors (zone, not card coordinates): the original -normalize
+        # then has a local histogram again and reads title+body with the
+        # pinned toolchain (psm 6 and 11). Negative fixture below still
+        # applies to the same chain.
         ocr_chain = (
             "WAYLAND_DISPLAY=wayland-1 grim /tmp/notif.png"
-            + " && magick /tmp/notif.png -colorspace Gray -resize 200% -normalize /tmp/notif-proc.png"
+            + " && magick /tmp/notif.png -crop 640x400+640+0 +repage -colorspace Gray -resize 200% -normalize /tmp/notif-proc.png"
             + " && tesseract /tmp/notif-proc.png stdout --psm 11 2>/dev/null"
         )
         try:
@@ -1385,11 +1411,23 @@
             )
         except Exception:
             # Failure artifacts: the check log must explain
-            # the mismatch — raw OCR text, word-level TSV confidence and
-            # the captured PNG (base64) from the last failed attempt.
+            # the mismatch — raw OCR text, word-level TSV confidence,
+            # the captured PNG (base64) from the last failed attempt, the
+            # full layer map (popup geometry/visibility), and the shell's
+            # own log tail (QML errors land there, never on the console).
             machine.log("notification OCR raw text: " + machine.succeed("cat /tmp/notif-ocr.txt 2>/dev/null || true"))
             machine.log("notification OCR tsv: " + machine.succeed("tesseract /tmp/notif-proc.png stdout --psm 11 tsv 2>/dev/null | awk -F'\\t' '$1 == 5 {print $11, $12}' || true"))
             machine.log("notification png base64: " + machine.succeed("base64 -w0 /tmp/notif.png || true"))
+            machine.log(
+                "notification layer map: "
+                + machine.succeed(as_demo("hyprctl -j layers") + " || true")
+            )
+            machine.log(
+                "quickshell log tail: "
+                + machine.succeed(
+                    as_demo("tail -c 8000 /run/user/1000/quickshell/by-id/*/log.qslog 2>/dev/null | tail -40 || true")
+                )
+            )
             raise
 
         # Note: ~/.local/state/omarchy/notifications.json is NOT a usable

@@ -41,7 +41,7 @@ rebuild. These tests do not establish live bar/shell color changes, the
 SDDM login flow, or a complete update followed by activation. Those paths
 still need separate desktop verification after relevant changes.
 
-> Upstream's Quattro line is at `v4.0.2` (2026-09); this port tracks the
+> Upstream's Quattro line is at `v4.0.3` (2026-09); this port tracks the
 > `quattro` branch (release + post-release fixes). The vendored `version`
 > file still reads `4.0.0.alpha` — upstream does not bump it at release time.
 
@@ -57,6 +57,23 @@ module/build verification.
 
 ## Changelog
 
+- **2026-09-08** — upstream `v4.0.3` (103 commits since our previous
+  pin): mostly security backports (plugin-auth boundary, USB device
+  names as Hyprland Lua, FIDO2 authfile staging, theme-name shell
+  syntax, webapp escaping, DNS helper PATH pinning, nopasswd sudo
+  expiry failing closed). Feature side: new AI menu entries — OpenClaw
+  (kept, rewired to the catalog; the nixpkgs package is MIT but flagged
+  insecure, entry-scoped permit like bitwarden's electron), Perplexity +
+  Cursor CLI + Muse Code (dropped: no nixpkgs attrs on the pin; the
+  nixpkgs `muse` is the MusE audio sequencer, a name collision). Kitty's
+  base defaults moved to `etc/xdg/kitty/kitty.conf` (vendored via
+  `environment.etc`, the user seed became a thin override file), native
+  video wallpaper playback (`qt6.qtmultimedia`), `mise` → `mise-bin`
+  upstream (no port change — the mise model is rejected here), and an
+  icon-font retirement. QML exec baseline 122 → 124 (fingerprint
+  pre-check in the lock plugin — gracefully inert without fprintd — and
+  a `powerprofilesctl get` reader in the battery service). 9 migrations
+  classified, 3 new etc/ files, 11 new bin scripts.
 - **2026-09-05** — upstream `v4.0.2` (v4.0.1 + v4.0.2, 240 commits): the
   security wave — sshd/Plymouth/CUPS/Windows-VM hardening, notification
   click actions run as argv (no shell strings), passwordless-root sudoers

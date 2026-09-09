@@ -1363,6 +1363,7 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "'omarchy-install-terminal ghostty'" "'omarchy-nix-add install.terminal.ghostty'" \
           --replace-fail "'omarchy-install-terminal kitty'" "'omarchy-nix-add install.terminal.kitty'" \
           --replace-fail "omarchy-install-app 'LM Studio' lmstudio-bin" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.lm-studio'" \
+          --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-ai-openclaw" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.openclaw'" \
           --replace-fail 'if omarchy-cmd-present nvidia-smi; then ollama_pkg=ollama-cuda; elif omarchy-cmd-present rocminfo; then ollama_pkg=ollama-rocm; else ollama_pkg=ollama; fi; omarchy-install-app Ollama \"$ollama_pkg\"' "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.ollama'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-steam" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.gaming.steam'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-retroarch" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.gaming.retroarch'" \
@@ -1443,14 +1444,23 @@ stdenv.mkDerivation (finalAttrs: {
         # --replace-fail): omp (oh-my-pi), agy (Antigravity — upstream's
         # Gemini replacement; antigravity-cli is not on the pin yet), ori
         # and hermes default-agent choices, the Hermes Desktop app pair, and
-        # T3 Code (t3code-bin).
+        # T3 Code (t3code-bin). v4.0.3 adds: cursor-agent and muse default-
+        # agent choices (Meta's muse is not on the pin — the nixpkgs `muse`
+        # attr is the MusE audio sequencer, a name collision) and the
+        # Perplexity app pair (perplexity attr does not exist). OpenClaw IS
+        # on the pin (MIT) and keeps its entries, rewired to the catalog
+        # below.
         for drop_key in \
           setup.default.agent.omp \
           setup.default.agent.agy \
           setup.default.agent.ori \
           setup.default.agent.hermes \
+          setup.default.agent.cursor-agent \
+          setup.default.agent.muse \
           install.ai.hermes \
           remove.ai.hermes \
+          install.ai.perplexity \
+          remove.ai.perplexity \
           install.ai.t3-code \
           remove.ai.t3-code
         do
@@ -1468,8 +1478,10 @@ stdenv.mkDerivation (finalAttrs: {
         # agentMenuEntries (let) and are inserted after the ollama entry
         # (grep guard keeps this fail-closed, like --replace-fail).
         # Pre-insert: fail if upstream already ships any of the keys we insert
-        # (duplicate-key protection; install.ai.ollama / install.ai.lm-studio
-        # are upstream-owned and not in this list).
+        # (duplicate-key protection; install.ai.ollama / install.ai.lm-studio /
+        # install.ai.openclaw are upstream-owned, not in this list — the
+        # openclaw entry stays upstream's and is rewired to the catalog in
+        # the menu substitution block above).
         for key in \
           install.ai.claude \
           install.ai.codex \
@@ -1488,16 +1500,21 @@ stdenv.mkDerivation (finalAttrs: {
         sed -i '/"install.ai.ollama":/r ${agentMenuEntries}' default/omarchy/omarchy-menu.jsonc
 
         # omarchy-default-agent: upstream lazy-installs agents with
-        # `mise use -g` (or, for Hermes, its own mise installer); mise-fetched
-        # prebuilt binaries don't run on NixOS, so route installation through
-        # the nix catalog instead. Probe the PATH (an agent installed via the
-        # catalog or by hand counts) and only write the default once the
-        # binary exists. The upstream --install re-run inside the floating
-        # terminal is kept: it lands in the patched agent_install below.
+        # `mise use -g` (or, for Hermes/OpenClaw, their own installers);
+        # mise-fetched prebuilt binaries don't run on NixOS, so route
+        # installation through the nix catalog instead. Probe the PATH (an
+        # agent installed via the catalog or by hand counts) and only write
+        # the default once the binary exists. The upstream --install re-run
+        # inside the floating terminal is kept: it lands in the patched
+        # agent_install below. v4.0.3: the mise branch guards the probes with
+        # a user_install() wrapper check (Cursor's installer symlinks
+        # ~/.local/bin) — the PATH probe subsumes it, so only the two
+        # agent_* lines are rewritten and the (now unreferenced) helper is
+        # left as harmless dead code.
         substituteInPlace bin/omarchy-default-agent \
-          --replace-fail 'agent_present() { mise where "$agent_package" &>/dev/null; }' \
+          --replace-fail 'agent_present() { user_install || mise where "$agent_package" &>/dev/null; }' \
                          'agent_present() { ! omarchy-cmd-missing "$agent"; }' \
-          --replace-fail 'agent_install() { mise use -g "$agent_package"; }' \
+          --replace-fail 'agent_install() { user_install || mise use -g "$agent_package"; }' \
                          'agent_install() { ! omarchy-cmd-missing "$agent" || omarchy-nix-add "install.ai.$agent"; }' \
           --replace-fail 'agent_present() { "$agent_installer" --check; }' \
                          'agent_present() { ! omarchy-cmd-missing "$agent"; }' \
