@@ -57,6 +57,20 @@ module/build verification.
 
 ## Changelog
 
+- **2026-09-12** — upstream refresh to `31bd80da` (11 commits past the
+  v4.0.3 pin; no new upstream tag, so this is still quattro post-v4.0.3):
+  the Claude Desktop app pair (dropped — `claude-desktop` is not on the
+  nixpkgs pin, and upstream's `install.ai.claude` id is owned here by the
+  catalog's Claude Code agent entry), Hermes desktop install fixes + a
+  portrait icon in the icon font, `basecamp-cli` as a lazy mise tool
+  (skipped — the mise model is rejected here), a T3 Code theme re-stage
+  migration (skipped — T3 Code is not packaged here), and a KEF LSX II LT
+  USB no-suspend WirePlumber config (migration `user-safe`, plus a seed
+  for fresh installs). Plus a community contribution landed (ported from
+  the mirror with authorship preserved): `omarchy-shell`/`qs`/`jq` on the
+  `omarchy-sleep-lock` unit PATH — until then the lock request never
+  reached the shell, so logind suspended the session unlocked after
+  `InhibitDelayMax` ([#5](https://github.com/zicochaos/omarchy-nix/pull/5)).
 - **2026-09-08** — upstream `v4.0.3` (103 commits since our previous
   pin): mostly security backports (plugin-auth boundary, USB device
   names as Hyprland Lua, FIDO2 authfile staging, theme-name shell
