@@ -57,6 +57,20 @@ module/build verification.
 
 ## Changelog
 
+- **2026-09-13** — `omarchy update` now rebuilds with `boot`, not
+  `switch`, by default (ported from mirror PR #7 with authorship
+  preserved; fixes mirror issue #6). A `switch` on a large nixpkgs jump
+  legitimately restarts the user session (pipewire, portals, uwsm
+  plumbing), which killed the updater itself — it runs attached to a
+  terminal inside that session — and silently skipped every
+  post-rebuild step (migrations, post-update hooks, status, the reboot
+  prompt). `boot` never touches running units, so the update flow
+  completes and the reboot prompt applies the generation atomically;
+  `OMARCHY_NIX_REBUILD_CMD=switch` restores live activation, and
+  `omarchy-nix-add`/`omarchy-nix-remove` keep `switch` (their delta
+  rarely restarts the session). A notice after the rebuild surfaces the
+  boot-pending state.
+
 - **2026-09-12** — upstream refresh to `31bd80da` (11 commits past the
   v4.0.3 pin; no new upstream tag, so this is still quattro post-v4.0.3):
   the Claude Desktop app pair and a T3 Code theme re-stage migration.
