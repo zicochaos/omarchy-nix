@@ -237,6 +237,7 @@ in
           ${seedStubFrom fcitx5WaylandConf "fcitx5/conf/wayland.conf"}
           ${seedStub effPkg "imv/config"}
           ${seedStub effPkg "wireplumber/wireplumber.conf.d/bluetooth-a2dp-autoconnect.conf"}
+          ${seedStub effPkg "wireplumber/wireplumber.conf.d/kef-lsx-no-suspend.conf"}
 
           # --- apps
           ${seedStub effPkg "chromium-flags.conf"}

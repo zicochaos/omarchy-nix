@@ -197,9 +197,22 @@
   "1788745941.sh" = "user-safe"; # Kitty config repair: stock-sha refresh via
   #                           # omarchy-refresh-config + commenting out unrestricted
   #                           # allow_remote_control ($HOME only)
+
+  # --- post-v4.0.3 wave (31bd80da) ---
+  "1789130779.sh" = "user-safe"; # KEF LSX II LT USB sink no-suspend wireplumber conf.d
+  #                           # ($HOME copy via omarchy-refresh-config + wireplumber
+  #                           # user-unit restart; HM seeds the same file for fresh
+  #                           # installs, so only pre-existing homes need this)
   "1788848726.sh" = "skip"; # retire the legacy user icon font (guards on the Arch path
   #                           # /usr/share/fonts/omarchy/omarchy.ttf; NixOS installs never ran
   #                           # the quattro upgrader and the module ships the font declaratively)
   "1788862626.sh" = "skip"; # Elgato Cam Link 4K v4l2 relay setup (Arch hardware fixup: system
   #                           # units, udev trigger, setfacl)
+
+  # --- post-v4.0.3 wave (31bd80da) ---
+  "1788941927.sh" = "skip"; # basecamp-cli via mise wrapper (mise model rejected — catalog is
+  #                           # final; basecamp is not on the pin and has no menu entry)
+  "1789091250.sh" = "skip"; # T3 Code theme re-stage (t3code-bin is not in nixpkgs and the
+  #                           # menu pair is dropped at package time, so omarchy-pkg-present
+  #                           # always exits 1 and the migration self-skips)
 }

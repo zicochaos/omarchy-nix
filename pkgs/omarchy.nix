@@ -1449,7 +1449,10 @@ stdenv.mkDerivation (finalAttrs: {
         # attr is the MusE audio sequencer, a name collision) and the
         # Perplexity app pair (perplexity attr does not exist). OpenClaw IS
         # on the pin (MIT) and keeps its entries, rewired to the catalog
-        # below.
+        # below. The post-v4.0.3 Claude Desktop app pair joins them:
+        # claude-desktop is not on the pin, and upstream's install.ai.claude
+        # id is owned by the agent-entry injection below (the pre-insert
+        # duplicate-key guard would fail the build otherwise).
         for drop_key in \
           setup.default.agent.omp \
           setup.default.agent.agy \
@@ -1461,6 +1464,8 @@ stdenv.mkDerivation (finalAttrs: {
           remove.ai.hermes \
           install.ai.perplexity \
           remove.ai.perplexity \
+          install.ai.claude \
+          remove.ai.claude \
           install.ai.t3-code \
           remove.ai.t3-code
         do

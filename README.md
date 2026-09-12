@@ -388,7 +388,7 @@ Contributions landed so far:
      there. -->
 | Contributor | Landed contributions |
 | --- | --- |
-| <a href="https://github.com/madebydamo"><img src="https://github.com/madebydamo.png" width="44" valign="middle" alt="@madebydamo" /></a> **[@madebydamo](https://github.com/madebydamo)** | Resolving nested nixpkgs attribute paths from `omarchy-packages.json` ([#2](https://github.com/zicochaos/omarchy-nix/pull/2)); searching NixOS application dirs in `omarchy-launch-webapp` ([#3](https://github.com/zicochaos/omarchy-nix/pull/3)) |
+| <a href="https://github.com/madebydamo"><img src="https://github.com/madebydamo.png" width="44" valign="middle" alt="@madebydamo" /></a> **[@madebydamo](https://github.com/madebydamo)** | Resolving nested nixpkgs attribute paths from `omarchy-packages.json` ([#2](https://github.com/zicochaos/omarchy-nix/pull/2)); searching NixOS application dirs in `omarchy-launch-webapp` ([#3](https://github.com/zicochaos/omarchy-nix/pull/3)); putting `omarchy-shell`/`qs`/`jq` on the `omarchy-sleep-lock` unit PATH so the lock request reaches the shell before suspend ([#5](https://github.com/zicochaos/omarchy-nix/pull/5)) |
 | <a href="https://github.com/VirtualMachinist"><img src="https://github.com/VirtualMachinist.png" width="44" valign="middle" alt="@VirtualMachinist" /></a> **[@VirtualMachinist](https://github.com/VirtualMachinist)** | Ordering NetworkManager before the graphical session, fixing the quickshell network-panel race at session start ([#4](https://github.com/zicochaos/omarchy-nix/pull/4)) |
 
 ## License

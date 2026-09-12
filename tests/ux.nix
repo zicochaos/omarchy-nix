@@ -654,6 +654,25 @@
         as_demo("systemctl --user is-active --quiet omarchy-sleep-lock.service"),
         timeout=60,
     )
+    # The monitor execs omarchy-system-sleep-lock, which talks to the shell
+    # via bare omarchy-shell/qs/jq. A sparse unit PATH lets suspend proceed
+    # unlocked. Eval-time checks.omarchy-sleep-lock-path covers the option;
+    # this asserts the live generated unit.
+    sleep_env = machine.succeed(
+        as_demo("systemctl --user show -p Environment --value omarchy-sleep-lock.service")
+    ).strip()
+    sleep_path = ""
+    for item in sleep_env.split(" "):
+        if item.startswith("PATH="):
+            sleep_path = item[len("PATH="):]
+    assert sleep_path, (
+        "omarchy-sleep-lock.service has no PATH in Environment: %r" % sleep_env
+    )
+    for cmd in ("omarchy-shell", "qs", "jq"):
+        status, _ = machine.execute("PATH=%s command -v %s" % (sleep_path, cmd))
+        assert status == 0, (
+            "omarchy-sleep-lock PATH missing %s: %s" % (cmd, sleep_path)
+        )
     fcitx_load = machine.succeed(
         as_demo("systemctl --user show -p LoadState --value omarchy-fcitx5.service")
     ).strip()
