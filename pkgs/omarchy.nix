@@ -1093,7 +1093,16 @@ stdenv.mkDerivation (finalAttrs: {
       fi
     }
 
-    rebuild_cmd="''${OMARCHY_NIX_REBUILD_CMD:-switch}"
+    # Default boot, not switch: a switch on a large nixpkgs jump restarts
+    # the user session (pipewire, portals, uwsm plumbing), killing this
+    # updater mid-flow — everything after the rebuild (migrations,
+    # post-update hooks, status, the reboot prompt) would be silently
+    # skipped, because omarchy-update runs attached to a terminal inside
+    # that session. boot never touches running units, so the updater
+    # survives; the reboot prompt at the end of omarchy update activates
+    # the new generation atomically. OMARCHY_NIX_REBUILD_CMD=switch
+    # restores live activation.
+    rebuild_cmd="''${OMARCHY_NIX_REBUILD_CMD:-boot}"
 
     # The setuid sudo wrapper (/run/wrappers/bin/sudo) is provided by the
     # sourced omarchy-nix-pkglib.
@@ -1109,6 +1118,9 @@ stdenv.mkDerivation (finalAttrs: {
       run_or_print sudo nix flake update --flake "$flake_dir"
     fi
     run_or_print sudo nixos-rebuild "$rebuild_cmd" --flake "$flake_dir"
+    if [[ $rebuild_cmd == boot && ''${OMARCHY_NIX_UPDATE_DRY_RUN:-} != 1 ]]; then
+      echo "Boot default set — the new generation activates on reboot (offered at the end of omarchy update when the kernel changed)."
+    fi
     echo
     EOF
         chmod +x bin/omarchy-update-system-pkgs

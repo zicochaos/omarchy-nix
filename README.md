@@ -276,6 +276,17 @@ pulled for updates). An evaluation failure keeps the candidate instead of
 silently skipping it. An explicit `OMARCHY_NIX_FLAKE` that is invalid fails
 with diagnostics rather than falling back to another checkout.
 
+`omarchy update` rebuilds with **`boot`, not `switch`, by default**: a
+`switch` on a large nixpkgs jump legitimately restarts the user session
+(pipewire, portals, uwsm plumbing), which kills the updater itself — it runs
+attached to a terminal inside that session — and silently skips every
+post-rebuild step (migrations, post-update hooks, status, the reboot
+prompt). `boot` never touches running units; the reboot prompt at the end of
+the update activates the new generation atomically. Set
+`OMARCHY_NIX_REBUILD_CMD=switch` to restore live activation for small
+updates. `omarchy-nix-add`/`omarchy-nix-remove` keep `switch` — their delta
+rarely restarts the session.
+
 ### What `omarchy.enable = true` does
 
 System (NixOS module): the vendored upstream tree on the system profile
