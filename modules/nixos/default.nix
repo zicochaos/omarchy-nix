@@ -1334,17 +1334,30 @@ in
               ExecStart = "${cfg.package}/share/omarchy/bin/omarchy-migrate";
             };
           };
-          # sleep-lock script execs bare `bash`, `systemd-inhibit`, and
-          # `dbus-monitor`. User-unit PATH is sparse (no /run/current-system
-          # unless hyprland setPath is on), so put them on the unit PATH
-          # rather than rewriting the vendored script body.
+          # sleep-lock monitor execs bare `bash`, `systemd-inhibit`, and
+          # `dbus-monitor`. On PrepareForSleep it then runs
+          # omarchy-system-sleep-lock, which talks to the shell via bare
+          # `omarchy-shell` / `qs` / `jq` and notifies via
+          # `omarchy-notification-send`. User-unit PATH is sparse (no
+          # /run/current-system unless hyprland setPath is on), so put them
+          # on the unit PATH rather than rewriting the vendored script body.
+          # Hyprland is programs.hyprland.package (same as omarchy-migrate)
+          # so hyprctl matches the running compositor. The last entry
+          # resolves to $pkg/share/omarchy/bin.
           omarchy-sleep-lock = {
             wantedBy = [ "graphical-session.target" ];
-            path = with pkgs; [
-              bash
-              systemd
-              dbus
-            ];
+            path =
+              (with pkgs; [
+                bash
+                systemd
+                dbus
+                jq
+                quickshell
+              ])
+              ++ [
+                config.programs.hyprland.package
+                "${cfg.package}/share/omarchy"
+              ];
           };
           omarchy-recover-internal-monitor.wantedBy = [ "graphical-session-pre.target" ];
           # crash-watch: the v4.0.0 journal-fed coredump watcher (crash toast
