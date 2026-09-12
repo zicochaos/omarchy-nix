@@ -192,12 +192,19 @@ and `nixos-rebuild` internally. Useful controls:
 
 ```bash
 OMARCHY_NIX_FLAKE=/path/to/config omarchy update
-OMARCHY_NIX_REBUILD_CMD=build omarchy update
+OMARCHY_NIX_REBUILD_CMD=switch omarchy update   # live activation; default is boot
 OMARCHY_NIX_SKIP_FLAKE_UPDATE=1 omarchy update
 OMARCHY_NIX_UPDATE_DRY_RUN=1 omarchy update
 ```
 
-Review a dry run or `build` before a risky deployment. The full
+The update defaults to `boot` (never touches running units): a `switch` on
+a large nixpkgs jump restarts the graphical session and kills the updater
+mid-flow, silently skipping migrations/hooks/status (see issue #6). The
+reboot prompt at the end of the update activates the new generation (it
+fires when the kernel or Hyprland changed; otherwise the notice above is
+the signal).
+
+Review a dry run before a risky deployment. The full
 update wrapper can still run Omarchy migrations and hooks; a dry-run variable
 only suppresses the Nix update/rebuild core.
 
