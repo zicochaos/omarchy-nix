@@ -721,6 +721,14 @@ stdenv.mkDerivation (finalAttrs: {
     omarchy_path=''${OMARCHY_PATH:-/usr/share/omarchy}
     omarchy_path=''${omarchy_path%/}
 
+    # omarchy-nix: the session variable is the generation-independent stable
+    # system-profile path (see the module); resolve it to the ACTIVE store
+    # path so the package-version branch below matches. A dev checkout
+    # (anything else) keeps falling through to the dev report.
+    if [[ $omarchy_path == /run/current-system/sw/* ]]; then
+      omarchy_path=$(readlink -f "$omarchy_path")
+    fi
+
     # omarchy-nix: the package version lives in the store path
     # (/nix/store/<hash>-omarchy-<version>/share/omarchy).
     if [[ $omarchy_path == /nix/store/* ]]; then

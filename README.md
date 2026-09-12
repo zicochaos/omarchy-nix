@@ -69,7 +69,13 @@ module/build verification.
   `OMARCHY_NIX_REBUILD_CMD=switch` restores live activation, and
   `omarchy-nix-add`/`omarchy-nix-remove` keep `switch` (their delta
   rarely restarts the session). A notice after the rebuild surfaces the
-  boot-pending state.
+  boot-pending state. `OMARCHY_PATH`/`PATH` session entries now point at
+  the stable system-profile path instead of a store path (the mirror
+  issue #6 follow-up): every lookup re-resolves the active generation —
+  upstream's `/usr/share/omarchy` semantics — so after a `switch` the
+  update flow's post-rebuild steps (`omarchy-migrate`, post-update
+  hooks) see the new migration set and scripts immediately instead of
+  the stale login-time tree.
 
 - **2026-09-12** — upstream refresh to `31bd80da` (11 commits past the
   v4.0.3 pin; no new upstream tag, so this is still quattro post-v4.0.3):
@@ -304,7 +310,11 @@ rarely restarts the session.
 ### What `omarchy.enable = true` does
 
 System (NixOS module): the vendored upstream tree on the system profile
-with `OMARCHY_PATH` set as a session variable, the full upstream default
+with `OMARCHY_PATH` set as a session variable (deliberately the stable
+system-profile path, so every lookup re-resolves the active generation —
+the same semantics as upstream's static `/usr/share/omarchy`; a
+store-path value would freeze the tree at login and make the update
+flow's post-rebuild steps read stale migrations), the full upstream default
 package set from nixpkgs (foot, neovim, btop, lazygit, chromium, nautilus,
 libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 13
 upstream-owned packages packaged by this flake (aether, omacut, omawrite,

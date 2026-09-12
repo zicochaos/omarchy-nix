@@ -581,8 +581,17 @@ in
           # resolve the vendored tree via OMARCHY_PATH; a consumer override
           # that loses the package path breaks the desktop. Override
           # omarchy.package instead if a different tree is needed.
-          OMARCHY_PATH = "${cfg.package}/share/omarchy";
-          PATH = [ "${cfg.package}/share/omarchy/bin" ];
+          #
+          # Both values are deliberately generation-independent stable
+          # system-profile paths, NOT store paths: every lookup re-resolves
+          # the ACTIVE generation, mirroring upstream's static
+          # /usr/share/omarchy. A store-path value freezes the tree at
+          # login — after a `switch` the update flow's post-rebuild steps
+          # (omarchy-migrate, post-update hooks, sibling omarchy-* calls)
+          # keep reading the old, already-applied migration set and old
+          # scripts until re-login (mirror issue #6 follow-up).
+          OMARCHY_PATH = "/run/current-system/sw/share/omarchy";
+          PATH = [ "/run/current-system/sw/share/omarchy/bin" ];
           TERMINAL = lib.mkDefault "xdg-terminal-exec";
           # EDITOR/SUDO_EDITOR mirror default/bash/envs
           # (EDITOR="${EDITOR:-omarchy-launch-editor --inline}",
@@ -647,8 +656,11 @@ in
         # mirror default/bash/envs — env.d is shell, so the upstream `:-`
         # soft default works verbatim here.
         environment.etc."xdg/uwsm/env.d/10-omarchy".text = ''
-          export OMARCHY_PATH="${cfg.package}/share/omarchy"
-          export PATH="${cfg.package}/share/omarchy/bin:$PATH"
+          # Stable system-profile paths (see environment.sessionVariables
+          # above): re-resolve the active generation at every use, so a
+          # mid-session switch is immediately visible to omarchy-* scripts.
+          export OMARCHY_PATH="/run/current-system/sw/share/omarchy"
+          export PATH="/run/current-system/sw/share/omarchy/bin:$PATH"
           export TERMINAL=xdg-terminal-exec
           export EDITOR="''${EDITOR:-omarchy-launch-editor --inline}"
           export SUDO_EDITOR="$EDITOR"

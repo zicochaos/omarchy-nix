@@ -208,8 +208,12 @@
     # session-wide since upstream v4.0.0 (it made xdg-settings refuse to
     # change the default browser); interactive shells get it from
     # default/bash/envs instead — so its absence here is the contract.
-    assert any(l.startswith("OMARCHY_PATH=") for l in env.splitlines()), \
-        "OMARCHY_PATH missing from session env"
+    # OMARCHY_PATH must be the generation-independent stable profile path:
+    # every use re-resolves the active generation, so post-rebuild steps of
+    # `omarchy update` (migrations, hooks) see the new tree after a switch.
+    # A store-path value would freeze the tree at login.
+    assert "OMARCHY_PATH=/run/current-system/sw/share/omarchy" in env.splitlines(), \
+        "OMARCHY_PATH must be the stable system-profile path in the session env"
     assert "BROWSER=omarchy-launch-browser" not in env.splitlines(), \
         "BROWSER=omarchy-launch-browser must not be session-wide (v4.0.0)"
     assert "TERMINAL=xdg-terminal-exec" in env.splitlines(), \
@@ -1236,12 +1240,21 @@
             "omarchy-sleep-lock", "omarchy-speaker-tuning",
             "omarchy-tailscale-receive",
         ]
-        # Derive package root from OMARCHY_PATH ($out/share/omarchy) in
-        # Python so we never put a shell parameter-expansion brace form
-        # inside this Nix testScript string (Nix would interpolate it).
-        omarchy_path = machine.succeed(as_demo("printenv OMARCHY_PATH")).strip()
-        assert omarchy_path.endswith("/share/omarchy"), omarchy_path
-        units_dir = omarchy_path[: -len("/share/omarchy")] + "/lib/systemd/user"
+        # Derive the package store root in Python so we never put a shell
+        # parameter-expansion brace form inside this Nix testScript string
+        # (Nix would interpolate it). The session variable is deliberately
+        # the stable profile path, and the merged profile dirs are real
+        # directories — so resolve through a profile bin LEAF symlink, which
+        # points into the store. $out/lib/systemd/user is not linked into
+        # the profile at all: only the store path has the package's own unit
+        # set for this drift check (the merged profile lib would mix in
+        # every other package's units).
+        store_version_bin = machine.succeed(
+            as_demo("readlink -f /run/current-system/sw/share/omarchy/bin/omarchy-version")
+        ).strip()
+        package_root = store_version_bin[: -len("/share/omarchy/bin/omarchy-version")]
+        assert package_root.startswith("/nix/store/"), package_root
+        units_dir = package_root + "/lib/systemd/user"
         shipped = machine.succeed(
             "ls -1 " + units_dir + "/*.service | xargs -n1 basename "
             "| sed 's/\\.service$//' | sort"
