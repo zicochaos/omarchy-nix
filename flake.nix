@@ -63,8 +63,12 @@
       # (B0 allowUnfreePredicate) and let broken catalog unfreeNames slip
       # through. The default app set needs obsidian; the ux fixture enables
       # the steam feature while nixpkgs.pkgs isDefined (B0 skipped), so steam
-      # + steam-unwrapped must live here too. Menu installs on the real
-      # consumer path (no external pkgs) are covered by B0 from the catalog.
+      # + steam-unwrapped must live here too. claude-desktop is named here
+      # only because it is an unfree derivation EXPOSED as a packages output
+      # (nix flake check evaluates every attr) — the consumer Install-menu
+      # path stays entry-scoped via B0 from the catalog. Menu installs on
+      # the real consumer path (no external pkgs) are covered by B0 from
+      # the catalog.
       pkgsFor =
         system:
         import nixpkgs {
@@ -75,6 +79,7 @@
               "obsidian"
               "steam"
               "steam-unwrapped"
+              "claude-desktop"
             ];
         };
     in
@@ -122,8 +127,11 @@
           # try: tobi's experiment-worktree CLI. hyprland-guiutils: hyprwm
           # dialog/run/welcome tools. hyprland-preview-share-picker: xdp
           # screencopy picker. omarchy-nvim: LazyVim starter + omarchy overlay.
+          # claude-desktop: Anthropic's own Debian .deb unpacked + wrapped
+          # (nixpkgs packaging pending in NixOS/nixpkgs#537215).
           aether = pkgs.callPackage ./pkgs/aether.nix { };
           asdcontrol = pkgs.callPackage ./pkgs/asdcontrol.nix { };
+          claude-desktop = pkgs.callPackage ./pkgs/claude-desktop.nix { };
           omacalc = pkgs.callPackage ./pkgs/omacalc.nix { };
           omacut = pkgs.callPackage ./pkgs/omacut.nix { };
           omawrite = pkgs.callPackage ./pkgs/omawrite.nix { };
@@ -210,6 +218,13 @@
                   ]
                 );
                 omarchy.nvimPackage = lib.mkDefault hostPackages.omarchy-nvim;
+
+                # Flake-owned derivations the Install-menu catalog addresses
+                # by attr name when nixpkgs does not carry them (resolved by
+                # the module's managed-packages block via omarchy.ownedPackages).
+                omarchy.ownedPackages = lib.mkDefault {
+                  claude-desktop = hostPackages.claude-desktop;
+                };
                 omarchy.fish.package = lib.mkDefault hostPackages.omarchy-fish;
               }
 
@@ -368,10 +383,19 @@
             let
               inherit (pkgs) lib;
               catalog = import ./pkgs/omarchy-catalog.nix;
+              # Flake-owned derivations the module's managed-packages block
+              # resolves as a fallback after nixpkgs attrs (omarchy.
+              # ownedPackages, injected below by the wrapper). MUST stay in
+              # sync with the wrapper's omarchy.ownedPackages injection.
+              ownedPkgs = {
+                claude-desktop = self.packages.${system}.claude-desktop;
+              };
               entryPkgs = lib.concatMap (e: e.pkgs or [ ]) (builtins.attrValues catalog.entries);
               featurePkgs = lib.concatMap (f: f.unfreePkgs or [ ]) (builtins.attrValues catalog.features);
               allPkgs = lib.unique (entryPkgs ++ featurePkgs);
-              missing = builtins.filter (n: !(builtins.hasAttr n pkgs)) allPkgs;
+              missing = builtins.filter (
+                n: !(builtins.hasAttr n pkgs) && !(builtins.hasAttr n ownedPkgs)
+              ) allPkgs;
               catalogJson = pkgs.writeText "nix-catalog.json" (builtins.toJSON catalog);
               menu = "${self.packages.${system}.omarchy}/share/omarchy/default/omarchy/omarchy-menu.jsonc";
 
@@ -426,11 +450,18 @@
                   failed = builtins.filter (
                     a:
                     let
+                      # Owned derivations bypass the nixpkgs probe: their
+                      # drvPath comes from this flake, entry-scoped unfree
+                      # whitelisting is a nixpkgs-config concern (B0) that
+                      # never sees them.
                       r = builtins.tryEval (
-                        builtins.seq
-                          (lib.attrByPath (lib.splitString "." a) (throw "catalog probe: no such attr path '${a}'") probePkgs)
-                          .drvPath
-                          true
+                        if builtins.hasAttr a ownedPkgs then
+                          builtins.seq ownedPkgs.${a}.drvPath true
+                        else
+                          builtins.seq
+                            (lib.attrByPath (lib.splitString "." a) (throw "catalog probe: no such attr path '${a}'") probePkgs)
+                            .drvPath
+                            true
                       );
                     in
                     !r.success

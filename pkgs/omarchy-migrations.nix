@@ -212,7 +212,8 @@
   # --- post-v4.0.3 wave (31bd80da) ---
   "1788941927.sh" = "skip"; # basecamp-cli via mise wrapper (mise model rejected — catalog is
   #                           # final; basecamp is not on the pin and has no menu entry)
-  "1789091250.sh" = "skip"; # T3 Code theme re-stage (t3code-bin is not in nixpkgs and the
-  #                           # menu pair is dropped at package time, so omarchy-pkg-present
-  #                           # always exits 1 and the migration self-skips)
+  "1789091250.sh" = "user-safe"; # T3 Code theme activation: re-runs omarchy-install-ai-t3-code
+  #                           # (patched: package step routes through omarchy-nix-add, the
+  #                           # `t3 theme set` call is best-effort) after the arch-name
+  #                           # omarchy-pkg-present guard matches the t3code catalog entry
 }

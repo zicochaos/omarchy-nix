@@ -82,6 +82,23 @@
       '';
     };
 
+    # Flake-owned derivations catalog entries may address by attribute name
+    # when nixpkgs does not carry them (e.g. claude-desktop, packaged under
+    # pkgs/ here while its nixpkgs packaging is pending). The managed-
+    # packages block resolves a catalog attr through nixpkgs first and
+    # through this set second. Set automatically by the flake's
+    # nixosModules.default; override to extend the set.
+    ownedPackages = lib.mkOption {
+      type = lib.types.attrsOf lib.types.package;
+      default = { };
+      description = ''
+        Packages packaged by this flake that Install-menu catalog entries
+        can reference when the attribute does not exist in nixpkgs. Set
+        automatically by the flake's nixosModules.default; override to
+        trim or extend the set.
+      '';
+    };
+
     # The omarchy-nvim starter package (LazyVim + omarchy overlay). The HM
     # module runs its omarchy-nvim-setup script once to seed ~/.config/nvim
     # (mutable seed-and-release, like the other user config stubs).

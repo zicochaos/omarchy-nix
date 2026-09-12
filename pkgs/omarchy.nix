@@ -80,6 +80,7 @@ let
     "install.ai.grok": {"icon":"󱚤","label":"Grok","when":"! omarchy-pkg-present grok-cli","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.grok'"},
     "install.ai.opencode": {"icon":"󱚤","label":"OpenCode","when":"! omarchy-pkg-present opencode","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.opencode'"},
     "install.ai.pi": {"icon":"󱚤","label":"Pi","when":"! omarchy-pkg-present pi-coding-agent","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.pi'"},
+    "install.ai.claude-desktop": {"icon":"","iconFont":"omarchy","label":"Claude Desktop","disabled":"omarchy-pkg-present claude-desktop","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.claude-desktop'"},
   '';
 in
 
@@ -507,6 +508,22 @@ stdenv.mkDerivation (finalAttrs: {
         # is dead on NixOS (binaries live on PATH).
         substituteInPlace bin/omarchy-install-ai-chatgpt \
           --replace-fail 'uwsm-app -- /usr/bin/chatgpt' 'uwsm-app -- chatgpt'
+
+        # Claude Desktop + T3 Code removes: the pkg-drop stub would leave
+        # the package installed — the remove menu lines stay upstream and
+        # route into the catalog here. The T3 installer keeps a patched
+        # pkg-add core for migration 1789091250 (the menu action goes
+        # through omarchy-nix-add directly), and its palette step is
+        # best-effort: the pin's t3code 0.0.28 may not ship the
+        # `t3 theme set` subcommand; omarchy-theme-set-t3code already
+        # writes the palette file the app watches.
+        substituteInPlace bin/omarchy-install-ai-t3-code \
+          --replace-fail 'omarchy-pkg-add t3code-bin' 'omarchy-nix-add install.ai.t3-code' \
+          --replace-fail 't3 theme set omarchy --base-dir "$T3CODE_HOME"' 'command -v t3 >/dev/null 2>&1 && t3 theme set omarchy --base-dir "$T3CODE_HOME" || true'
+        substituteInPlace bin/omarchy-remove-ai-claude \
+          --replace-fail 'omarchy-pkg-drop claude-desktop' 'omarchy-nix-remove install.ai.claude-desktop'
+        substituteInPlace bin/omarchy-remove-ai-t3-code \
+          --replace-fail 'omarchy-pkg-drop t3code-bin' 'omarchy-nix-remove install.ai.t3-code'
 
         # omarchy-remove-ai-ollama: the unit + /var/lib state are owned by
         # services.ollama on NixOS (removed with the feature at rebuild); the
@@ -1364,6 +1381,7 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "'omarchy-install-terminal kitty'" "'omarchy-nix-add install.terminal.kitty'" \
           --replace-fail "omarchy-install-app 'LM Studio' lmstudio-bin" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.lm-studio'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-ai-openclaw" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.openclaw'" \
+          --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-ai-t3-code" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.t3-code'" \
           --replace-fail 'if omarchy-cmd-present nvidia-smi; then ollama_pkg=ollama-cuda; elif omarchy-cmd-present rocminfo; then ollama_pkg=ollama-rocm; else ollama_pkg=ollama; fi; omarchy-install-app Ollama \"$ollama_pkg\"' "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.ollama'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-steam" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.gaming.steam'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-retroarch" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.gaming.retroarch'" \
@@ -1449,10 +1467,14 @@ stdenv.mkDerivation (finalAttrs: {
         # attr is the MusE audio sequencer, a name collision) and the
         # Perplexity app pair (perplexity attr does not exist). OpenClaw IS
         # on the pin (MIT) and keeps its entries, rewired to the catalog
-        # below. The post-v4.0.3 Claude Desktop app pair joins them:
-        # claude-desktop is not on the pin, and upstream's install.ai.claude
-        # id is owned by the agent-entry injection below (the pre-insert
-        # duplicate-key guard would fail the build otherwise).
+        # below. The post-v4.0.3 wave only needs install.ai.claude dropped:
+        # upstream's Claude Desktop id is owned by the agent-entry injection
+        # below (the pre-insert duplicate-key guard would fail the build
+        # otherwise) — the app itself is packaged in-repo (pkgs/
+        # claude-desktop.nix) under the install.ai.claude-desktop catalog id,
+        # its remove line stays upstream (routed to the catalog by the
+        # pkg-drop substitution), and the T3 Code pair is un-dropped:
+        # t3code exists on the pin (MIT, built from source).
         for drop_key in \
           setup.default.agent.omp \
           setup.default.agent.agy \
@@ -1464,10 +1486,7 @@ stdenv.mkDerivation (finalAttrs: {
           remove.ai.hermes \
           install.ai.perplexity \
           remove.ai.perplexity \
-          install.ai.claude \
-          remove.ai.claude \
-          install.ai.t3-code \
-          remove.ai.t3-code
+          install.ai.claude
         do
           grep -q "\"$drop_key\":" default/omarchy/omarchy-menu.jsonc || {
             echo "omarchy-menu.jsonc: expected entry to drop is missing: $drop_key" >&2
@@ -1489,6 +1508,7 @@ stdenv.mkDerivation (finalAttrs: {
         # the menu substitution block above).
         for key in \
           install.ai.claude \
+          install.ai.claude-desktop \
           install.ai.codex \
           install.ai.copilot \
           install.ai.crush \

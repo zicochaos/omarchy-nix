@@ -185,6 +185,30 @@
       binaries = [ "crush" ];
       unfreeNames = [ "crush" ];
     };
+    # Claude Desktop: Anthropic's own Debian .deb, unpacked by the in-repo
+    # derivation (pkgs/claude-desktop.nix) — nixpkgs does not carry the
+    # attr, so the managed-packages block resolves it through
+    # omarchy.ownedPackages (flake-injected); switch `pkgs` to the nixpkgs
+    # attr once NixOS/nixpkgs#537215 reaches the pin. The `install.ai.claude`
+    # id stays owned by the Claude Code agent entry below.
+    "install.ai.claude-desktop" = {
+      arch = "claude-desktop";
+      pkgs = [ "claude-desktop" ];
+      binaries = [ "claude-desktop" ];
+      unfreeNames = [ "claude-desktop" ];
+    };
+    # T3 Code (t3.codes, MIT): nixpkgs carries it on the pin (t3code,
+    # built from source — the upstream Arch package is an AppImage repack,
+    # hence the arch name t3code-bin with the t3code-desktop binary here).
+    # The pin's 0.0.28 bundles electron 40.10.5, flagged insecure (EOL) —
+    # the bitwarden-electron pattern: entry-scoped permit, applied only
+    # when the entry is selected.
+    "install.ai.t3-code" = {
+      arch = "t3code-bin";
+      pkgs = [ "t3code" ];
+      binaries = [ "t3code-desktop" ];
+      insecureNames = [ "electron-40.10.5" ];
+    };
     # --- Default coding agents (Setup > Defaults > Agent) ---
     # Upstream lazy-installs these with `mise use -g`; here they are catalog
     # entries, installed declaratively and then selectable as the default.

@@ -778,8 +778,14 @@ in
                     let
                       path = lib.splitString "." n;
                     in
+                    # Catalog attrs resolve against the consumer's nixpkgs
+                    # first; omarchy.ownedPackages (flake-injected) is the
+                    # fallback for derivations packaged in this repo that
+                    # nixpkgs does not carry (e.g. claude-desktop).
                     if lib.hasAttrByPath path pkgs then
                       lib.getAttrFromPath path pkgs
+                    else if cfg.ownedPackages ? ${n} then
+                      cfg.ownedPackages.${n}
                     else
                       throw "${toString cfg.managedPackagesFile}: unknown nixpkgs attribute '${n}'"
                   ) managedPkgs;
