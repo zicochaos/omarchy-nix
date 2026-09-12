@@ -52,9 +52,9 @@ stubs). Set automatically by the flake; `null` skips nvim config seeding.
 ### `omarchy.ownedPackages` *(attrsOf package, default `{}`, injected by the flake)*
 
 Flake-owned derivations the Install-menu catalog can address by attribute
-name when nixpkgs does not carry them (currently `claude-desktop`). The
-managed-packages block resolves a catalog attr through nixpkgs first and
-through this set second. Set automatically by the flake's
+name when nixpkgs does not carry them (currently `claude-desktop`, `omp`,
+`hermes-agent`). The managed-packages block resolves a catalog attr through
+nixpkgs first and through this set second. Set automatically by the flake's
 `nixosModules.default`; override to trim or extend the set.
 
 ## Shell

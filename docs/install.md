@@ -187,6 +187,29 @@ You should land on one of:
 
 The bar at the top is quickshell; `Super+Space` opens the Omarchy launcher.
 
+## Kernel
+
+Omarchy does not ship a custom kernel: on Arch it installs the stock `linux`
+package (mainline with Arch's patches and config), swapping in special
+kernels only for specific hardware (`linux-ptl` on Dell XPS Panther Lake,
+a `t2linux` kernel on T2 Macs). This port matches that default: it leaves
+`boot.kernelPackages` untouched, so you get the mainline kernel that
+nixpkgs stable carries.
+
+Two adjustments you can make in your own config:
+
+- **Closer to Arch's rolling mainline.** nixpkgs stable's default kernel
+  lags Arch's (6.18 vs 7.2 at the time of writing). If you want a newer
+  one — e.g. for very recent hardware — set
+  `boot.kernelPackages = pkgs.linuxPackages_latest;`
+  (7.1 on the same pin). This trades away some of the stable channel's
+  predictability, which is why it is not the port's default.
+- **Model-specific kernels.** The Panther Lake and T2 kernels are not
+  packaged here. On a T2 Mac, use the
+  [t2linux NixOS fork](https://github.com/t2linux/nixos-distro) as your
+  base input instead; a Panther Lake setup needs a custom kernel
+  derivation and is left to the consumer.
+
 ## Recovering if the desktop does not come up
 
 Two options, no reinstall needed:

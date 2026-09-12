@@ -64,8 +64,13 @@ module/build verification.
   from Anthropic's own Debian package (`pkgs/claude-desktop.nix` — the
   same vendor-artifact approach upstream's Omarchy package repository
   takes; unfree; the nixpkgs packaging is pending in #537215), and T3
-  Code comes from nixpkgs itself (MIT, built from source). The rest of
-  the wave rides along: Hermes desktop install fixes + a portrait icon
+  Code comes from nixpkgs itself (MIT, built from source). Two more AI
+  menu gaps closed: Oh My Pi (omp) ships its release binary, and the
+  Hermes agent comes from Nous Research's own flake — both now
+  installable and selectable as the default agent. A new
+  `omarchy.ownedPackages` option lets Install-menu entries address
+  derivations packaged in this repository when nixpkgs does not carry
+  them. The rest of the wave rides along: Hermes desktop install fixes + a portrait icon
   in the icon font (vendored as-is), `basecamp-cli` as a lazy mise tool
   (skipped — the mise model is rejected here), and a KEF LSX II LT USB
   no-suspend WirePlumber config (migration `user-safe`, plus a seed for

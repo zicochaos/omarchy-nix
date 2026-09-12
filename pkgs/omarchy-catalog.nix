@@ -209,6 +209,23 @@
       binaries = [ "t3code-desktop" ];
       insecureNames = [ "electron-40.10.5" ];
     };
+    # Oh My Pi (omp): can1357/oh-my-pi, MIT — release binary packaged
+    # in-repo (pkgs/omp.nix; the mise model is rejected here). Resolved
+    # through omarchy.ownedPackages.
+    "install.ai.omp" = {
+      arch = "omp";
+      pkgs = [ "omp" ];
+      binaries = [ "omp" ];
+    };
+    # Hermes Agent (Nous Research, MIT) — the `hermes` default-agent CLI,
+    # consumed from the project's own flake input via omarchy.ownedPackages.
+    # Upstream's install.ai.hermes id is the Hermes Desktop app pair
+    # (dropped — not packaged here); this id is the agent.
+    "install.ai.hermes" = {
+      arch = "hermes";
+      pkgs = [ "hermes-agent" ];
+      binaries = [ "hermes" ];
+    };
     # --- Default coding agents (Setup > Defaults > Agent) ---
     # Upstream lazy-installs these with `mise use -g`; here they are catalog
     # entries, installed declaratively and then selectable as the default.

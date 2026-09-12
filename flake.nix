@@ -34,6 +34,13 @@
     #   quickshell.url = "github:quickshell-mirror/quickshell";
     # and use inputs.quickshell.packages.${system}.quickshell in the NixOS
     # module. Decided when the shell first loads in a VM, not before.
+
+    # Hermes Agent (Nous Research, MIT): the `hermes` default-agent CLI.
+    # Upstream installs it with its own installer; here we consume the
+    # project's own flake (uv2nix) instead of vendoring the packaging.
+    # Fast-moving project — bump with `nix flake lock --update-input
+    # hermes-agent` on the omarchy-src bump cadence.
+    hermes-agent.url = "github:NousResearch/hermes-agent";
   };
 
   outputs =
@@ -129,9 +136,11 @@
           # screencopy picker. omarchy-nvim: LazyVim starter + omarchy overlay.
           # claude-desktop: Anthropic's own Debian .deb unpacked + wrapped
           # (nixpkgs packaging pending in NixOS/nixpkgs#537215).
+          # omp: Oh My Pi release binary (can1357/oh-my-pi, MIT).
           aether = pkgs.callPackage ./pkgs/aether.nix { };
           asdcontrol = pkgs.callPackage ./pkgs/asdcontrol.nix { };
           claude-desktop = pkgs.callPackage ./pkgs/claude-desktop.nix { };
+          omp = pkgs.callPackage ./pkgs/omp.nix { };
           omacalc = pkgs.callPackage ./pkgs/omacalc.nix { };
           omacut = pkgs.callPackage ./pkgs/omacut.nix { };
           omawrite = pkgs.callPackage ./pkgs/omawrite.nix { };
@@ -224,6 +233,10 @@
                 # the module's managed-packages block via omarchy.ownedPackages).
                 omarchy.ownedPackages = lib.mkDefault {
                   claude-desktop = hostPackages.claude-desktop;
+                  omp = hostPackages.omp;
+                  # Hermes Agent ships its own flake (uv2nix) — consume the
+                  # packages output directly instead of vendoring the build.
+                  hermes-agent = inputs.hermes-agent.packages.${hostSystem}.default;
                 };
                 omarchy.fish.package = lib.mkDefault hostPackages.omarchy-fish;
               }
@@ -389,6 +402,8 @@
               # sync with the wrapper's omarchy.ownedPackages injection.
               ownedPkgs = {
                 claude-desktop = self.packages.${system}.claude-desktop;
+                omp = self.packages.${system}.omp;
+                hermes-agent = inputs.hermes-agent.packages.${system}.default;
               };
               entryPkgs = lib.concatMap (e: e.pkgs or [ ]) (builtins.attrValues catalog.entries);
               featurePkgs = lib.concatMap (f: f.unfreePkgs or [ ]) (builtins.attrValues catalog.features);

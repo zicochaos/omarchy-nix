@@ -81,6 +81,8 @@ let
     "install.ai.opencode": {"icon":"󱚤","label":"OpenCode","when":"! omarchy-pkg-present opencode","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.opencode'"},
     "install.ai.pi": {"icon":"󱚤","label":"Pi","when":"! omarchy-pkg-present pi-coding-agent","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.pi'"},
     "install.ai.claude-desktop": {"icon":"","iconFont":"omarchy","label":"Claude Desktop","disabled":"omarchy-pkg-present claude-desktop","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.claude-desktop'"},
+    "install.ai.omp": {"icon":"󱚤","label":"Oh My Pi","when":"! omarchy-pkg-present omp","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.omp'"},
+    "install.ai.hermes": {"icon":"󱚤","label":"Hermes","when":"! omarchy-pkg-present hermes","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.hermes'"},
   '';
 in
 
@@ -1459,27 +1461,27 @@ stdenv.mkDerivation (finalAttrs: {
 
         # Agents/apps with no nixpkgs package on the 2f5a153c27 pin — drop
         # their menu entries (grep guards keep this fail-closed, like
-        # --replace-fail): omp (oh-my-pi), agy (Antigravity — upstream's
-        # Gemini replacement; antigravity-cli is not on the pin yet), ori
-        # and hermes default-agent choices, the Hermes Desktop app pair, and
-        # T3 Code (t3code-bin). v4.0.3 adds: cursor-agent and muse default-
-        # agent choices (Meta's muse is not on the pin — the nixpkgs `muse`
-        # attr is the MusE audio sequencer, a name collision) and the
-        # Perplexity app pair (perplexity attr does not exist). OpenClaw IS
-        # on the pin (MIT) and keeps its entries, rewired to the catalog
-        # below. The post-v4.0.3 wave only needs install.ai.claude dropped:
-        # upstream's Claude Desktop id is owned by the agent-entry injection
-        # below (the pre-insert duplicate-key guard would fail the build
-        # otherwise) — the app itself is packaged in-repo (pkgs/
-        # claude-desktop.nix) under the install.ai.claude-desktop catalog id,
-        # its remove line stays upstream (routed to the catalog by the
-        # pkg-drop substitution), and the T3 Code pair is un-dropped:
-        # t3code exists on the pin (MIT, built from source).
+        # --replace-fail): agy (Antigravity — upstream's Gemini replacement;
+        # antigravity-cli is not on the pin yet), ori and muse default-agent
+        # choices (Meta's muse is not on the pin — the nixpkgs `muse` attr
+        # is the MusE audio sequencer, a name collision), and the Perplexity
+        # app pair (perplexity attr does not exist). OpenClaw IS on the pin
+        # (MIT) and keeps its entries, rewired to the catalog below. The
+        # post-v4.0.3 wave only needs install.ai.claude dropped: upstream's
+        # Claude Desktop id is owned by the agent-entry injection below (the
+        # pre-insert duplicate-key guard would fail the build otherwise) —
+        # the app itself is packaged in-repo (pkgs/claude-desktop.nix) under
+        # the install.ai.claude-desktop catalog id, its remove line stays
+        # upstream (routed to the catalog by the pkg-drop substitution), and
+        # the T3 Code pair is un-dropped: t3code exists on the pin (MIT,
+        # built from source). The omp and hermes agent choices are un-dropped
+        # too: omp is packaged in-repo (pkgs/omp.nix) and Hermes Agent is
+        # consumed from its own flake input — both as install.ai.* catalog
+        # ids injected below (upstream's install.ai.hermes id is the desktop
+        # app pair, which stays dropped — not packaged here).
         for drop_key in \
-          setup.default.agent.omp \
           setup.default.agent.agy \
           setup.default.agent.ori \
-          setup.default.agent.hermes \
           setup.default.agent.cursor-agent \
           setup.default.agent.muse \
           install.ai.hermes \
@@ -1509,6 +1511,8 @@ stdenv.mkDerivation (finalAttrs: {
         for key in \
           install.ai.claude \
           install.ai.claude-desktop \
+          install.ai.omp \
+          install.ai.hermes \
           install.ai.codex \
           install.ai.copilot \
           install.ai.crush \
