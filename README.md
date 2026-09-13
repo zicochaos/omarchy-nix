@@ -62,6 +62,20 @@ for manual desktop exploration.
 
 ## Changelog
 
+- **2026-09-13** — upstream refresh to `b679363` (27 commits past the
+  `31bd80da` refresh; still quattro post-v4.0.3, no new upstream tag).
+  Pacman transactions now run through a PID-1 `systemd-run` scope wrapper
+  upstream (`omarchy-update-pacman`, shielding the transaction from
+  desktop-session teardown) — every caller is already stubbed or replaced
+  here, so the new script is stubbed with them. Upstream's power-profile
+  OSD polls D-Bus instead of shelling out, and the Plymouth prompt
+  re-centers when a display appears late — both vendored as-is. The kyber
+  I/O-scheduler udev rule for whole disks is classified `native` and
+  declared via `services.udev.extraRules`. Two new migrations skip: the
+  Panther Lake kernel swap (Arch kernel/boot machinery) and a Cloudflare
+  CLI mise wrapper (the mise model is rejected here). Upstream moved its
+  own GitHub URLs to `omacom/omarchy`; the flake input stays
+  `github:basecamp/omarchy/quattro` (the redirect works).
 - **2026-09-13** — `omarchy update` now rebuilds with `boot`, not
   `switch`, by default (ported from mirror PR #7 with authorship
   preserved; fixes mirror issue #6). A `switch` on a large nixpkgs jump

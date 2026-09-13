@@ -432,12 +432,18 @@ stdenv.mkDerivation (finalAttrs: {
         # Update pipeline sub-steps that only make sense on Arch → no-op note.
         # when-conflicted recovers pacman file conflicts by moving unowned
         # files aside; its only caller is the B4-replaced update-system-pkgs.
+        # b679363's omarchy-update-pacman is upstream's PID-1 systemd-run
+        # scope wrapper for those transactions (keeps them out of the user
+        # session's cgroup); every bin/ caller is already stubbed/replaced
+        # here and the libalpm hook that references the chain is inert
+        # (no pacman on NixOS).
         for s in \
           bin/omarchy-update-dev \
           bin/omarchy-update-keyring \
           bin/omarchy-update-aur-pkgs \
           bin/omarchy-update-mise \
           bin/omarchy-update-orphan-pkgs \
+          bin/omarchy-update-pacman \
           bin/omarchy-update-pacman-guard \
           bin/omarchy-update-system-pkgs-when-conflicted
         do

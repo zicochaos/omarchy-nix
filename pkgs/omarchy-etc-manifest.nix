@@ -62,5 +62,6 @@
   "systemd/user.conf.d/20-omarchy-nofile.conf" = "native"; # systemd.user.settings.Manager (post-26.05) / systemd.user.extraConfig (26.05) DefaultLimitNOFILE — version-dependent
   "tmpfiles.d/omarchy-nopasswd-sudo.conf" = "na"; # boot-time cleanup of transient sudoers grants from omarchy-sudo-passwordless — that script is a declarative-note stub on NixOS, so no grant is ever written
   "tmpfiles.d/omarchy-zswap.conf" = "native"; # systemd.tmpfiles.rules: w! zswap enabled=N (boot-only)
+  "udev/rules.d/60-omarchy-io-scheduler.rules" = "native"; # services.udev.extraRules (kyber on whole disks nvme*/sd*/mmcblk*/vd*; partitions and zram carry no scheduler)
   "xdg/kitty/kitty.conf" = "vendored"; # environment.etc."xdg/kitty/kitty.conf" — v4.0.3 moved kitty's base defaults here; the user seed became a thin include/override file on top
 }

@@ -217,4 +217,15 @@
   #                           # (patched: package step routes through omarchy-nix-add, the
   #                           # `t3 theme set` call is best-effort) after the arch-name
   #                           # omarchy-pkg-present guard matches the t3code catalog entry
+
+  # --- bump b679363 (2026-09-13) ---
+  "1789095456.sh" = "skip"; # Panther Lake kernel swap via omarchy-pkg-add + limine
+  #                           # rebuild (Arch kernel/boot machinery; the kernel is
+  #                           # boot.kernelPackages on NixOS, and pkg-present fails
+  #                           # for linux-ptl here, so the script's `|| exit 0`
+  #                           # no-ops it anyway)
+  "1789310715.sh" = "skip"; # cf (Cloudflare CLI) via omarchy-mise-install (mise model
+  #                           # rejected — catalog is final; not a menu entry; the
+  #                           # preinstalls-removed guard can legitimately exist via
+  #                           # omarchy-remove-preinstalls, so skip is the safe class)
 }

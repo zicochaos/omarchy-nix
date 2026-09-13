@@ -1038,6 +1038,19 @@ in
           options usbcore autosuspend=-1
         '';
 
+        # Kyber I/O scheduler on whole disks (upstream etc/udev/rules.d/
+        # 60-omarchy-io-scheduler.rules): keeps interactive read latency flat
+        # while a build, copy, or package upgrade floods the disk with writes.
+        # Whole disks only — partitions carry no scheduler and zram is memory;
+        # the kernel hands zoned btrfs back to mq-deadline via its own
+        # 64-btrfs-zoned.rules. Plain assignment, not mkDefault:
+        # nixpkgs assigns services.udev.extraRules at normal priority in
+        # hardware/udev.nix (nixosRules), which would silently drop an
+        # mkDefault; lines concatenate.
+        services.udev.extraRules = ''
+          ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="nvme*|sd*|mmcblk*|vd*", ATTR{queue/scheduler}="kyber"
+        '';
+
         # (Upstream's etc/cups/cups-browsed.conf — CreateRemotePrinters Yes —
         # is gone: v4.0.2 removed automatic printer discovery and the module
         # disables services.printing.browsed above, so there is no browsedConf

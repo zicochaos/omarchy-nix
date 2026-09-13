@@ -98,7 +98,7 @@ declared by the NixOS module instead.
 
 ## Upstream defaults (from the vendored source)
 
-These are the defaults encoded in the upstream source (rev `31bd80da`,
+These are the defaults encoded in the upstream source (rev `b679363`,
 post-v4.0.3 quattro branch). Compare against them when verifying
 parity:
 
@@ -173,7 +173,7 @@ build); this table is the feature-level summary.
 | **Deferred** | Possible on NixOS, not done | NordVPN service (menu entry deleted; re-verified 2026-09-13 against `nixos-26.05` HEAD `21a67dc4`: neither the `nordvpn` package nor `services.nordvpn` exists on the stable channel — both are on `nixos-unstable` only. An earlier note here claimed the backport had reached 26.05; that was wrong. Restore when a stable channel carries both, or via a consumer-side overlay); zen / brave-origin browsers (AUR-only, no nixpkgs attrs on the 26.05 pin; menu entries deleted); Cursor CLI + Muse Code default-agent choices and the Perplexity app (v4.0.3; no nixpkgs attrs on the pin — the nixpkgs `muse` attr is the MusE audio sequencer, a name collision — menu entries deleted; revisit when attrs land) |
 | **Blocked / untested** | Needs an external precondition | Fingerprint **reader** on real hardware (the PAM services themselves are declared and pamtester-verified in `checks.omarchy-ux`); real-hardware specifics of the behavioral surface; menu IPC, notifications, OSD, lock and polkit are covered in the VM by `checks.omarchy-ux` section (10) since 2026-07-29, but multi-monitor lock, fingerprint dialog and panel interactions still need a real-hardware pass |
 
-### Arch `/etc` overlay (40 files)
+### Arch `/etc` overlay (41 files)
 
 Upstream's `etc/` tree (copied to `/etc` by the Arch ISO installer) is
 classified file-by-file in `pkgs/omarchy-etc-manifest.nix`, enforced
@@ -187,7 +187,8 @@ file fails the build until classified). Summary by class:
   `DefaultLimitNOFILE=65536:524288` both managers, docker log rotation
   (`logDriver=json-file` + `log-opts` 10m×5) + docker
   `DefaultDependencies=no`, plocate with `ConditionACPower=true`, USB
-  autosuspend off, sudo `passwd_tries=10` + NOPASSWD tzupdate /
+  autosuspend off, kyber I/O scheduler on whole disks
+  (`services.udev.extraRules`), sudo `passwd_tries=10` + NOPASSWD tzupdate /
   `timedatectl set-timezone` (v4.0.1 removed upstream's NOPASSWD
   asdcontrol grant; v4.0.2 tightened the timezone rule to a
   `^`-anchored single-argument regex), Plymouth + SDDM theme/wayland,
