@@ -871,6 +871,28 @@
                 grep -qx 'remove.development.rust:w:1' results.txt ||
                   fail "remove-rust row not visible despite rust installed"
 
+                # Login-shell hardening: production runs the batch via
+                # `bash -lc`, so a user profile flipping shell options must
+                # not kill it. Apply the strictest profile directly to the
+                # batch shell instead of relying on sandbox /etc/profile.
+                bash -euo pipefail -c "$(cat guard.sh)" > results-strict.txt ||
+                  fail "guard batch died under errexit/nounset"
+                grep -qx 'install.development.rust:d:1' results-strict.txt ||
+                  fail "strict-flags run lost results"
+
+                # Batch-level flake resolution: without an explicit
+                # OMARCHY_NIX_FLAKE the prelude resolves the consumer flake
+                # once (first discovery candidate) and every probe must
+                # agree with the managed state through that export.
+                mkdir -p fake-home/omarchy-nix
+                printf '{"packages": ["rustc", "cargo", "firefox"], "features": []}\n' \
+                  > fake-home/omarchy-nix/omarchy-packages.json
+                : > fake-home/omarchy-nix/flake.nix
+                env -u OMARCHY_NIX_FLAKE HOME=$PWD/fake-home bash guard.sh > results-discovery.txt ||
+                  fail "guard batch failed without explicit OMARCHY_NIX_FLAKE"
+                grep -qx 'install.development.rust:d:1' results-discovery.txt ||
+                  fail "batch-level flake resolution did not reach the probes"
+
                 touch $out
               '';
           # binfmt plumbing: the opt-in list must stay empty on

@@ -941,6 +941,17 @@ stdenv.mkDerivation (finalAttrs: {
       printf '%s\n' "$d/omarchy-packages.json"
     }
 
+    if [[ $name == "--resolve-flake" ]]; then
+      # Internal: emit the resolved consumer flake dir so a guard-batch
+      # prelude (MenuModel.js) can export OMARCHY_NIX_FLAKE once for the
+      # whole batch instead of every probe call re-running discovery.
+      if json_path=$(resolve_json); then
+        printf '%s\n' "''${json_path%/*}"
+        exit 0
+      fi
+      exit 1
+    fi
+
     entry=$(jq -c --arg a "$name" '[.entries | to_entries[] | select(.value.arch == $a) | .value] | first // empty' "$catalog" 2>/dev/null || true)
 
     if [[ -n $entry ]]; then
@@ -1486,10 +1497,12 @@ stdenv.mkDerivation (finalAttrs: {
         # empty and every install row renders available while its remove
         # row hides — the menu never reflected installs. Point the shadows
         # at the NixOS probe binary (catalog arch → managed json →
-        # binaries), memoized per batch. Anchors fail closed on an
-        # upstream reshape.
+        # binaries), memoized per batch. The prelude also resolves the
+        # consumer flake once per batch via the probe's --resolve-flake
+        # (each probe call would otherwise re-run discovery, potentially
+        # with a nix eval). Anchors fail closed on an upstream reshape.
         substituteInPlace shell/plugins/menu/MenuModel.js \
-          --replace-fail "declare -A __omarchy_pkgs=()\n" "declare -A __omarchy_pkgs=()\ndeclare -A __omarchy_present_cache=()\n" \
+          --replace-fail 'declare -A __omarchy_pkgs=()\n' 'declare -A __omarchy_pkgs=()\ndeclare -A __omarchy_present_cache=()\nif [[ -z ''${OMARCHY_NIX_FLAKE:-} ]]; then __omarchy_flake_dir=$("''${OMARCHY_PATH:-/run/current-system/sw/share/omarchy}/bin/omarchy-pkg-present" --resolve-flake 2>/dev/null) && export OMARCHY_NIX_FLAKE=''${__omarchy_flake_dir} || :; fi\n' \
           --replace-fail 'omarchy-pkg-present() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 1; done; return 0; }\n' 'omarchy-pkg-present() { local p r; for p in "$@"; do r=''${__omarchy_present_cache[$p]-}; if [[ -z $r ]]; then if "''${OMARCHY_PATH:-/run/current-system/sw/share/omarchy}/bin/omarchy-pkg-present" "$p" >/dev/null 2>&1; then r=1; else r=0; fi; __omarchy_present_cache[$p]=$r; fi; [[ $r == 1 ]] || return 1; done; return 0; }\n' \
           --replace-fail 'omarchy-pkg-missing() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 0; done; return 1; }\n' 'omarchy-pkg-missing() { ! omarchy-pkg-present "$@"; }\n'
 
