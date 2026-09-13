@@ -7,7 +7,7 @@ Omarchy is DHH's opinionated Linux desktop. As of Quattro, its "desktop" is a
 single [quickshell](https://quickshell.org) process: the bar, launcher,
 menus, notifications, OSDs, control panels, lock screen, and polkit agent are
 all plugins of one long-running shell. It is driven by a Lua-based Hyprland
-config (≥0.56) and ~444 `omarchy-*` bash scripts, themed by a TOML + template
+config (≥0.56) and ~456 `omarchy-*` bash scripts, themed by a TOML + template
 engine.
 
 This project ports that to NixOS **by vendoring upstream**, not by
@@ -32,28 +32,33 @@ Automated NixOS tests run under `nix flake check`:
 (behavioral acceptance: Super+Enter opens foot, headless theme rendering,
 config editability, and command coverage of menu actions and `when:`/`disabled:` guards,
 autostart, and systemd command — `bash -c` interiors and QML exec sites
-are guarded by count tripwires), and `checks.omarchy-fish` (vendor
-profile parity).
+are guarded by count tripwires), `checks.omarchy-fish` (vendor
+profile parity), and `checks.omarchy-sddm` (the real login path: SDDM
+with its Wayland greeter and the omarchy theme, autologin into the uwsm
+session, and a greeter render of the vendored theme).
 
-The VM tests start the session from tty1 with SDDM disabled. Theme checks
+Most VM tests start the session from tty1 with SDDM disabled (the sddm
+check being the exception); theme checks
 use headless rendering, and package/update checks skip the real system
-rebuild. These tests do not establish live bar/shell color changes, the
-SDDM login flow, or a complete update followed by activation. Those paths
+rebuild. These tests do not establish live bar/shell color changes,
+typing at the interactive SDDM greeter (the sddm check covers the daemon,
+the greeter's theme render and the autologin handoff, not a real login),
+or a complete update followed by activation. Those paths
 still need separate desktop verification after relevant changes.
 
 > Upstream's Quattro line is at `v4.0.3` (2026-09); this port tracks the
 > `quattro` branch (release + post-release fixes). The vendored `version`
 > file still reads `4.0.0.alpha` — upstream does not bump it at release time.
 
-### Known VM limitation (not a port bug)
+### Known VM limitation (VirtualBox VMSVGA)
 
 `quickshell` crashes with `unknown object (50), message attach` under
-VirtualBox's VMSVGA renderer (and likely under QEMU's software
-framebuffer) even though Hyprland itself renders. This is a VM
-graphics-stack issue, not an omarchy-nix bug: the same config runs
-`quickshell` stably on real Intel GPU hardware. Use real metal or a
-GPU-passthrough VM for desktop exploration; use the VM only for
-module/build verification.
+VirtualBox's VMSVGA renderer even though Hyprland itself renders. This is
+a VM graphics-stack issue, not an omarchy-nix bug: the same config runs
+`quickshell` stably on real Intel GPU hardware, and the automated VM
+tests (`checks.omarchy-desktop`/`-ux`, QEMU with `virtio-gpu-pci`)
+exercise the real shell over IPC. Use real metal or a GPU-passthrough VM
+for manual desktop exploration.
 
 ## Changelog
 
@@ -150,7 +155,7 @@ Upstream adaptation details and the bump checklist: [`docs/UPSTREAM.md`](docs/UP
 
 The running desktop is produced by the same code that produces it on Arch
 Omarchy: the same quickshell process (`$OMARCHY_PATH/shell/shell.qml`), the
-same Hyprland Lua config chain, the same ~444 `omarchy-*` bash scripts, the
+same Hyprland Lua config chain, the same ~456 `omarchy-*` bash scripts, the
 same TOML + sed theme engine. The NixOS layer is glue (a vendoring
 derivation, two modules, options, activation), not a reimplementation.
 
@@ -267,8 +272,9 @@ choices; Install → Package is a free fzf search over nixpkgs. Choices land in
 `omarchy-packages.json` next to your flake and are folded into the system
 declaratively at rebuild. Removing works the same way. Entries with no
 NixOS analogue (AUR, ONCE) are removed from the menu outright; NordVPN
-stays out until the pin reaches a revision carrying both the package and
-the module (the backport already reached the 26.05 channel); dev-env
+stays out until a stable channel carries both the package and the module
+(re-verified 2026-09-13 against `nixos-26.05` HEAD `21a67dc4`: neither
+exists there — they are on `nixos-unstable` only); dev-env
 entries without a catalog mapping (laravel/symfony/phoenix) show a
 declarative note. Update → Omarchy still runs flake update +
 rebuild.
@@ -378,7 +384,7 @@ The desktop is verified by an automated NixOS test that runs under
 `nix flake check`:
 
 ```bash
-nix flake check                # runs checks.omarchy-desktop + checks.omarchy-ux + checks.omarchy-fish
+nix flake check                # runs checks.omarchy-desktop + -ux + -fish + -sddm
 nix build .#checks.x86_64-linux.omarchy-desktop.driver   # just the test driver
 ```
 

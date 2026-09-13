@@ -16,7 +16,7 @@
 # which is explicitly out of scope (AGENTS.md: "vendor, don't rewrite").
 #
 # Path adaptation also covers:
-#   - the 7 systemd user units under default/systemd/user/ (/usr/bin/* and
+#   - the 8 systemd user units under default/systemd/user/ (/usr/bin/* and
 #     /usr/share/omarchy → store paths). Unit semantics, [Install] targets,
 #     and ordering are left untouched.
 #   - install/user/xcompose.sh (hardcoded include path for default/xcompose).
@@ -1506,13 +1506,17 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail 'omarchy-pkg-present() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 1; done; return 0; }\n' 'omarchy-pkg-present() { local p r; for p in "$@"; do r=''${__omarchy_present_cache[$p]-}; if [[ -z $r ]]; then if "''${OMARCHY_PATH:-/run/current-system/sw/share/omarchy}/bin/omarchy-pkg-present" "$p" >/dev/null 2>&1; then r=1; else r=0; fi; __omarchy_present_cache[$p]=$r; fi; [[ $r == 1 ]] || return 1; done; return 0; }\n' \
           --replace-fail 'omarchy-pkg-missing() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 0; done; return 1; }\n' 'omarchy-pkg-missing() { ! omarchy-pkg-present "$@"; }\n'
 
-        # Agents/apps with no nixpkgs package on the 2f5a153c27 pin — drop
+        # Agents/apps with no nixpkgs package on the stable pin — drop
         # their menu entries (grep guards keep this fail-closed, like
         # --replace-fail): agy (Antigravity — upstream's Gemini replacement;
-        # antigravity-cli is not on the pin yet), ori and muse default-agent
+        # antigravity-cli is not on the pin yet — re-checked 2026-09-13 on
+        # 21a67dc4: absent while the unrelated `antigravity` IDE ships), ori
+        # and muse default-agent
         # choices (Meta's muse is not on the pin — the nixpkgs `muse` attr
-        # is the MusE audio sequencer, a name collision), and the Perplexity
-        # app pair (perplexity attr does not exist). OpenClaw IS on the pin
+        # is the MusE audio sequencer, a name collision — re-checked
+        # 2026-09-13: still only MusE), and the Perplexity
+        # app pair (perplexity attr does not exist — re-checked 2026-09-13).
+        # OpenClaw IS on the pin
         # (MIT) and keeps its entries, rewired to the catalog below. The
         # post-v4.0.3 wave only needs install.ai.claude dropped: upstream's
         # Claude Desktop id is owned by the agent-entry injection below (the

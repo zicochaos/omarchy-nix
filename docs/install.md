@@ -236,8 +236,10 @@ entries (browsers, editors, terminals, gaming, AI, dev toolchains,
 services) map to opinionated nixpkgs choices and rebuild the system in
 front of you, while Install → Package is a free fzf search over nixpkgs.
 Choices land in `omarchy-packages.json` next to your flake. Entries with
-no NixOS analogue (AUR, ONCE, NordVPN) are removed from the menu
-outright; dev-env entries without a catalog mapping
+no NixOS analogue (AUR, ONCE) are removed from the menu
+outright (NordVPN is deferred, not absent for lack of an analogue: the
+stable channel does not ship the package or module yet — see
+[`UPSTREAM.md`](UPSTREAM.md)); dev-env entries without a catalog mapping
 (laravel/symfony/phoenix) show a declarative note. Selecting Sublime Text
 or Bitwarden also permits their insecure dependencies (`openssl-1.1.1w` /
 `electron`) on systems that select them; the permission is scoped, not global.

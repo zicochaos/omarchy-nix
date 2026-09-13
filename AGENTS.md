@@ -21,7 +21,7 @@ Quattro generation, [upstream PR #6231](https://github.com/basecamp/omarchy/pull
 Upstream Quattro's "desktop" is a **single `quickshell` process** that provides
 the bar, launcher, menus, notifications, OSDs, control panels, lock screen,
 and polkit agent as plugins, plus a **Lua-based Hyprland config** (≥0.56),
-~455 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
+~456 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
 engine**. Waybar/wofi/mako/hyprlock/hyprpaper/swaybg/polkit-gnome are gone
 in Quattro. This port packages the upstream tree at `$out/share/omarchy`,
 exports `OMARCHY_PATH`, and seeds `~/.config/hypr/hyprland.lua` so Hyprland's
@@ -36,16 +36,36 @@ pkgs/                  # derivations:
   omarchy.nix          #   vendoring: omarchy-src -> $out/share/omarchy
   omarchy-catalog.nix  #   Install/Remove menu catalog (nix-catalog.json)
   omarchy-migrations.nix  # migration classification manifest
+  omarchy-runtime-manifest.nix  # Arch-mutator classification (fail-closed)
+  omarchy-etc-manifest.nix      # upstream etc/ file classification
   migrations-nix/      #   NixOS adapter scripts for class "adapter"
   plymouth-omarchy-theme.nix  #   boot-splash theme
   sddm-omarchy-theme.nix      #   login theme + Hyprland greeter config
+modules/lib/           #   option-value validators/serializers (Lua, env.d)
 modules/nixos/         # NixOS module: env, runtime deps, Hyprland, themes
 modules/home-manager/  # HM module: per-user config seed (hypr entry + stubs)
 tests/desktop.nix      # automated desktop test (checks.omarchy-desktop)
 tests/ux.nix           # behavioral acceptance (checks.omarchy-ux)
+tests/fish.nix         # fish profile acceptance (checks.omarchy-fish)
+skills/omarchy/        # NixOS-native agent skill (packaged + parity manifest)
 example/               # demo consumer configuration.nix
-docs/                  # install.md, options.md, UPSTREAM.md, vm.md, nix-best-practices.md
+docs/                  # install.md, options.md, UPSTREAM.md, vm.md,
+                       # nix-best-practices.md; MAINTAINERS.md + SYSTEMS.md,
+                       # decisions/ and superpowers/ are maintainer-internal
+                       # (see the note below)
+.forgejo/workflows/    # CI lanes: fast / vm / nightly (internal)
+hosts/                 # maintainer host configs spliced into the flake (internal)
+scripts/publish-public # sanitized snapshot publisher for the GitHub mirror (internal)
 ```
+
+The Install/Remove menu is NixOS-native: catalog entries (browsers,
+editors, terminals, AI agents, dev toolchains, services) resolve through
+`omarchy-nix-add`/`omarchy-nix-remove` into `omarchy-packages.json`, which
+`omarchy.managedPackagesFile` folds into the system at eval time; all the
+NixOS-specific commands share one consumer-flake resolver
+(`OMARCHY_NIX_FLAKE` → `~/omarchy-nix` → `~/Projects/omarchy-nix` →
+`/etc/nixos`). `omarchy update` keeps the upstream UX but runs
+`nix flake update` + `nixos-rebuild` against the consumer flake.
 
 ## Inputs
 
@@ -56,6 +76,8 @@ docs/                  # install.md, options.md, UPSTREAM.md, vm.md, nix-best-pr
   (2026-09); the old URL redirects, so the input is unchanged.
 - `hyprland` → `github:hyprwm/Hyprland` (needs ≥0.56 for Lua config).
 - `home-manager` → `github:nix-community/home-manager`, follows `nixpkgs`.
+- `hermes-agent` → `github:NousResearch/hermes-agent` (the `hermes`
+  default-agent CLI, consumed as its own flake — it brings its own nixpkgs).
 - `quickshell`: `pkgs.quickshell` (nixpkgs, v0.3.0). Sufficient for the
   current upstream `shell.qml`; `checks.omarchy-desktop` verifies the shell
   loads and registers its instance. If a future upstream rev requires a newer
@@ -115,4 +137,5 @@ one commit.
 
 Maintainer-internal operational docs (release process, test fleet, decision
 records) live on the private dev remote and are intentionally not part of
-this repository.
+the public snapshot published by `scripts/publish-public` from the dev
+repository's `main`.

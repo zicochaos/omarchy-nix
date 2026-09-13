@@ -246,9 +246,11 @@
       binaries = [ "copilot" ];
       unfreeNames = [ "github-copilot-cli" ];
     };
-    # v4.0.1: upstream replaced Gemini with Antigravity (agy); the 2f5a153c27
-    # pin has no antigravity-cli attr, so there is no agy entry either — the
-    # setup.default.agent.agy menu line is dropped at package time (like omp).
+    # v4.0.1: upstream replaced Gemini with Antigravity (agy); the stable
+    # pin has no antigravity-cli attr (re-checked 2026-09-13 on 21a67dc4:
+    # absent; the unrelated `antigravity` IDE attr is not the CLI), so there
+    # is no agy entry either — the setup.default.agent.agy menu line is
+    # dropped at package time (like omp).
     "install.ai.grok" = {
       arch = "grok-cli";
       pkgs = [ "grok-cli" ];

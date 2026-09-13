@@ -287,22 +287,53 @@
     # finalize-user (run from first-run on session start) does
     # `xdg-settings set default-web-browser chromium.desktop`; the HM activation
     # mirror is best-effort (`|| true`) and may not resolve chromium.desktop
-    # during root-run system activation. So this races first-run: wait for
-    # finalize-user to set the chromium.desktop alias (the name upstream + the
-    # oracle use) rather than the nixpkgs chromium-browser.desktop default.
+    # during root-run system activation.
+    #
+    # Settle first-run before touching the association. The flaky failure this
+    # comment replaces (four VM runs, 2026-09-12/13) was a concurrent-writer
+    # race, not an xdg-settings bug: while first-run was still walking its
+    # steps, our `set` and finalize-user's own `set` could interleave, and
+    # xdg-settings verifies its write by re-reading the association — seeing
+    # the other writer's value it tried to restore the previous one, which is
+    # empty on a fresh home, and exited nonzero ("xdg-mime: application
+    # argument missing" was the restore call). Waiting for the done marker
+    # (also asserted in section (7)) removes the race at the source.
+    machine.wait_until_succeeds(
+        "test -f /home/demo/.local/state/omarchy/done/first-run-user",
+        timeout=180,
+    )
+
     def browser_is_chromium(_last):
         return machine.succeed(as_demo("xdg-settings get default-web-browser")).strip() == "chromium.desktop"
 
     with machine.nested("waiting for default-web-browser to become chromium.desktop"):
-        retry(browser_is_chromium, timeout_seconds=120)
+        retry(browser_is_chromium, timeout_seconds=60)
 
     # Home Manager initializes the browser association only when it is absent.
     # A user's explicit choice must survive a later activation, while the
     # upstream first-run path still establishes Chromium on a fresh home.
-    machine.succeed(
-        as_demo("env -u BROWSER xdg-settings set default-web-browser firefox.desktop")
-    )
-    assert machine.succeed(as_demo("xdg-settings get default-web-browser")).strip() == "firefox.desktop"
+    # Set + verify as one retried pair: even after first-run settled, a stray
+    # writer (the HM activation unit) could still interleave with the single
+    # write, so a transient nonzero `set` is retried rather than fatal.
+    def browser_is(desktop, _last=False):
+        status, _ = machine.execute(
+            as_demo("env -u BROWSER xdg-settings set default-web-browser " + desktop)
+        )
+        current = machine.succeed(as_demo("xdg-settings get default-web-browser")).strip()
+        if status == 0 and current == desktop:
+            return True
+        if _last:
+            raise AssertionError(
+                "default-web-browser did not stick at %s (set exit %d, current %r)"
+                % (desktop, status, current)
+            )
+        return False
+
+    def set_browser(_last=False):
+        return browser_is("firefox.desktop", _last)
+
+    with machine.nested("setting default-web-browser to firefox.desktop"):
+        retry(set_browser, timeout_seconds=60)
     machine.succeed("systemctl restart home-manager-demo.service")
     assert machine.succeed(as_demo("xdg-settings get default-web-browser")).strip() == "firefox.desktop", \
         "Home Manager activation reset the user's Firefox browser association"
@@ -733,6 +764,8 @@
     # autostart.lua runs omarchy-provision-first-run on hyprland.start; it calls
     # omarchy-provision-user (which writes ~/.XCompose via install/user/all.sh ->
     # xcompose.sh) then logs each step and marks done/first-run-user on success.
+    # The marker was already awaited in section (3) (the browser assertion
+    # serializes behind it); the wait here is kept so the section stands alone.
     machine.wait_until_succeeds(
         "test -f /home/demo/.local/state/omarchy/done/first-run-user",
         timeout=180,
@@ -1227,10 +1260,10 @@
             )
 
         # (d) Systemd user unit ExecStarts resolve.
-        # The 7 vendored units are path-adapted in pkgs/omarchy.nix (store
+        # The 8 vendored units are path-adapted in pkgs/omarchy.nix (store
         # paths replace /usr/bin/*). Each ExecStart binary must exist.
         # Tripwire: pkgs/omarchy.nix installs units via
-        # `install … default/systemd/user/*.service` — an 8th upstream unit
+        # `install … default/systemd/user/*.service` — a 9th upstream unit
         # would ship unadapted and unchecked if we only asserted this list.
         # Mirror the cp -aL count tripwire: package unit dir must match
         # unit_names exactly (count + names).

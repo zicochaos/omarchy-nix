@@ -27,3 +27,6 @@ result-*
 # Consumer-state file — this repo is never a consumer; a copy at root is
 # always a stray artifact (e.g. omarchy-nix-add run with cwd here).
 /omarchy-packages.json
+
+# Pi agent working state
+.pi/

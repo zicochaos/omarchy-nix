@@ -1289,7 +1289,7 @@ in
 
       # (H) Enable the path-adapted systemd user units declaratively.
       # Upstream's install/user/first-run/enable-user-units.sh runs
-      # `systemctl --user enable --now` for five of the seven units; NixOS
+      # `systemctl --user enable --now` for six of the eight units; NixOS
       # ignores package-unit [Install] sections, so wantedBy here creates the
       # .wants/ links. Unit bodies come from cfg.package via systemd.packages
       # (block A) — setting wantedBy alone becomes a drop-in, not a rewrite.

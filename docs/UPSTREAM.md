@@ -25,7 +25,7 @@ repo:
 - **Lua-based Hyprland config (≥0.56).** `~/.config/hypr/hyprland.lua`
   `dofile`s `$OMARCHY_PATH/default/hypr/bootstrap.lua`, then `require()s
   default.hypr.omarchy` (defaults) + `hypr.*` (user overrides).
-- **~455 `omarchy-*` bash scripts** in `bin/` do everything. Dispatched
+- **~456 `omarchy-*` bash scripts** in `bin/` do everything. Dispatched
   via the `omarchy` router or called bare from PATH.
 - **TOML + sed template theme engine.** `omarchy-theme-set` copies a
   theme's `colors.toml` into a staging dir, runs
@@ -98,7 +98,7 @@ declared by the NixOS module instead.
 
 ## Upstream defaults (from the vendored source)
 
-These are the defaults encoded in the upstream source (rev `5b91db50`,
+These are the defaults encoded in the upstream source (rev `31bd80da`,
 post-v4.0.3 quattro branch). Compare against them when verifying
 parity:
 
@@ -145,7 +145,7 @@ parity:
 | Area | Upstream | This port | Why |
 |---|---|---|---|
 | **Tree location** | `/usr/share/omarchy` | `$out/share/omarchy` (nix store) | Nix constraint: nothing mutable in `/usr`. `$OMARCHY_PATH` points here. |
-| **Bin on PATH** | `/usr/bin/omarchy-*` (Arch package) | `$OMARCHY_PATH/bin` prepended to session PATH | We chose Approach A (session PATH) over B (top-level `$out/bin/`). The 7 systemd user units that hardcode `/usr/bin/` are path-adapted to store paths in `pkgs/omarchy.nix`, so none are broken. |
+| **Bin on PATH** | `/usr/bin/omarchy-*` (Arch package) | `$OMARCHY_PATH/bin` prepended to session PATH | We chose Approach A (session PATH) over B (top-level `$out/bin/`). The 8 systemd user units that hardcode `/usr/bin/` are path-adapted to store paths in `pkgs/omarchy.nix`, so none are broken. |
 | **OMARCHY_PATH source** | `default/bash/env-bootstrap` (sourced by `/etc/profile.d/omarchy.sh`, skel `.bashrc`, `uwsm/env.d/10-omarchy`) | NixOS `environment.sessionVariables` + `environment.etc."xdg/uwsm/env.d/10-omarchy"` | We do NOT source `env-bootstrap`; it carries Arch/pacman dev-link logic. Same effect via NixOS-native channels. |
 | **Theme render trigger** | ISO chroot finalization (`omarchy-apply-system`) | HM activation script (`omarchyThemeRender`) | No ISO stage on NixOS; run the same upstream `omarchy-theme-set` in HEADLESS mode during `home-manager switch`. |
 | **First-run hooks** | `install/user/first-run/*.sh` on first login | **Runs for real**: `install/` is vendored and `omarchy-provision-first-run` executes on first login | Only the two *invitation* hooks (voxtype, fingerprint) are pre-marked done so their toasts never fire; voxtype ships declaratively, fingerprint PAM is native. The Arch-packaging steps (`mise.sh`, `mise-work.sh`) are no-op stubs. |
@@ -168,7 +168,7 @@ build); this table is the feature-level summary.
 |---|---|---|
 | **Adapted** | Works, in a NixOS-native form | Install/Remove menu (catalog → `omarchy-nix-add/remove` → `omarchy-packages.json` → rebuild, transactional with audit logs); Update → Omarchy (flake update + `nixos-rebuild switch`); migrations (fail-closed classifier, NixOS adapters); firmware update (`fwupdmgr`); presence checks (`omarchy-pkg-present` via catalog + PATH); first-run / finalize-user (vendored, runs on first login); systemd user units (path-adapted, enabled); lock-screen PAM (declared natively); zram swap (`zramSwap`, upstream's zstd/full-RAM profile); cross-arch execution (opt-in `omarchy.binfmtEmulatedSystems` → `boot.binfmt.emulatedSystems`); sshd key add/remove; `omarchy-update-restart` (compares `/run/{booted,current}-system/kernel`); install-dev-env (without `/etc/php` edits); snapshots (print a NixOS generations note); the three system-level defaults behind skipped upstream migrations (logind `InhibitDelayMaxSec=15` via `services.logind.settings`, `NetworkManager-wait-online` mask, Wi-Fi powersave off via `networking.networkmanager.wifi.powersave`); bundled Chromium extensions (`--load-extension` in the seeded `chromium-flags.conf` path-adapted to `/run/current-system/sw/share/omarchy`, existing user files rewritten by migration adapter `1780517689.sh`) |
 | **N/A** | No NixOS analogue; removed or stubbed | AUR (menu entry deleted; `omarchy-pkg-aur-accessible` always exits 1); pacman channels/mirrors (`omarchy-channel-current` prints `nixos`); limine + snapper (systemd-boot + boot generations instead); direct-boot, hybrid-gpu, hibernation-setup, DNS, fido2, passwordless-sudo, plymouth/timezone refresh, sunshine (declarative-note stubs; their menu entries are deleted); pacman keyring/orphans/reinstall helpers; `mise` dev-tool manager (Arch tarballs under `/opt/packages`; `mise.sh`/`mise-work.sh` no-op'd; **rejected** as a feature: the dev menu installs global Nix packages via the catalog, which is the final model) |
-| **Deferred** | Possible on NixOS, not done | NordVPN service (menu entry deleted; verified 2026-07-31: the package + `services.nordvpn` already reached the 26.05 channel after our `2f5a153c27` pin — re-add as a catalog feature once the pin reaches a revision carrying both); zen / brave-origin browsers (AUR-only, no nixpkgs attrs on the 26.05 pin; menu entries deleted); Cursor CLI + Muse Code default-agent choices and the Perplexity app (v4.0.3; no nixpkgs attrs on the pin — the nixpkgs `muse` attr is the MusE audio sequencer, a name collision — menu entries deleted; revisit when attrs land) |
+| **Deferred** | Possible on NixOS, not done | NordVPN service (menu entry deleted; re-verified 2026-09-13 against `nixos-26.05` HEAD `21a67dc4`: neither the `nordvpn` package nor `services.nordvpn` exists on the stable channel — both are on `nixos-unstable` only. An earlier note here claimed the backport had reached 26.05; that was wrong. Restore when a stable channel carries both, or via a consumer-side overlay); zen / brave-origin browsers (AUR-only, no nixpkgs attrs on the 26.05 pin; menu entries deleted); Cursor CLI + Muse Code default-agent choices and the Perplexity app (v4.0.3; no nixpkgs attrs on the pin — the nixpkgs `muse` attr is the MusE audio sequencer, a name collision — menu entries deleted; revisit when attrs land) |
 | **Blocked / untested** | Needs an external precondition | Fingerprint **reader** on real hardware (the PAM services themselves are declared and pamtester-verified in `checks.omarchy-ux`); real-hardware specifics of the behavioral surface; menu IPC, notifications, OSD, lock and polkit are covered in the VM by `checks.omarchy-ux` section (10) since 2026-07-29, but multi-monitor lock, fingerprint dialog and panel interactions still need a real-hardware pass |
 
 ### Arch `/etc` overlay (40 files)
@@ -339,6 +339,14 @@ explicit exclusion with rationale).
 - `ls "$SRC/themes" | wc -l` — the "22 stock themes" figure is baked
   into README.md, `example/configuration.nix`, `config.nix` and
   `docs/options.md`; bump all four if it changed.
+- `ls "$SRC/default/systemd/user"/*.service | wc -l` — the "8 systemd
+  user units" figure appears in README/UPSTREAM/MAINTAINERS, the
+  `pkgs/omarchy.nix` header comment and the `unit_names` tripwire in
+  `tests/ux.nix`; a new upstream unit must be path-adapted in
+  `pkgs/omarchy.nix` and added to `unit_names` together.
+- `ls "$SRC/default/themed"/*.tpl | wc -l` — the templated-config count
+  in MAINTAINERS ("all N templated configs") follows the upstream
+  template set.
 - Compare the `omarchy.appPackages` list in `flake.nix` against the
   lists in README.md, `docs/options.md` and the `config.nix` comment.
 - `expected_removes` (flake.nix) is a manual sync point with the menu
@@ -360,9 +368,12 @@ Verify behaviorally (not just processes):
 `checks.omarchy-ux` covers the terminal keypress, first-run evidence, and
 theme files/writability automatically. Its theme rendering runs with
 `OMARCHY_THEME_HEADLESS=1`, so verify live bar/shell color changes in a
-running desktop separately. The VM tests also bypass SDDM and exercise
-package/update operations without a real rebuild; separately verify the
-greeter and the complete update/activation flow after changes to those paths.
+running desktop separately. `checks.omarchy-sddm` covers the SDDM path
+(daemon, Wayland greeter configuration, theme render, autologin into the
+uwsm session), but not typing at the interactive greeter; package/update
+operations still run without a real rebuild. Separately verify the
+greeter login itself and the complete update/activation flow after
+changes to those paths.
 
 ### 4. Commit
 

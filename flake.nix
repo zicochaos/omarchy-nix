@@ -104,7 +104,7 @@
           omarchy = pkgs.callPackage ./pkgs/omarchy.nix {
             inherit omarchy-src;
             version = omarchyVersion;
-            # Path-adaptation deps for the 7 systemd user units (see pkgs/omarchy.nix).
+            # Path-adaptation deps for the 8 systemd user units (see pkgs/omarchy.nix).
             # bluez-tools provides bt-agent (not bluez); tailscale is only used
             # for ConditionPathExists / ExecStart path rewrite — the unit is
             # shipped but not enabled by the module.
@@ -299,6 +299,10 @@
           # Fish profile acceptance: login shell, vendor dirs, session env,
           # completion contract, override precedence. See tests/fish.nix.
           omarchy-fish = pkgs.testers.nixosTest (loadTest ./tests/fish.nix);
+          # SDDM -> session acceptance: the real login path (daemon, Wayland
+          # greeter wiring, theme, autologin session handoff) the other VM
+          # tests bypass by starting from tty1. See tests/sddm.nix.
+          omarchy-sddm = pkgs.testers.nixosTest (loadTest ./tests/sddm.nix);
           # The packaged agent skill is an intentional NixOS adaptation of
           # upstream's Arch-only default. Keep the repository copy and the
           # installed $OMARCHY_PATH copy byte-identical, and reject the
