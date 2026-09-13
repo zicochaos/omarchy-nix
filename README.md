@@ -172,7 +172,10 @@ modules. One `omarchy.enable = true` wires the whole desktop:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    omarchy-nix.url = "github:zicochaos/omarchy-nix";
+    omarchy-nix = {
+      url = "github:zicochaos/omarchy-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -194,6 +197,29 @@ modules. One `omarchy.enable = true` wires the whole desktop:
   };
 }
 ```
+
+> **Follow `nixpkgs` (the snippet does).** Without
+> `omarchy-nix.inputs.nixpkgs.follows = "nixpkgs"` your system carries a
+> second nixpkgs instance: the vendored desktop tree and the
+> upstream-owned apps are built from this flake's pin, so their
+> dependencies sit beside your system's copies instead of sharing them —
+> a real consumer measured ~360 duplicated packages and 1.7 GiB of
+> duplicated closure, with the desktop running packages weeks behind the
+> rest of the system. Following makes those build from your nixpkgs. The
+> tradeoff: your pin then decides those packages (keep it current — the
+> supported combination is a `nixos-26.05` nixpkgs, the one
+> `nix flake check` tests), and the vendored tree, the theme packages and
+> the upstream-owned apps rebuild once per nixpkgs revision (the rest of
+> the desktop is substitutable from cache.nixos.org /
+> hyprland.cachix.org).
+>
+> Two duplicates remain by design: the Hyprland stack and
+> `hardware.graphics.package` (mesa) come from the `hyprland` input's own
+> nixpkgs, because stable nixpkgs lags Hyprland's requirements. Installing
+> the Hermes agent from the menu pulls that project's own flake and
+> nixpkgs as well. To track exactly the tested combination instead, omit
+> the follow — the desktop is then built from this flake's pinned nixpkgs
+> and only moves when you update omarchy-nix.
 
 > The attribute name must match the machine's hostname: the menu
 > Install/Remove actions and `omarchy update` resolve

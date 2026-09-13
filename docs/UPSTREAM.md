@@ -257,6 +257,16 @@ nix flake lock --update-input omarchy-src
 nix flake check
 ```
 
+The `nixpkgs` pin is consumer-visible: without `follows`, consumers build
+the vendored tree and the upstream-owned apps from it. Refresh it — and
+`home-manager` with it, since it follows the same channel — whenever they
+are more than a few weeks old (the first bump after 2026-07-27 sat for
+seven weeks and left consumers' desktops on packages that old):
+
+```bash
+nix flake lock --update-input nixpkgs --update-input home-manager
+```
+
 `substituteInPlace --replace-fail` makes vanished patch targets fail
 the build loudly. For each failure: fix the pattern, or drop the patch
 if upstream changed the approach, and update the comment that documents

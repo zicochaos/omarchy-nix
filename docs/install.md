@@ -127,7 +127,10 @@ Create `/etc/nixos/flake.nix`:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    omarchy-nix.url = "github:zicochaos/omarchy-nix";
+    omarchy-nix = {
+      url = "github:zicochaos/omarchy-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -152,6 +155,14 @@ Create `/etc/nixos/flake.nix`:
 
 (For a local checkout instead of GitHub, point `omarchy-nix.url` at
 `git+file:///path/to/omarchy-nix`.)
+
+> **Follow `nixpkgs` (as above).** Without it the vendored desktop tree
+> and the upstream-owned apps build from this flake's pin while your
+> system runs its own nixpkgs — two copies of their dependencies in the
+> store (a real consumer measured 1.7 GiB of duplicated closure) and desktop
+> packages lagging behind your channel. The Hyprland stack and the mesa
+> override still come from the `hyprland` input's own nixpkgs by design;
+> the README "Quick start" note has the full tradeoff.
 
 > **Name the configuration after your hostname.** The menu Install/Remove
 > actions and `omarchy update` resolve
