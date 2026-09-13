@@ -75,7 +75,14 @@ module/build verification.
   upstream's `/usr/share/omarchy` semantics — so after a `switch` the
   update flow's post-rebuild steps (`omarchy-migrate`, post-update
   hooks) see the new migration set and scripts immediately instead of
-  the stale login-time tree.
+  the stale login-time tree. The quickshell menu guard batch also
+  reflects installs now: its `omarchy-pkg-present` shadow was backed by
+  `pacman`, which does not exist on NixOS, so every Install row stayed
+  offered (Rust, browsers, …) and Remove rows never appeared no matter
+  what was installed. The shadows delegate to the NixOS probe binary
+  (memoized per batch), and a new `omarchy-menu-guards` check executes
+  the real batch against a fixture consumer state so this cannot drift
+  again.
 
 - **2026-09-12** — upstream refresh to `31bd80da` (11 commits past the
   v4.0.3 pin; no new upstream tag, so this is still quattro post-v4.0.3):

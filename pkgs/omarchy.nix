@@ -1479,6 +1479,20 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail '[[ -d $HOME/.local/share/mise/installs/deno ]]' 'omarchy-pkg-present deno' \
           --replace-fail '[[ -d $HOME/.local/share/mise/installs/elixir ]]' 'omarchy-pkg-present elixir'
 
+        # Quickshell menu guard batch: MenuModel.js guardHelpers() shadows
+        # omarchy-pkg-present/omarchy-pkg-missing with pacman-backed set
+        # lookups (perf: one pacman -Qq per batch instead of a fork per
+        # guard row). NixOS has no pacman, so the shadow set is always
+        # empty and every install row renders available while its remove
+        # row hides — the menu never reflected installs. Point the shadows
+        # at the NixOS probe binary (catalog arch → managed json →
+        # binaries), memoized per batch. Anchors fail closed on an
+        # upstream reshape.
+        substituteInPlace shell/plugins/menu/MenuModel.js \
+          --replace-fail "declare -A __omarchy_pkgs=()\n" "declare -A __omarchy_pkgs=()\ndeclare -A __omarchy_present_cache=()\n" \
+          --replace-fail 'omarchy-pkg-present() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 1; done; return 0; }\n' 'omarchy-pkg-present() { local p r; for p in "$@"; do r=''${__omarchy_present_cache[$p]-}; if [[ -z $r ]]; then if "''${OMARCHY_PATH:-/run/current-system/sw/share/omarchy}/bin/omarchy-pkg-present" "$p" >/dev/null 2>&1; then r=1; else r=0; fi; __omarchy_present_cache[$p]=$r; fi; [[ $r == 1 ]] || return 1; done; return 0; }\n' \
+          --replace-fail 'omarchy-pkg-missing() { local p; for p in "$@"; do __omarchy_pkg_has "$p" || return 0; done; return 1; }\n' 'omarchy-pkg-missing() { ! omarchy-pkg-present "$@"; }\n'
+
         # Agents/apps with no nixpkgs package on the 2f5a153c27 pin — drop
         # their menu entries (grep guards keep this fail-closed, like
         # --replace-fail): agy (Antigravity — upstream's Gemini replacement;

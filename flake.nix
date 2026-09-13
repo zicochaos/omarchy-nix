@@ -809,6 +809,70 @@
               fi
               touch $out
             '';
+          # Behavioral check for the quickshell menu guard batch: generate
+          # the exact bash batch MenuModel.js runs (parse shipped menu →
+          # merge → guardScript) and execute it against a fixture consumer
+          # state. Catches the NixOS regression where the batch's
+          # pacman-backed omarchy-pkg-present shadow always answered
+          # "missing", so every Install row rendered available and Remove
+          # rows never appeared. NixOS has no pacman, so a sandbox run is a
+          # faithful NixOS reproduction — with the delegation patch the
+          # batch must report managed packages as present through the same
+          # catalog → omarchy-packages.json → binaries resolution the real
+          # probe uses.
+          omarchy-menu-guards =
+            let
+              omarchyPkg = self.packages.${system}.omarchy;
+            in
+            pkgs.runCommand "omarchy-menu-guards-check"
+              {
+                nativeBuildInputs = [
+                  pkgs.nodejs
+                  pkgs.jq
+                ];
+                env.OMARCHY_PATH = "${omarchyPkg}/share/omarchy";
+              }
+              ''
+                set -euo pipefail
+                fail() { echo "FAIL: $*" >&2; exit 1; }
+
+                # Consumer-state fixture: rustc/cargo/firefox managed, brave
+                # absent. resolve_flake_dir requires a flake.nix in the dir.
+                export OMARCHY_NIX_FLAKE="$PWD/consumer-flake"
+                mkdir -p "$OMARCHY_NIX_FLAKE"
+                : > "$OMARCHY_NIX_FLAKE/flake.nix"
+                printf '{"packages": ["rustc", "cargo", "firefox"], "features": []}\n' \
+                  > "$OMARCHY_NIX_FLAKE/omarchy-packages.json"
+
+                cat > gen-guard-script.js <<'JS'
+                const M = require(process.env.OMARCHY_PATH + "/shell/plugins/menu/MenuModel.js");
+                const fs = require("fs");
+                const defaults = M.parseMenuJsonc(
+                  fs.readFileSync(process.env.OMARCHY_PATH + "/default/omarchy/omarchy-menu.jsonc", "utf8"),
+                );
+                const merged = M.mergeMenuSources(defaults, []);
+                process.stdout.write(M.guardScript(merged.items));
+                JS
+
+                node gen-guard-script.js > guard.sh
+                [ -s guard.sh ] || fail "empty guard script"
+
+                # A nonzero batch makes the shell drop ALL guard results, so
+                # the exit status is part of the contract.
+                bash guard.sh > results.txt ||
+                  fail "guard batch exited nonzero (shell would discard every result)"
+
+                grep -qx 'install.development.rust:d:1' results.txt ||
+                  fail "rust reported not installed (menu would offer it again)"
+                grep -qx 'install.browser.firefox:d:1' results.txt ||
+                  fail "firefox reported not installed"
+                grep -qx 'install.browser.brave:d:0' results.txt ||
+                  fail "brave wrongly reported installed"
+                grep -qx 'remove.development.rust:w:1' results.txt ||
+                  fail "remove-rust row not visible despite rust installed"
+
+                touch $out
+              '';
           # binfmt plumbing: the opt-in list must stay empty on
           # the demo config (no silent emulation) and reach
           # boot.binfmt.emulatedSystems unchanged when set. extendModules
