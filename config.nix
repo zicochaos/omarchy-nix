@@ -99,6 +99,21 @@
       '';
     };
 
+    # The quickshell build the desktop runs. Injected by the flake wrapper as
+    # this repo's pin (currently 0.3.1 — pkgs/quickshell.nix explains why and
+    # when to drop it); null falls back to the consumer's pkgs.quickshell.
+    # The shell is the whole desktop, so a consumer override replaces the
+    # entire bar/launcher/menu/lock stack at once.
+    quickshellPackage = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The quickshell build used for the Quattro shell
+        (pkgs.quickshell by default; the flake injects its own 0.3.1 pin).
+        Override only to pin a different build.
+      '';
+    };
+
     # The omarchy-nvim starter package (LazyVim + omarchy overlay). The HM
     # module runs its omarchy-nvim-setup script once to seed ~/.config/nvim
     # (mutable seed-and-release, like the other user config stubs).

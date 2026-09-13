@@ -78,11 +78,15 @@ NixOS-specific commands share one consumer-flake resolver
 - `home-manager` → `github:nix-community/home-manager`, follows `nixpkgs`.
 - `hermes-agent` → `github:NousResearch/hermes-agent` (the `hermes`
   default-agent CLI, consumed as its own flake — it brings its own nixpkgs).
-- `quickshell`: `pkgs.quickshell` (nixpkgs, v0.3.0). Sufficient for the
-  current upstream `shell.qml`; `checks.omarchy-desktop` verifies the shell
-  loads and registers its instance. If a future upstream rev requires a newer
-  API, add an explicit `github:quickshell-mirror/quickshell` input and use
-  its `#quickshell` output.
+- `quickshell`: this repo pins 0.3.1 (`pkgs/quickshell.nix`, injected as
+  `omarchy.quickshellPackage`) because stable nixpkgs carries 0.3.0 — 0.3.1
+  fixes the plugin-reload OSD side effect measured here and carries
+  session-lock/wifi crash fixes. `checks.omarchy-desktop` verifies the shell
+  loads and registers its instance, `checks.omarchy-quickshell-version`
+  guards the pin, and `checks.omarchy-ux` asserts the OSD survives a plugin
+  reload. Drop the pin (`pkgs/quickshell.nix`, the flake's packages entry,
+  the wrapper injection and the version check) when the nixpkgs pin carries
+  0.3.1 or newer.
 
 ## Verification (every stage)
 

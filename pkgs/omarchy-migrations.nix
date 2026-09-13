@@ -149,8 +149,9 @@
   #                           # qt6.qtimageformats for webp theme backgrounds)
   "1787215824.sh" = "skip"; # hey via mise wrapper (mise model rejected; hey-cli not in nixpkgs)
   "1787342993.sh" = "skip"; # ori via mise wrapper (mise model rejected; ori not in nixpkgs)
-  "1787399318.sh" = "skip"; # quickshell-git -> quickshell via pacman (module ships nixpkgs
-  #                           # quickshell; upstream 0.3.1 switch-back is what we already run)
+  "1787399318.sh" = "skip"; # quickshell-git -> quickshell via pacman (module ships its own
+  #                           # quickshell pin, pkgs/quickshell.nix; upstream's switch-back to
+  #                           # the release package is what we already run)
   "1787494718.sh" = "skip"; # FIDO2 authfile ownership in /etc/fido2 (security.pam.u2f owns the
   #                           # authfile declaratively on NixOS)
   "1787515927.sh" = "skip"; # browser policy dir hardening under /etc (module-owned on NixOS)

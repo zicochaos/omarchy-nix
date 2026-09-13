@@ -86,32 +86,18 @@
       # unfree whitelist extension at eval time. On real systems this file is
       # written by omarchy-nix-add/remove (Task 2 scripts).
       #
-      # builtins.toFile creates a store path at eval time so the module can
-      # read the JSON; the environment.etc entry mirrors it at /etc/nixos/
-      # for runtime tools (omarchy-pkg-present). A bare string path like
-      # "/etc/nixos/..." would not be readable at eval time — environment.etc
-      # creates the file at activation, not evaluation.
-      environment.etc."nixos/omarchy-packages.json".text = builtins.toJSON {
-        packages = [ "firefox" ];
-        features = [
-          "steam"
-          "xpadneo"
-        ];
-      };
+      # A real file under tests/fixtures, not builtins.toFile: the module
+      # reads it with builtins.pathExists, and --no-build evaluation cannot
+      # realise a toFile path that a GC removed ("path ... is not valid").
+      # The environment.etc entry mirrors it at /etc/nixos/ for runtime tools
+      # (omarchy-pkg-present).
+      environment.etc."nixos/omarchy-packages.json".source = ./fixtures/managed-packages-ux.json;
       # Stub flake.nix alongside the JSON fixture so omarchy-pkg-present's
       # resolve_json() (which gates on flake.nix + omarchy-packages.json being
       # co-located) finds the fixture and the JSON membership path is exercised
       # by the (4d) truth table, not just the binary-probe fallback.
       environment.etc."nixos/flake.nix".text = "# omarchy-ux test stub";
-      omarchy.managedPackagesFile = builtins.toFile "omarchy-packages.json" (
-        builtins.toJSON {
-          packages = [ "firefox" ];
-          features = [
-            "steam"
-            "xpadneo"
-          ];
-        }
-      );
+      omarchy.managedPackagesFile = ./fixtures/managed-packages-ux.json;
 
       # (4i) the xpadneo feature entry must evaluate to the real
       # kernel-module option (managedFeatureDefs.xpadneo in the nixos module).
@@ -1586,16 +1572,17 @@
     # --- (12) Plugin clone: behavioral run (TODO #23). ---------------------
     # Runs last on purpose. Any change inside ~/.config/omarchy/plugins makes
     # the shell reload every plugin (inotify -> reloadPlugins -> unload +
-    # rescan), and on the pinned quickshell (nixpkgs 0.3.0) that reload
-    # duplicates the IpcHandler registrations: the re-created handlers are
-    # rejected ("Handler was registered but will not be used because another
-    # handler is registered for target osd") and the stale ones belong to
-    # unloaded instances, so `omarchy osd` still returns ok but the OSD stops
-    # rendering (measured: exit 0, no omarchy-osd layer, the volume-OSD
-    # assertion times out). The menu/notification IPC assertions are
-    # unaffected — only targets whose handler got re-created die. Keeping the
-    # clone cycle last means the reload side effect cannot mask anything
-    # else; upstream tracks the mechanism (omacom/omarchy#9533, #10746).
+    # rescan). On the FORMER pin (quickshell 0.3.0) that reload duplicated
+    # the IpcHandler registrations — the re-created OSD handler was rejected
+    # ("... another handler is registered for target osd"), the stale one
+    # belonged to the unloaded instance, and the first `omarchy osd` call
+    # rendered nothing while still exiting 0 (in two runs the later volume-OSD
+    # assertion then timed out). The current pin (0.3.1, pkgs/quickshell.nix)
+    # renders that first call in every run; the strict assertion further down
+    # guards exactly that. The reload still logs duplicate-handler warnings
+    # for the bar-widget targets on 0.3.1 (upstream's broader class,
+    # omacom/omarchy#9533/#10746) — keeping this cycle last means those
+    # warnings cannot mask anything else.
     #
     # What this covers: the catalog lookup (jq over the packaged plugin
     # tree), the store->$HOME copies (the patched cp -aL sites), the manifest
@@ -1627,6 +1614,18 @@
             )
         return ok
 
+    def osd_renders(_last=False):
+        machine.execute(as_demo("omarchy-osd -i volume-high -p 50 -d 4000"))
+        machine.sleep(2)
+        return "omarchy-osd" in machine.succeed(as_demo("hyprctl -j layers"))
+
+    # Warm the OSD panel before the reload: the first call of a session can
+    # be cold (the probe observes the baseline needing a second attempt), and
+    # the strict post-reload check below must not fail for that reason.
+    with machine.nested("OSD warm-up before the plugin reload"):
+        retry(osd_renders, timeout_seconds=30)
+    machine.sleep(5)  # let it hide (4000 ms + animation)
+
     with machine.nested("omarchy plugin clone runs end to end"):
         machine.succeed(as_demo("omarchy plugin clone omarchy.clock"))
         clone_dir = "~/.config/omarchy/plugins/demo.clock"
@@ -1646,6 +1645,23 @@
         listing = plugin_listing()
         assert "demo.clock" in listing, listing
         assert listing["demo.clock"]["enabled"] is True, listing["demo.clock"]
+
+        # Strict regression guard for the quickshell pin (pkgs/quickshell.nix):
+        # the FIRST OSD call after the reload must render. On 0.3.0 the reload
+        # leaves a stale IpcHandler serving the destroyed instance — that first
+        # call rendered nothing in all 5 preserved runs, with some staying dead
+        # for 30 s+ (the volume-OSD section above timed out that way) — while
+        # 0.3.1 renders it on the first call in every run. No retry here on
+        # purpose: a later call recovers in some 0.3.0 runs, so retrying would
+        # hide the state the pin exists to prevent. Note the reload does still
+        # log duplicate-handler warnings for the bar-widget targets on 0.3.1
+        # (upstream's broader class, omacom/omarchy#9533/#10746); the OSD
+        # target is the one this port relies on and the one that broke.
+        machine.execute(as_demo("omarchy-osd -i volume-high -p 50 -d 4000"))
+        machine.sleep(2)
+        assert "omarchy-osd" in machine.succeed(as_demo("hyprctl -j layers")), \
+            "OSD dead on the first call after the plugin reload (stale IpcHandler)"
+
         machine.succeed(as_demo("omarchy plugin remove demo.clock --yes"))
         with machine.nested("remove converges (shell rescan is async)"):
             retry(lambda last: clone_removed("demo.clock", "omarchy.clock", last), timeout_seconds=30)

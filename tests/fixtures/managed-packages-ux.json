@@ -1,0 +1,4 @@
+{
+  "packages": ["firefox"],
+  "features": ["steam", "xpadneo"]
+}

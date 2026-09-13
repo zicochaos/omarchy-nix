@@ -165,6 +165,12 @@ would be cleaner in Nix" is not sufficient reason to deviate.
 
 ## Quick start
 
+> **Supported architecture: `x86_64-linux` only.** The flake advertises no
+> other systems, and importing the module on one fails evaluation with a
+> clear message instead of a missing-attribute error. The VM checks are
+> x86_64-only for the same reason (`hardware.graphics.enable32Bit`), so
+> aarch64 support waits until those checks can evaluate there.
+
 Add `omarchy-nix` to your flake inputs and import the NixOS + Home-Manager
 modules. One `omarchy.enable = true` wires the whole desktop:
 

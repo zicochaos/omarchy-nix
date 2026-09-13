@@ -11,8 +11,10 @@ omarchy provides it.
   image: its boot menu lets you pick the live session (GNOME or KDE) and
   the kernel (latest or LTS); neither choice constrains the installed
   system. The included graphical installer (Calamares) does the install.
-- A machine (bare metal or VM) with EFI boot and a GPU Hyprland can drive
-  (Intel/AMD work; NVIDIA needs the proprietary driver, out of scope here).
+- A **`x86_64-linux`** machine (bare metal or VM) with EFI boot and a GPU
+  Hyprland can drive (Intel/AMD work; NVIDIA needs the proprietary driver,
+  out of scope here). The flake advertises no other architecture; other
+  systems fail evaluation with a clear message.
 - Network access (the install fetches omarchy-nix + nixpkgs from GitHub/cache).
 
 > **Hyprland Cachix is configured automatically.** The omarchy NixOS module

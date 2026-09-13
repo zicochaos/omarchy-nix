@@ -45,6 +45,11 @@ let
 
   excluded = builtins.map (n: n) cfg.exclude_packages;
 
+  # The shell package the desktop runs. The flake wrapper injects this repo's
+  # 0.3.1 pin (pkgs/quickshell.nix); without a wrapper (pure-module use) fall
+  # back to the consumer's pkgs.quickshell.
+  quickshellPkg = if cfg.quickshellPackage != null then cfg.quickshellPackage else pkgs.quickshell;
+
   # Drop packages whose attribute name appears in omarchy.exclude_packages.
   filterExcluded = lib.filter (p: !builtins.elem (pkgAttrName p) excluded);
 
@@ -228,7 +233,7 @@ let
         # --- Quattro shell: the whole desktop (bar, launcher, menus,
         # notifications, OSDs, lock, polkit) is a single quickshell process
         # launched from Hyprland autostart. Without it there is no shell. ---
-        quickshell
+        quickshellPkg
 
         # gtk-launch: the quickshell launcher (shell/services/AppLibrary.qml)
         # starts every picked app via `gtk-launch <desktop-id>`. gtk3 is
@@ -1204,7 +1209,7 @@ in
         # Order NetworkManager ahead of the display manager -- and so ahead
         # of the graphical session and quickshell. The shell binds its
         # Quickshell.Networking backend to NetworkManager's D-Bus name once,
-        # at process start, and quickshell 0.3.0 has no NameOwnerChanged
+        # at process start, and quickshell 0.3.x has no NameOwnerChanged
         # recovery (basecamp/omarchy#7324). If the session wins the startup
         # race on a first boot, the network panel shows NOT CONNECTED while
         # the link is up (live IP/ping stats from the status poller), and the
@@ -1370,8 +1375,8 @@ in
                 systemd
                 dbus
                 jq
-                quickshell
               ])
+              ++ [ quickshellPkg ]
               ++ [
                 config.programs.hyprland.package
                 "${cfg.package}/share/omarchy"

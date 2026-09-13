@@ -29,11 +29,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # quickshell: prefer pkgs.quickshell (nixpkgs tracks the v0.3.0 release).
-    # If upstream shell.qml needs a newer API, add an explicit input:
-    #   quickshell.url = "github:quickshell-mirror/quickshell";
-    # and use inputs.quickshell.packages.${system}.quickshell in the NixOS
-    # module. Decided when the shell first loads in a VM, not before.
+    # quickshell is NOT an input: this repo pins 0.3.1 in pkgs/quickshell.nix
+    # (stable nixpkgs carries 0.3.0) and injects it as
+    # omarchy.quickshellPackage. See that file for the measured reasons and
+    # the drop condition.
 
     # Hermes Agent (Nous Research, MIT): the `hermes` default-agent CLI.
     # Upstream installs it with its own installer; here we consume the
@@ -156,6 +155,9 @@
           # tmux; not in nixpkgs).
           ttfx = pkgs.callPackage ./pkgs/ttfx.nix { };
           herdr = pkgs.callPackage ./pkgs/herdr.nix { };
+          # quickshell 0.3.1 pin (stable nixpkgs carries 0.3.0). See the
+          # file header for the measured reasons and the removal condition.
+          quickshell = pkgs.callPackage ./pkgs/quickshell.nix { };
           # Icons for stock Omarchy themes (nixpkgs dropped yaru-theme with murrine).
           yaru-theme = pkgs.callPackage ./pkgs/yaru-theme.nix { };
           default = self.packages.${system}.omarchy;
@@ -227,6 +229,11 @@
                   ]
                 );
                 omarchy.nvimPackage = lib.mkDefault hostPackages.omarchy-nvim;
+
+                # The desktop's quickshell build. Default is this flake's
+                # 0.3.1 pin (see pkgs/quickshell.nix); a consumer can point it
+                # at any other build with omarchy.quickshellPackage.
+                omarchy.quickshellPackage = lib.mkDefault hostPackages.quickshell;
 
                 # Flake-owned derivations the Install-menu catalog addresses
                 # by attr name when nixpkgs does not carry them (resolved by
@@ -811,6 +818,32 @@
                 echo "PATH was: $PATH" >&2
                 exit 1
               fi
+              touch $out
+            '';
+          # The desktop runs this repo's quickshell pin (pkgs/quickshell.nix)
+          # rather than the consumer's pkgs.quickshell: stable nixpkgs carries
+          # 0.3.0, and 0.3.1 fixes the plugin-reload OSD side effect this port
+          # measured (plus crash fixes). Run the binary so a silently
+          # unapplied override (or a nixpkgs recipe change) cannot pass, and
+          # check the shell's IPC entry point exists for the sleep-lock unit.
+          omarchy-quickshell-version =
+            let
+              qs = self.packages.${system}.quickshell;
+            in
+            pkgs.runCommand "omarchy-quickshell-version" { } ''
+              set -euo pipefail
+              version="$(QT_QPA_PLATFORM=offscreen ${qs}/bin/quickshell --version 2>&1)"
+              case "$version" in
+                *0.3.1*) ;;
+                *)
+                  echo "quickshell pin is not 0.3.1: $version" >&2
+                  exit 1
+                  ;;
+              esac
+              test -x ${qs}/bin/qs || {
+                echo "quickshell package lost the qs IPC binary" >&2
+                exit 1
+              }
               touch $out
             '';
           # Behavioral check for the quickshell menu guard batch: generate
@@ -2480,20 +2513,20 @@ c";
           omarchy-managed-nested-attrs =
             let
               inherit (pkgs) lib;
+              # Real fixture files, not builtins.toFile: the module reads the
+              # path with builtins.pathExists, and --no-build evaluation cannot
+              # realise a toFile path that a GC removed (it fails with
+              # "path ... is not valid"). Files inside the flake source always
+              # exist, so `nix flake check --no-build` stays GC-safe.
               mkEval =
-                packages:
+                file:
                 nixpkgs.lib.nixosSystem {
                   inherit pkgs;
                   modules = [
                     self.nixosModules.default
                     {
                       omarchy.enable = true;
-                      omarchy.managedPackagesFile = builtins.toFile "omarchy-packages.json" (
-                        builtins.toJSON {
-                          inherit packages;
-                          features = [ ];
-                        }
-                      );
+                      omarchy.managedPackagesFile = file;
                       fileSystems."/".device = "/dev/null";
                       fileSystems."/".fsType = "ext4";
                       boot.loader.grub.device = "nodev";
@@ -2503,21 +2536,17 @@ c";
                 };
               pkgIn =
                 needle: cfg: builtins.any (p: (p.drvPath or "") == needle.drvPath) cfg.environment.systemPackages;
-              good =
-                (mkEval [
-                  "hello"
-                  "kdePackages.dolphin"
-                ]).config;
+              good = (mkEval ./tests/fixtures/managed-packages-nested.json).config;
               missingNested = builtins.tryEval (
                 builtins.seq (builtins.concatStringsSep "" (
                   map (p: p.drvPath or "")
-                    (mkEval [ "kdePackages.definitely-not-a-real-pkg-xyz" ]).config.environment.systemPackages
+                    (mkEval ./tests/fixtures/managed-packages-nested-missing.json).config.environment.systemPackages
                 )) true
               );
               missingTop = builtins.tryEval (
                 builtins.seq (builtins.concatStringsSep "" (
                   map (p: p.drvPath or "")
-                    (mkEval [ "definitely-not-a-real-attr-xyz" ]).config.environment.systemPackages
+                    (mkEval ./tests/fixtures/managed-packages-top-missing.json).config.environment.systemPackages
                 )) true
               );
             in
@@ -2597,12 +2626,9 @@ c";
                   ];
                 }).config;
               managed = {
-                omarchy.managedPackagesFile = builtins.toFile "taildrop-packages.json" (
-                  builtins.toJSON {
-                    packages = [ ];
-                    features = [ "tailscale" ];
-                  }
-                );
+                # Real fixture file (see the note in omarchy-managed-nested-attrs):
+                # toFile + pathExists breaks --no-build evaluation after a GC.
+                omarchy.managedPackagesFile = ./tests/fixtures/managed-packages-taildrop.json;
               };
               enabled = mkConfig managed;
               disabled = mkConfig { };

@@ -112,8 +112,9 @@
 
     # The quickshell bar is launched from default/hypr/autostart.lua as
     # `quickshell -n -p $OMARCHY_PATH/shell`. A live, registered instance
-    # means shell.qml loaded successfully against nixpkgs's quickshell
-    # 0.3.0 — `quickshell list` returns the running configs, which is
+    # means shell.qml loaded successfully against the pinned quickshell
+    # (0.3.1, pkgs/quickshell.nix) — `quickshell list` returns the running
+    # configs, which is
     # stronger than pgrep (the daemon registered its IPC, not just a live
     # process). If it crashed on a QML/API mismatch this would be empty.
     machine.wait_until_succeeds(

@@ -57,6 +57,17 @@ name when nixpkgs does not carry them (currently `claude-desktop`, `omp`,
 nixpkgs first and through this set second. Set automatically by the flake's
 `nixosModules.default`; override to trim or extend the set.
 
+### `omarchy.quickshellPackage` *(nullOr package, default `null`, injected by the flake)*
+
+The quickshell build the Quattro shell runs; `null` falls back to the
+consumer's `pkgs.quickshell`. The flake injects its own pin
+(`pkgs/quickshell.nix`, currently **0.3.1** — stable nixpkgs carries 0.3.0):
+0.3.1 fixes the plugin-reload OSD side effect measured in this port (see
+"Known broken" in `docs/MAINTAINERS.md`) and carries crash fixes for the
+session lock and networking paths. Override only to pin a different build;
+the ux check asserts the post-reload OSD behaviour, so dropping the pin when
+nixpkgs moves is guarded.
+
 ## Shell
 
 ### `omarchy.fish.enable` *(bool, default `false`)*

@@ -1,0 +1,4 @@
+{
+  "packages": ["kdePackages.definitely-not-a-real-pkg-xyz"],
+  "features": []
+}
