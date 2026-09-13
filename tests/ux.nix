@@ -872,14 +872,16 @@
             as_demo("test ! -d ~/.local/state/omarchy/current/next-theme")
         )
 
-    # --- (9b) Plugin clone cp -aL patch invariant (L4 class). -----------
+    # --- (9b) Plugin clone: static patch guard. ---------------------------
     # omarchy-plugin-clone copies plugin sources out of the store with cp -aL;
-    # without --no-preserve=mode the clone lands as 444 files in 555 dirs and
-    # the sed -i rename pass aborts (menu: Setup -> Plugin -> Clone). This is
-    # a static guard on the packaged script: every cp -aL site must carry the
-    # patch (the count tripwire forces re-audit when upstream adds a site).
-    # Behavioral L4 coverage lives in (9) — a functional plugin-clone run in
-    # the VM is a documented follow-up in TODO.md.
+    # without --no-preserve=mode the clone lands as 444 files in 555
+    # directories (verified by re-running the clone with the flags stripped),
+    # so the user cannot edit the clone — the whole point of the command —
+    # and the clone cannot be cleaned up normally (rm inside the 555 dirs
+    # fails; the remove script's mv-to-backup works, the backup stays
+    # read-only). Static guard on the packaged script: every cp -aL site must
+    # carry the patch (the count tripwire forces re-audit when upstream adds
+    # a site).
     with machine.nested("plugin-clone --no-preserve=mode guard"):
         clone_script = machine.succeed(
             "cat /run/current-system/sw/share/omarchy/bin/omarchy-plugin-clone"
@@ -1580,6 +1582,113 @@
             per_try_timeout=15,
         )
         machine.wait_until_succeeds(layer_probe("omarchy-polkit", False), timeout=30)
+
+    # --- (12) Plugin clone: behavioral run (TODO #23). ---------------------
+    # Runs last on purpose. Any change inside ~/.config/omarchy/plugins makes
+    # the shell reload every plugin (inotify -> reloadPlugins -> unload +
+    # rescan), and on the pinned quickshell (nixpkgs 0.3.0) that reload
+    # duplicates the IpcHandler registrations: the re-created handlers are
+    # rejected ("Handler was registered but will not be used because another
+    # handler is registered for target osd") and the stale ones belong to
+    # unloaded instances, so `omarchy osd` still returns ok but the OSD stops
+    # rendering (measured: exit 0, no omarchy-osd layer, the volume-OSD
+    # assertion times out). The menu/notification IPC assertions are
+    # unaffected — only targets whose handler got re-created die. Keeping the
+    # clone cycle last means the reload side effect cannot mask anything
+    # else; upstream tracks the mechanism (omacom/omarchy#9533, #10746).
+    #
+    # What this covers: the catalog lookup (jq over the packaged plugin
+    # tree), the store->$HOME copies (the patched cp -aL sites), the manifest
+    # rewrite (jq: id/name/clonedFrom), discovery through the live shell IPC
+    # (omarchy-shell rescanPlugins + omarchy-plugin-list --json), the enable,
+    # and removal — where the shell must put the built-in back.
+    def plugin_listing():
+        return {
+            p["id"]: p
+            for p in json.loads(machine.succeed(as_demo("omarchy plugin list --json")))
+        }
+
+    def clone_removed(clone_id, source_id, _last=False):
+        # The shell rescans asynchronously (inotify -> reload), so poll for the
+        # post-remove state instead of reading once right after the command.
+        # A transient IPC hiccup mid-reload also counts as "not converged yet"
+        # rather than aborting the retry loop.
+        try:
+            listing = plugin_listing()
+        except Exception:
+            if _last:
+                raise
+            return False
+        ok = clone_id not in listing and listing.get(source_id, {}).get("enabled") is True
+        if not ok and _last:
+            raise AssertionError(
+                "remove did not converge: %s=%r %s=%r"
+                % (clone_id, listing.get(clone_id), source_id, listing.get(source_id))
+            )
+        return ok
+
+    with machine.nested("omarchy plugin clone runs end to end"):
+        machine.succeed(as_demo("omarchy plugin clone omarchy.clock"))
+        clone_dir = "~/.config/omarchy/plugins/demo.clock"
+        machine.succeed(as_demo("test -f " + clone_dir + "/manifest.json"))
+        manifest = json.loads(
+            machine.succeed(as_demo("cat " + clone_dir + "/manifest.json"))
+        )
+        assert manifest["id"] == "demo.clock", manifest
+        assert manifest["name"] == "My Clock", manifest
+        assert manifest.get("omarchy", {}).get("clonedFrom") == "omarchy.clock", manifest
+        # The reason the L4 patch exists: every cloned entry is user-writable
+        # (without it the clone is mode 444 in 555 directories).
+        unwritable = machine.succeed(
+            as_demo("find " + clone_dir + " ! -writable")
+        ).strip()
+        assert unwritable == "", "clone left read-only entries: %r" % unwritable
+        listing = plugin_listing()
+        assert "demo.clock" in listing, listing
+        assert listing["demo.clock"]["enabled"] is True, listing["demo.clock"]
+        machine.succeed(as_demo("omarchy plugin remove demo.clock --yes"))
+        with machine.nested("remove converges (shell rescan is async)"):
+            retry(lambda last: clone_removed("demo.clock", "omarchy.clock", last), timeout_seconds=30)
+
+    # Second clone targets the rename pass: omarchy.indicators carries
+    # clonePaths (a whole sibling directory + a relative import rewritten in
+    # place by sed), which exercises the dir-flavoured cp -aL site and the
+    # jq/rg/sed wiring; omarchy.clock alone never runs that pass. Note the
+    # pass is NOT the mode patch's failure mode — sed -i renames within the
+    # writable staging dir and succeeds even unpatched (verified) — the
+    # writability assertion below is what the --no-preserve=mode patch is
+    # for.
+    with machine.nested("plugin clone rewrites relative paths (sed pass)"):
+        machine.succeed(as_demo("omarchy plugin clone omarchy.indicators"))
+        clone_dir = "~/.config/omarchy/plugins/demo.indicators"
+        # The sibling directory came along (the dir-flavoured cp -aL site).
+        machine.succeed(as_demo("test -f " + clone_dir + "/indicators/Dictation.qml"))
+        manifest = json.loads(
+            machine.succeed(as_demo("cat " + clone_dir + "/manifest.json"))
+        )
+        assert manifest.get("omarchy", {}).get("clonedFrom") == "omarchy.indicators", manifest
+        # update_manifest deletes clonePaths after the copy.
+        assert "clonePaths" not in manifest.get("omarchy", {}), manifest
+        # The sed pass rewrote the relative import and left no stale path.
+        # (Checked host-side: the as_demo wrapper is single-quoted, so the
+        # command string must not carry single quotes of its own.)
+        qml = machine.succeed(as_demo("cat " + clone_dir + "/Indicators.qml"))
+        assert 'Qt.resolvedUrl("indicators/' in qml, \
+            "sed pass did not rewrite the relative import"
+        assert "../indicators" not in qml, "clone kept a stale relative path"
+        stale = machine.succeed(
+            as_demo("grep -rF -- ../indicators " + clone_dir + " || true")
+        ).strip()
+        assert stale == "", "clone kept stale relative paths: %r" % stale
+        unwritable = machine.succeed(
+            as_demo("find " + clone_dir + " ! -writable")
+        ).strip()
+        assert unwritable == "", "clone left read-only entries: %r" % unwritable
+        listing = plugin_listing()
+        assert listing["demo.indicators"]["enabled"] is True, listing["demo.indicators"]
+        machine.succeed(as_demo("omarchy plugin remove demo.indicators --yes"))
+        with machine.nested("remove converges (shell rescan is async)"):
+            retry(lambda last: clone_removed("demo.indicators", "omarchy.indicators", last), timeout_seconds=30)
 
     # --- (8) Screenshot for diagnostics. -----------------------------------
     # Under QEMU without virgil the Aquamarine framebuffer is near-empty (see
