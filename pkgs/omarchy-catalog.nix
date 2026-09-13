@@ -226,6 +226,19 @@
       pkgs = [ "hermes-agent" ];
       binaries = [ "hermes" ];
     };
+    # ZCode (Z.ai): desktop harness shipped as a vendor .deb (unfree),
+    # packaged in-repo (pkgs/zcode-desktop.nix) and resolved through
+    # omarchy.ownedPackages. `zcode` is the CLI the app bundles; the `arch`
+    # name is the AUR package upstream's Omarchy menu guard probes.
+    "install.ai.zcode" = {
+      arch = "z-code-bin";
+      pkgs = [ "zcode-desktop" ];
+      binaries = [
+        "zcode-desktop"
+        "zcode"
+      ];
+      unfreeNames = [ "zcode-desktop" ];
+    };
     # --- Default coding agents (Setup > Defaults > Agent) ---
     # Upstream lazy-installs these with `mise use -g`; here they are catalog
     # entries, installed declaratively and then selectable as the default.

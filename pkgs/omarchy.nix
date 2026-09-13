@@ -62,6 +62,11 @@ let
   # python on the fixup PATH, so we substitute explicitly).
   pythonWithGi = python3.withPackages (ps: [ ps.pygobject3 ]);
 
+  # The menu icon font is patched in postPatch (the ZCode mark, U+E90F — see
+  # pkgs/omarchy-icons/), which needs fontTools. Referenced by store path, so
+  # this never reaches the runtime closure.
+  pythonWithFonttools = python3.withPackages (ps: [ ps.fonttools ]);
+
   # Classification of Arch system mutators: declarative-note
   # scripts become generated stubs below; checks.omarchy-runtime enforces
   # the manifest against the packaged tree (fail-closed on new upstream
@@ -83,6 +88,7 @@ let
     "install.ai.claude-desktop": {"icon":"","iconFont":"omarchy","label":"Claude Desktop","disabled":"omarchy-pkg-present claude-desktop","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.claude-desktop'"},
     "install.ai.omp": {"icon":"󱚤","label":"Oh My Pi","when":"! omarchy-pkg-present omp","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.omp'"},
     "install.ai.hermes": {"icon":"󱚤","label":"Hermes","when":"! omarchy-pkg-present hermes","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.hermes'"},
+    "install.ai.zcode": {"icon":"","iconFont":"omarchy","label":"ZCode","disabled":"omarchy-pkg-present z-code-bin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.zcode'"},
   '';
 in
 
@@ -1575,7 +1581,8 @@ stdenv.mkDerivation (finalAttrs: {
           install.ai.crush \
           install.ai.grok \
           install.ai.opencode \
-          install.ai.pi
+          install.ai.pi \
+          install.ai.zcode
         do
           if grep -q "\"$key\":" default/omarchy/omarchy-menu.jsonc; then
             echo "omarchy-menu.jsonc: $key already present (duplicate insert)" >&2
@@ -1608,6 +1615,18 @@ stdenv.mkDerivation (finalAttrs: {
                          'agent_install() { ! omarchy-cmd-missing "$agent" || omarchy-nix-add "install.ai.$agent"; }' \
           --replace-fail 'echo "Could not install $name with mise" >&2' \
                          'echo "Could not install $name from the nix catalog" >&2'
+
+        # Menu icon font: the vendored font ships one glyph per app
+        # (default/fonts/omarchy/README.md catalogues them, up to U+E90E).
+        # ZCode's Install > AI entry carries its own mark, injected here as
+        # U+E90F so the menu renders the app's icon instead of a
+        # fallback-family glyph. The mark and the injector live in
+        # pkgs/omarchy-icons/; the injector keeps head.modified as vendored,
+        # so the patched font is byte-reproducible.
+        ${pythonWithFonttools}/bin/python3 ${./omarchy-icons/inject-glyph.py} \
+          default/fonts/omarchy/omarchy.ttf \
+          ${./omarchy-icons/zcode.svg} \
+          default/fonts/omarchy/omarchy.ttf
   '';
 
   # No configure/build step — the upstream tree is consumed as-is.

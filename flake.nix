@@ -69,12 +69,12 @@
       # (B0 allowUnfreePredicate) and let broken catalog unfreeNames slip
       # through. The default app set needs obsidian; the ux fixture enables
       # the steam feature while nixpkgs.pkgs isDefined (B0 skipped), so steam
-      # + steam-unwrapped must live here too. claude-desktop is named here
-      # only because it is an unfree derivation EXPOSED as a packages output
-      # (nix flake check evaluates every attr) — the consumer Install-menu
-      # path stays entry-scoped via B0 from the catalog. Menu installs on
-      # the real consumer path (no external pkgs) are covered by B0 from
-      # the catalog.
+      # + steam-unwrapped must live here too. claude-desktop and
+      # zcode-desktop are named here only because they are unfree
+      # derivations EXPOSED as packages outputs (nix flake check evaluates
+      # every attr) — the consumer Install-menu path stays entry-scoped via
+      # B0 from the catalog. Menu installs on the real consumer path (no
+      # external pkgs) are covered by B0 from the catalog.
       pkgsFor =
         system:
         import nixpkgs {
@@ -86,6 +86,7 @@
               "steam"
               "steam-unwrapped"
               "claude-desktop"
+              "zcode-desktop"
             ];
         };
     in
@@ -140,6 +141,10 @@
           asdcontrol = pkgs.callPackage ./pkgs/asdcontrol.nix { };
           claude-desktop = pkgs.callPackage ./pkgs/claude-desktop.nix { };
           omp = pkgs.callPackage ./pkgs/omp.nix { };
+          # zcode-desktop: Z.ai's ZCode, repackaged from the vendor's deb
+          # (unfree; the menu icon font grows its U+E90F mark — see
+          # pkgs/omarchy-icons/).
+          zcode-desktop = pkgs.callPackage ./pkgs/zcode-desktop.nix { };
           omacalc = pkgs.callPackage ./pkgs/omacalc.nix { };
           omacut = pkgs.callPackage ./pkgs/omacut.nix { };
           omawrite = pkgs.callPackage ./pkgs/omawrite.nix { };
@@ -241,6 +246,7 @@
                 omarchy.ownedPackages = lib.mkDefault {
                   claude-desktop = hostPackages.claude-desktop;
                   omp = hostPackages.omp;
+                  zcode-desktop = hostPackages.zcode-desktop;
                   # Hermes Agent ships its own flake (uv2nix) — consume the
                   # packages output directly instead of vendoring the build.
                   hermes-agent = inputs.hermes-agent.packages.${hostSystem}.default;
@@ -414,6 +420,7 @@
               ownedPkgs = {
                 claude-desktop = self.packages.${system}.claude-desktop;
                 omp = self.packages.${system}.omp;
+                zcode-desktop = self.packages.${system}.zcode-desktop;
                 hermes-agent = inputs.hermes-agent.packages.${system}.default;
               };
               entryPkgs = lib.concatMap (e: e.pkgs or [ ]) (builtins.attrValues catalog.entries);
@@ -844,6 +851,27 @@
                 echo "quickshell package lost the qs IPC binary" >&2
                 exit 1
               }
+              touch $out
+            '';
+          # Menu icon font: the vendored font ships one glyph per app
+          # (U+E900..U+E90E) and this repo injects the ZCode mark U+E90F
+          # (pkgs/omarchy-icons/). Assert the injection and the family name,
+          # so a silently unapplied postPatch, or an upstream font swap that
+          # renumbers the codepoints, cannot ship a menu with missing icons.
+          omarchy-icon-font =
+            let
+              fontToolsPython = pkgs.python3.withPackages (ps: [ ps.fonttools ]);
+            in
+            pkgs.runCommand "omarchy-icon-font" { } ''
+              ${fontToolsPython}/bin/python3 -c '
+              from fontTools.ttLib import TTFont
+              font = TTFont("${self.packages.${system}.omarchy}/share/fonts/omarchy/omarchy.ttf")
+              cmap = font.getBestCmap()
+              assert cmap.get(0xE90F) == "zcode", "ZCode mark (U+E90F) missing from the menu icon font"
+              family = font["name"].getDebugName(1)
+              assert family == "omarchy", f"icon font family changed: {family}"
+              print(f"menu icon font: {len(cmap)} codepoints, U+E90F -> zcode, family {family}")
+              '
               touch $out
             '';
           # Behavioral check for the quickshell menu guard batch: generate

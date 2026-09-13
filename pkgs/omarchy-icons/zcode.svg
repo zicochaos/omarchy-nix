@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 130 896 764" width="896" height="764">
+  <!--
+    ZCode mark, traced from the vendor's own app icon (the 1024 px PNG its
+    Linux deb installs) — the same source-and-trace recipe the vendored icon
+    font documents for the T3 Code glyph (U+E908). Rendered here in font
+    coordinates (1024 upm, y up), so the glyph-shaped path is drawn flipped.
+  -->
+  <g transform="translate(0,1024) scale(1,-1)">
+    <path d="M86 186V242H264L441 241L449 238C461 234 469 225 502 177C519 153 533 133 533 132C534 130 503 130 310 130H86ZM601 132C598 136 64 893 64 893C64 894 145 894 243 894H422L691 513C839 304 960 132 960 131C960 130 904 130 782 130C613 130 603 130 601 132ZM580 784C571 787 563 792 558 798C553 803 490 892 490 893C490 894 591 894 715 894H939V838V782H763C599 782 586 782 580 784Z" fill="#000000"/>
+  </g>
+</svg>
