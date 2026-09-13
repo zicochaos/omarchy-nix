@@ -233,10 +233,12 @@
     "install.ai.zcode" = {
       arch = "z-code-bin";
       pkgs = [ "zcode-desktop" ];
-      binaries = [
-        "zcode-desktop"
-        "zcode"
-      ];
+      # Probe only the app binary: the bundled CLI ships as `zcode`, a name
+      # generic enough to collide with a hand-written script on PATH (a
+      # dotfiles wrapper named `zcode` made the Install row show up as
+      # installed, hence disabled). Every other entry probes one
+      # app-specific name too.
+      binaries = [ "zcode-desktop" ];
       unfreeNames = [ "zcode-desktop" ];
     };
     # --- Default coding agents (Setup > Defaults > Agent) ---
