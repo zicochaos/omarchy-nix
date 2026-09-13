@@ -30,7 +30,7 @@ repo:
 - **TOML + sed template theme engine.** `omarchy-theme-set` copies a
   theme's `colors.toml` into a staging dir, runs
   `omarchy-theme-set-templates` (sed over `default/themed/*.tpl`) to
-  render 16 per-app configs, atomically swaps the dir into place.
+  render 19 per-app configs, atomically swaps the dir into place.
 
 ## Upstream's own conventions (`AGENTS.md`)
 
@@ -102,7 +102,9 @@ These are the defaults encoded in the upstream source (rev `31bd80da`,
 post-v4.0.3 quattro branch). Compare against them when verifying
 parity:
 
-- **Theme**: `ethereal` (22 rendered files in `current/theme/`).
+- **Theme**: `ethereal` — `current/theme/` gets the 19 rendered configs
+  plus the theme's own verbatim assets (`colors.toml`, `icons.theme`,
+  `unlock.png`, the previews, `backgrounds/`).
 - **Terminal**: **foot** (`default/xdg-terminal-exec/hyprland-xdg-terminals.list`
   contains only `foot.desktop`; upstream ships
   `applications/foot.desktop` with `X-TerminalArgDir=--working-directory=`).

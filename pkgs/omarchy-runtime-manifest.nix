@@ -227,8 +227,11 @@
     };
 
     # --- user-safe: kept verbatim; `allow` lists the audited leftovers ------
-    # v4.0.3 AI wave. The Hermes pair is unreachable on NixOS (hermes is not
-    # on the pin — the menu entries are dropped); kept verbatim with their
+    # v4.0.3 AI wave. The Hermes DESKTOP pair is unreachable on NixOS
+    # (hermes-desktop is not on the pin and no in-repo package exists — those
+    # menu entries are dropped); the Hermes AGENT is available separately
+    # through the `hermes-agent` flake input and the injected
+    # install.ai.hermes catalog entry. Both scripts kept verbatim with their
     # user-scope leftovers declared. OpenClaw IS installable here (catalog
     # entry install.ai.openclaw): systemctl --user disable --now of the
     # per-user openclaw-gateway unit, plus $HOME config cleanup — user scope

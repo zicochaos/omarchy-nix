@@ -298,7 +298,7 @@ in
         # Upstream populates ~/.local/state/omarchy/current/theme as a REAL
         # directory: omarchy-theme-set copies the chosen theme's colors.toml
         # into a staging dir, runs omarchy-theme-set-templates (a bash+sed
-        # engine over default/themed/*.tpl) to render 16 per-app configs
+        # engine over default/themed/*.tpl) to render 19 per-app configs
         # (foot.ini, shell.toml, hyprland.lua, alacritty.toml, ...), then
         # atomically swaps the staging dir into place. foot.ini (seeded above)
         # has `include=~/.local/state/omarchy/current/theme/foot.ini`, Hyprland
