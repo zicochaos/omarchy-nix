@@ -403,8 +403,9 @@ publish would orphan the merge).
 **ported to the canonical repository with authorship preserved** — your
 commit, your author line, plus a "Ported from mirror PR #N" trailer —
 goes through the same CI, and merges like any other PR; the mirror PR is
-then closed with a pointer to the landed change. The changelog above and
-the credits below record such contributions.
+then closed with a pointer to the landed change. The changelog (full
+history in [`CHANGELOG.md`](CHANGELOG.md)) and the credits below record
+such contributions.
 
 Contributions landed so far:
 

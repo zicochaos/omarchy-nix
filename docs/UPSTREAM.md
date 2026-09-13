@@ -365,6 +365,10 @@ explicit exclusion with rationale).
 - `expected_removes` (flake.nix) is a manual sync point with the menu
   rewires in `pkgs/omarchy.nix` — re-check both sides whenever menu
   entries are added/renamed upstream.
+- `CHANGELOG.md` carries the full history: add the bump entry under the
+  current date heading (newest first). The README changelog section
+  mirrors ONLY the newest entry — replace it when a newer one lands and
+  keep the `CHANGELOG.md` pointer beneath it.
 
 ### 3. Behavioral re-verify
 
