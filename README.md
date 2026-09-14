@@ -78,13 +78,13 @@ for manual desktop exploration.
 
 ## Changelog
 
-- **2026-09-13** — ZCode (Z.ai) joins the Install → AI menu. The app ships
-  only as a vendor .deb, so it is packaged in-repo
-  (`pkgs/zcode-desktop.nix`, unfree) and addressed through
-  `omarchy.ownedPackages`, like Claude Desktop and omp. Its menu entry
-  carries the app's own mark: the vendored icon font stops at `U+E90E`, so
-  this repo traces the official app icon and injects `U+E90F` at build time
-  (`pkgs/omarchy-icons/`), guarded by a new `checks.omarchy-icon-font`.
+- **2026-09-14** — Install → Development → Rust now yields the whole
+  toolchain: `rustfmt` and `clippy` join `rustc` and `cargo` in the
+  catalog entry (nixpkgs splits what Arch ships as one `rust` package,
+  so the menu used to give a compiler whose `cargo fmt`/`cargo clippy`
+  failed). Existing installs need one manual step to gain the two
+  binaries — Remove → Rust, then Install again — because the menu guard
+  already sees `rustc`/`cargo` as installed and hides the Install row.
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md). Upstream adaptation
 details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).

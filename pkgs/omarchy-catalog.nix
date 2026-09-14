@@ -344,9 +344,18 @@
     };
     "install.development.rust" = {
       arch = "rust";
+      # Arch's single `rust` package ships the whole toolchain, so upstream's
+      # Install → Rust (which runs rustup) leaves `cargo fmt`/`cargo clippy`
+      # working. nixpkgs splits the same binaries across four attributes;
+      # without rustfmt and clippy a user who picks Rust here gets a compiler
+      # whose documented format/lint commands fail with "no such command".
+      # rustfmt.nix and clippy.nix both `inherit (rustc) version src`, so they
+      # cannot drift from the compiler on a given pin.
       pkgs = [
         "rustc"
         "cargo"
+        "rustfmt"
+        "clippy"
       ];
       binaries = [
         "cargo"

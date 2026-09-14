@@ -4,6 +4,22 @@ All notable changes to omarchy-nix, newest first. Dates are UTC.
 Upstream adaptation details and the bump checklist:
 [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
+## 2026-09-14
+
+- Install → Development → Rust now yields the whole toolchain, not just
+  the compiler: `rustfmt` and `clippy` join `rustc` and `cargo` in the
+  catalog entry (#115, PR #116). Arch ships one `rust` package with
+  formatter and linter included; nixpkgs splits them across attributes,
+  so the menu gave a compiler whose `cargo fmt`/`cargo clippy` failed
+  with "no such command". The four attributes cover every binary in
+  Arch's `rust` (plus `git-rustfmt` and `rustfmt-format-diff`) and
+  cannot drift from the compiler — `rustfmt.nix` and `clippy.nix` both
+  inherit `version src` from `rustc`. `rust-analyzer` stays out: on Arch
+  it is a separate package. Existing installs keep the old set and the
+  Install row stays hidden (the guard sees `rustc`/`cargo` in
+  `omarchy-packages.json`), so gaining the two binaries takes one manual
+  step: Remove → Development → Rust, then Install again.
+
 ## 2026-09-13
 
 - ZCode (Z.ai) joins the Install → AI menu. The app ships
