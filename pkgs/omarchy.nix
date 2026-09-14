@@ -1881,6 +1881,13 @@ stdenv.mkDerivation (finalAttrs: {
       local cmd="$1"; shift
       flake_dir=$(resolve_flake_dir_or_die)
       json="$flake_dir/omarchy-packages.json"
+      # Menu-set NixOS options (omarchy-nix-search opt: picks): a data file
+      # + a generated loader, next to the packages JSON. The loader is the
+      # only part the consumer imports; the module system cannot fold
+      # config whose key set depends on option values, so the fold happens
+      # in the loader (file-driven, which it allows).
+      opt_json="$flake_dir/omarchy-options.json"
+      opt_nix="$flake_dir/omarchy-options.nix"
       mkdir -p "$STATE_DIR"
       op_log="$STATE_DIR/$(date +%Y%m%d-%H%M%S)-$$.log"
       exec 9<"$flake_dir" ||
@@ -1924,23 +1931,33 @@ stdenv.mkDerivation (finalAttrs: {
       TXN_PRE_HASH=$(txn_hash)
     }
 
-    # txn_write <content> — unique temp + atomic rename inside the same dir
-    # (sudo variants when the flake dir is root-owned).
-    txn_write() {
-      local tmp="$json.tmp.$$"
+    # txn_write_file <path> <content> — unique temp + atomic rename inside
+    # the same directory (sudo variants when the flake dir is root-owned).
+    txn_write_file() {
+      local f="$1" tmp="$1.tmp.$$"
       if [[ -w $flake_dir ]]; then
-        printf '%s\n' "$1" >"$tmp" && mv "$tmp" "$json"
+        printf '%s\n' "$2" >"$tmp" && mv "$tmp" "$f"
       else
-        printf '%s\n' "$1" | sudo tee "$tmp" >/dev/null && sudo mv "$tmp" "$json"
+        printf '%s\n' "$2" | sudo tee "$tmp" >/dev/null && sudo mv "$tmp" "$f"
       fi
     }
 
+    # txn_write <content> — txn_write_file for the packages JSON.
+    txn_write() {
+      txn_write_file "$json" "$1"
+    }
+
     # Git-based consumer flakes only snapshot tracked files — register the
-    # JSON with intent-to-add so `nixos-rebuild --flake` can see it.
+    # JSON (and the options pair, when present) with intent-to-add so
+    # `nixos-rebuild --flake` can see them.
     txn_git_register() {
       [[ -e $flake_dir/.git ]] || return 0
-      git -C "$flake_dir" add -N omarchy-packages.json >/dev/null 2>&1 ||
-        sudo git -C "$flake_dir" add -N omarchy-packages.json >/dev/null 2>&1 || true
+      local f
+      for f in omarchy-packages.json omarchy-options.json omarchy-options.nix; do
+        [[ -e $flake_dir/$f ]] || continue
+        git -C "$flake_dir" add -N "$f" >/dev/null 2>&1 ||
+          sudo git -C "$flake_dir" add -N "$f" >/dev/null 2>&1 || true
+      done
     }
 
     # txn_apply <new-content> — write, register, log the post hash.
@@ -1950,6 +1967,84 @@ stdenv.mkDerivation (finalAttrs: {
       echo "pre-hash: $TXN_PRE_HASH" >>"$op_log"
       echo "post-hash: $(txn_hash)" >>"$op_log"
       TXN_POST_HASH=$(txn_hash)
+    }
+
+    # --- menu-set NixOS options pair (opt: picks) ----------------------------
+    # omarchy-nix-add/-remove call txn_opt_snapshot before writing the pair,
+    # so a failed rebuild rolls BOTH artifacts back with the same hash-check
+    # discipline as the packages JSON. The loader (.nix) is generated once
+    # (never edited afterwards): its only meaningful preimage is absence.
+    txn_opt_snapshot() {
+      OPT_TOUCHED=1
+      if [[ -f $opt_json ]]; then
+        OPT_JSON_PRE_EXISTS=1
+        if [[ -r $opt_json ]]; then OPT_JSON_PRE=$(cat "$opt_json"); else OPT_JSON_PRE=$(sudo cat "$opt_json"); fi
+      else
+        OPT_JSON_PRE_EXISTS=0
+        OPT_JSON_PRE=""
+      fi
+      OPT_NIX_PRE_EXISTS=0
+      if [[ -f $opt_nix ]]; then OPT_NIX_PRE_EXISTS=1; fi
+    }
+
+    txn_opt_write() {
+      # <new-json-content>: write the data file; create the loader if this
+      # is the first opt write (byte-stable template — guarded by
+      # checks.omarchy-nix-transactions against the flake's golden copy).
+      txn_write_file "$opt_json" "$1"
+      if ((OPT_NIX_PRE_EXISTS == 0)); then
+        local loader
+        loader=$(cat <<'OPTLOADER'
+    # Managed by omarchy-nix — omarchy-nix-search "opt:" picks land in
+    # omarchy-options.json next to this file; this loader folds them into
+    # your NixOS configuration. Generated once by omarchy-nix-add; do not
+    # edit. Import it from your flake (README: "Menu-set NixOS options"):
+    #   imports = [ omarchy-nix.nixosModules.default ]
+    #     ++ (if builtins.pathExists ./omarchy-options.nix then [ ./omarchy-options.nix ] else [ ]);
+    # Delete both files to clear every pick.
+    { lib, ... }:
+    let
+      json = builtins.fromJSON (builtins.readFile ./omarchy-options.json);
+      option = path: value: lib.setAttrByPath (lib.splitString "." path) value;
+    in
+    {
+      config = lib.mkIf (json != { }) (lib.mkMerge (lib.mapAttrsToList option json));
+    }
+    OPTLOADER
+    )
+        if [[ -w $flake_dir ]]; then
+          printf '%s\n' "$loader" >"$opt_nix"
+        else
+          printf '%s\n' "$loader" | sudo tee "$opt_nix" >/dev/null
+        fi
+      fi
+      txn_git_register
+      if [[ -r $opt_json ]]; then OPT_JSON_POST_HASH=$(sha256sum "$opt_json" | cut -d' ' -f1); else OPT_JSON_POST_HASH=$(sudo sha256sum "$opt_json" | cut -d' ' -f1); fi
+      echo "options post-hash: $OPT_JSON_POST_HASH" >>"$op_log"
+    }
+
+    txn_opt_restore() {
+      (( ''${OPT_TOUCHED:-0} == 1 )) || return 0
+      local now
+      if [[ -f $opt_json ]]; then
+        if [[ -r $opt_json ]]; then now=$(sha256sum "$opt_json" | cut -d' ' -f1); else now=$(sudo sha256sum "$opt_json" | cut -d' ' -f1); fi
+      else
+        now=absent
+      fi
+      if [[ $now != "$OPT_JSON_POST_HASH" ]]; then
+        echo "rollback: options pair SKIPPED (omarchy-options.json changed by someone else: $now != $OPT_JSON_POST_HASH)" >>"$op_log"
+        warn "omarchy-options.json changed since our write — leaving it untouched."
+        return 1
+      fi
+      if ((OPT_JSON_PRE_EXISTS == 1)); then
+        txn_write_file "$opt_json" "$OPT_JSON_PRE"
+      else
+        rm -f "$opt_json" 2>/dev/null || sudo rm -f "$opt_json"
+      fi
+      if ((OPT_NIX_PRE_EXISTS == 0)) && [[ -e $opt_nix ]]; then
+        rm -f "$opt_nix" 2>/dev/null || sudo rm -f "$opt_nix"
+      fi
+      echo "rollback: restored options pair" >>"$op_log"
     }
 
     # txn_rollback — restore the preimage, but ONLY if the JSON still holds
@@ -1963,6 +2058,7 @@ stdenv.mkDerivation (finalAttrs: {
       if [[ $now != "$TXN_POST_HASH" ]]; then
         echo "rollback: SKIPPED (json changed by someone else: $now != $TXN_POST_HASH)" >>"$op_log"
         warn "omarchy-packages.json changed since our write — leaving it untouched (preimage is in $op_log)."
+        txn_opt_restore || true
         return 1
       fi
       if ((TXN_PREIMAGE_EXISTS)); then
@@ -1971,6 +2067,7 @@ stdenv.mkDerivation (finalAttrs: {
         rm -f "$json" 2>/dev/null || sudo rm -f "$json"
       fi
       echo "rollback: restored preimage" >>"$op_log"
+      txn_opt_restore || true
       warn "Rebuild failed — your previous package list was restored."
     }
 
@@ -2008,15 +2105,32 @@ stdenv.mkDerivation (finalAttrs: {
     set -euo pipefail
     source "$(dirname "''${BASH_SOURCE[0]}")/omarchy-nix-pkglib"
 
-    (($# > 0)) || die "Usage: omarchy-nix-add <menu-entry-id|nixpkgs-attribute> [more ids...]"
+    (($# > 0)) || die "Usage: omarchy-nix-add <menu-entry-id|nixpkgs-attribute|opt:<option.path>=<json-value>> [more ids...]"
 
     # --- resolve every id first (read-only): catalog entries contribute their
-    # pkgs/feature/configSeed; raw attributes get a best-effort nixpkgs check.
+    # pkgs/feature/configSeed; raw attributes get a best-effort nixpkgs check;
+    # opt:<path>=<value> set NixOS options (validated as JSON here, as an
+    # existing option at rebuild — a bad pick fails the rebuild and rolls the
+    # JSON back).
     pkgs=()
     features=()
     seeds=()
+    opt_paths=()
+    opt_values=()
     for id in "$@"; do
-      if jq -e --arg id "$id" '.entries[$id]' "$CATALOG" >/dev/null 2>&1; then
+      if [[ $id == opt:* ]]; then
+        spec="''${id#opt:}"
+        path="''${spec%%=*}"
+        value="''${spec#*=}"
+        if [[ -z $path || $path == "$spec" || $path != *.* ]]; then
+          die "Usage: omarchy-nix-add opt:<option.path>=<json-value> — '$id' is not a dotted option path with a value. Nothing was changed."
+        fi
+        if ! canonical=$(jq -c '.' <<<"$value" 2>/dev/null); then
+          die "Sorry — the value for '$path' is not valid JSON: $value. Use e.g. true, 3, \"text\" or [\"a\",\"b\"]. Nothing was changed."
+        fi
+        opt_paths+=("$path")
+        opt_values+=("$canonical")
+      elif jq -e --arg id "$id" '.entries[$id]' "$CATALOG" >/dev/null 2>&1; then
         mapfile -t _p < <(jq -r --arg id "$id" '.entries[$id].pkgs // [] | .[]' "$CATALOG")
         pkgs+=("''${_p[@]}")
         _f=$(jq -r --arg id "$id" '.entries[$id].feature // ""' "$CATALOG")
@@ -2042,7 +2156,33 @@ stdenv.mkDerivation (finalAttrs: {
       | .features = (((.features // []) + $f) | unique)
     ' <<<"$TXN_PREIMAGE")
 
-    if [[ $(jq -cS . <<<"$new") == $(jq -cS . <<<"$TXN_PREIMAGE") ]]; then
+    # opt: picks land in the options pair (omarchy-options.json + generated
+    # loader) — a separate artifact with its own rollback (pkglib).
+    opt_new=""
+    opt_changed=0
+    if ((''${#opt_paths[@]} > 0)); then
+      txn_opt_snapshot
+      if [[ -f $opt_json ]]; then
+        if [[ -r $opt_json ]]; then opt_pre=$(cat "$opt_json"); else opt_pre=$(sudo cat "$opt_json"); fi
+      else
+        opt_pre='{}'
+      fi
+      jq -e 'type == "object"' <<<"$opt_pre" >/dev/null ||
+        die "omarchy-options.json has an unexpected shape — fix or remove $opt_json. Nothing was changed. (log: $op_log)"
+      opt_new=$opt_pre
+      for i in "''${!opt_paths[@]}"; do
+        opt_new=$(jq --arg p "''${opt_paths[$i]}" --argjson v "''${opt_values[$i]}" \
+          '. + { ($p): $v }' <<<"$opt_new")
+      done
+      # Quote both sides: [[ x == y ]] pattern-matches the RHS, and JSON's
+      # [] would form character classes (the pre-existing unquoted no-op
+      # compares never fired in bash for the same reason).
+      if [[ "$(jq -cS . <<<"$opt_new")" != "$(jq -cS . <<<"$opt_pre")" ]]; then
+        opt_changed=1
+      fi
+    fi
+
+    if [[ "$(jq -cS . <<<"$new")" == "$(jq -cS . <<<"$TXN_PREIMAGE")" ]] && ((opt_changed == 0)); then
       echo "result: no-op (already installed)" >>"$op_log"
       log "Already installed — everything requested is already in $(basename "$json"). Nothing to do."
       # Retry git registration in case a previous run's git add -N failed
@@ -2051,7 +2191,18 @@ stdenv.mkDerivation (finalAttrs: {
       exit 0
     fi
 
-    txn_apply "$new"
+    # An options-only op must not create an empty packages JSON: apply the
+    # packages file only when it changed; the matching pre/post hashes keep
+    # the rollback discipline coherent for the untouched artifact.
+    if [[ "$(jq -cS . <<<"$new")" != "$(jq -cS . <<<"$TXN_PREIMAGE")" ]]; then
+      txn_apply "$new"
+    else
+      TXN_PRE_HASH=$(txn_hash)
+      TXN_POST_HASH=$TXN_PRE_HASH
+    fi
+    if [[ -n $opt_new ]]; then
+      txn_opt_write "$opt_new"
+    fi
     txn_rebuild
 
     # Upstream parity: seed default configs (e.g. alacritty) on first install.
@@ -2075,29 +2226,38 @@ stdenv.mkDerivation (finalAttrs: {
 
     cat >"$dest/bin/omarchy-nix-remove" <<'EOF'
     #!/bin/bash
-    # omarchy-nix: remove catalog entries (or raw nixpkgs attributes) from
-    # omarchy-packages.json and rebuild the system.
+    # omarchy-nix: remove catalog entries (raw nixpkgs attributes, or
+    # menu-set option paths) from omarchy-packages.json / omarchy-options.json
+    # and rebuild the system.
 
     set -euo pipefail
     source "$(dirname "''${BASH_SOURCE[0]}")/omarchy-nix-pkglib"
 
     # Interactive multi-select when no ids are given (tab toggles, enter runs
-    # ONE transaction + ONE rebuild for all picks).
+    # ONE transaction + ONE rebuild for all picks). Option picks live in
+    # omarchy-options.json (next to the packages JSON) and are listed too.
     if (($# == 0)); then
       _jdir=$(resolve_flake_dir_or_die)
-      [[ -f $_jdir/omarchy-packages.json ]] || die "Nothing to remove — omarchy-packages.json does not exist yet."
-      mapfile -t _picked < <(jq -r '(.packages // [])[], (.features // [])[]' "$_jdir/omarchy-packages.json" |
-        fzf --multi --prompt="Remove package> " --header="tab: multi-select, enter: remove all picks")
+      [[ -f $_jdir/omarchy-packages.json || -f $_jdir/omarchy-options.json ]] ||
+        die "Nothing to remove — neither omarchy-packages.json nor omarchy-options.json exists yet."
+      mapfile -t _picked < <({
+        jq -r '(.packages // [])[], (.features // [])[]' "$_jdir/omarchy-packages.json" 2>/dev/null || true
+        jq -r 'keys[]' "$_jdir/omarchy-options.json" 2>/dev/null || true
+      } | fzf --multi --prompt="Remove package> " --header="tab: multi-select, enter: remove all picks")
       ((''${#_picked[@]} > 0)) || exit 0
       set -- "''${_picked[@]}"
     fi
 
     # --- resolve every id: catalog entries expand to their pkgs/feature;
     # everything else is classified AFTER the locked read by membership in
-    # the JSON itself, so a feature that is no longer (or not yet) in the
-    # catalog (renamed upstream, hand edit) stays removable.
+    # the state files themselves, so a feature that is no longer (or not
+    # yet) in the catalog (renamed upstream, hand edit) stays removable.
+    # Options are classified first: option paths are dotted strings, and
+    # package attribute paths can be dotted too — membership in
+    # omarchy-options.json decides which it is.
     pkgs=()
     features=()
+    opts=()
     raw=()
     for id in "$@"; do
       if jq -e --arg id "$id" '.entries[$id]' "$CATALOG" >/dev/null 2>&1; then
@@ -2112,12 +2272,21 @@ stdenv.mkDerivation (finalAttrs: {
 
     # --- one locked transaction for the whole batch --------------------------
     txn_begin omarchy-nix-remove "$@"
-    [[ -f $json ]] || die "Nothing to remove — omarchy-packages.json does not exist yet."
+    [[ -f $json || -f $opt_json ]] || die "Nothing to remove — neither omarchy-packages.json nor omarchy-options.json exists."
     txn_read
+
+    opt_pre=""
+    if [[ -f $opt_json ]]; then
+      if [[ -r $opt_json ]]; then opt_pre=$(cat "$opt_json"); else opt_pre=$(sudo cat "$opt_json"); fi
+      jq -e 'type == "object"' <<<"$opt_pre" >/dev/null ||
+        die "omarchy-options.json has an unexpected shape — fix or remove $opt_json. Nothing was changed. (log: $op_log)"
+    fi
 
     for id in "''${raw[@]:-}"; do
       [[ -n $id ]] || continue
-      if jq -e --arg id "$id" '.features // [] | index($id)' <<<"$TXN_PREIMAGE" >/dev/null; then
+      if [[ -n $opt_pre ]] && jq -e --arg id "$id" 'has($id)' <<<"$opt_pre" >/dev/null; then
+        opts+=("$id")
+      elif jq -e --arg id "$id" '.features // [] | index($id)' <<<"$TXN_PREIMAGE" >/dev/null; then
         features+=("$id")
       else
         pkgs+=("$id")
@@ -2131,35 +2300,67 @@ stdenv.mkDerivation (finalAttrs: {
       | .features = ((.features // []) - $f)
     ' <<<"$TXN_PREIMAGE")
 
-    if [[ $(jq -cS . <<<"$new") == $(jq -cS . <<<"$TXN_PREIMAGE") ]]; then
+    opt_new=""
+    opt_changed=0
+    if ((''${#opts[@]} > 0)); then
+      txn_opt_snapshot
+      opts_json=$(printf '%s\n' "''${opts[@]}" | jq -R . | jq -sc 'unique')
+      opt_new=$(jq --argjson o "$opts_json" 'with_entries(select((.key | IN($o[])) | not))' <<<"$opt_pre")
+      # Quote both sides: [[ x == y ]] pattern-matches the RHS, and JSON's
+      # [] would form character classes (the pre-existing unquoted no-op
+      # compares never fired in bash for the same reason).
+      if [[ "$(jq -cS . <<<"$opt_new")" != "$(jq -cS . <<<"$opt_pre")" ]]; then
+        opt_changed=1
+      fi
+    fi
+
+    if [[ "$(jq -cS . <<<"$new")" == "$(jq -cS . <<<"$TXN_PREIMAGE")" ]] && ((opt_changed == 0)); then
       echo "result: no-op (not installed)" >>"$op_log"
       log "Not installed — nothing requested is in $(basename "$json"). Nothing to do."
       exit 0
     fi
 
-    txn_apply "$new"
+    # Packages file only when it changed (an options-only removal must not
+    # create an empty packages JSON); matching hashes keep rollback coherent.
+    if [[ "$(jq -cS . <<<"$new")" != "$(jq -cS . <<<"$TXN_PREIMAGE")" ]]; then
+      txn_apply "$new"
+    else
+      TXN_PRE_HASH=$(txn_hash)
+      TXN_POST_HASH=$TXN_PRE_HASH
+    fi
+    if [[ -n $opt_new ]]; then
+      txn_opt_write "$opt_new"
+    fi
     txn_rebuild
 
     log "Done — $* removed."
     EOF
     chmod +x "$dest/bin/omarchy-nix-remove"
 
-    # omarchy-nix-search: fzf over a cached nixpkgs index -> omarchy-nix-add.
-    # The index builds on first use (slow, one-off) and refreshes in the
-    # background after every successful omarchy-nix-add rebuild.
+    # omarchy-nix-search: fzf over a cached nixpkgs index + a NixOS options
+    # index -> omarchy-nix-add. Packages land in the JSON as attribute names;
+    # options as opt:<path>=<json> entries (folded into config by the module).
+    # Both indexes build on first use (slow, one-off) and refresh in the
+    # background after every successful omarchy-nix-add rebuild. The options
+    # index is built from THIS machine's <nixpkgs> (the module pins
+    # nix.nixPath to the running system's nixpkgs), so the picker cannot
+    # offer an option this machine cannot evaluate; it is re-built whenever
+    # that nixpkgs version changes.
     cat >"$dest/bin/omarchy-nix-search" <<'EOF'
     #!/bin/bash
-    # omarchy-nix: search nixpkgs (fzf) and install the picks via ONE
-    # omarchy-nix-add transaction (tab multi-selects).
+    # omarchy-nix: search nixpkgs packages AND NixOS options (fzf) and apply
+    # the picks via ONE omarchy-nix-add transaction (tab multi-selects).
 
     set -euo pipefail
 
     INDEX_DIR="''${XDG_CACHE_HOME:-$HOME/.cache}/omarchy"
     INDEX="''${OMARCHY_NIX_INDEX_FILE:-$INDEX_DIR/nixpkgs-index-v2.tsv}"
+    OPTS_INDEX="''${OMARCHY_NIX_OPTS_INDEX_FILE:-$INDEX_DIR/nixos-options-index-v1.tsv}"
+    OPTS_VER="''${INDEX_DIR}/nixos-options-version"
 
-    # Index columns: name, description, version. Underscore-prefixed attrs
-    # (nixpkgs naming for attrs that can't start with a digit, e.g. _2bwm)
-    # sort LAST — upstream's pacman -Slq has no such artifacts.
+    # Package index columns: name, description, version. Underscore-prefixed
+    # attrs (nixpkgs naming for attrs that can't start with a digit, e.g.
+    # _2bwm) sort LAST — upstream's pacman -Slq has no such artifacts.
     # Filename carries a version tag (v2) so a stale 2-column index from an
     # older script build is never picked up by the freshness check.
     build_index() {
@@ -2173,16 +2374,78 @@ stdenv.mkDerivation (finalAttrs: {
       mv "$INDEX.tmp" "$INDEX"
     }
 
+    # Options index columns: path, type, default, example, description.
+    # default/example are already JSON-encoded strings (toJSON on the Nix
+    # side), so the pick prompt can offer the default verbatim; fields that
+    # fail to evaluate (function defaults, throwing examples) are empty.
+    # Every field is tryEval'd per option — one poisoned option must not
+    # cost the whole index.
+    build_opts_index() {
+      mkdir -p "$INDEX_DIR"
+      echo "Building the NixOS options index (first run only — this takes a minute)..." >&2
+      nix-instantiate --eval --strict --json -E '
+        let
+          ev = import <nixpkgs/nixos> { configuration = { }; };
+          field = f: let r = builtins.tryEval f; in if r.success then r.value else null;
+          row = o: {
+            type = field (builtins.toString o.type.description);
+            default = field (let v = o.default or null; in if v == null then null else builtins.toJSON v);
+            example = field (let v = o.example or null; in if v == null then null else builtins.toJSON v);
+            description = field (
+              let d = o.description or null;
+              in builtins.substring 0 500 (
+                if builtins.isString d then d
+                else if builtins.isAttrs d && d ? text then d.text
+                else ""));
+          };
+        in builtins.mapAttrs
+          (n: o: let r = builtins.tryEval (row o); in if r.success then r.value else null)
+          ev.options' 2>/dev/null |
+        jq -r 'to_entries[]
+          | select(.value != null)
+          | [ .key,
+              (.value.type // ""),
+              (if .value.default == null then "" else .value.default end),
+              (if .value.example == null then "" else .value.example end),
+              ((.value.description // "") | gsub("[\\t\\n\\r]"; " ")) ]
+          | @tsv' |
+        LC_ALL=C sort >"$OPTS_INDEX.tmp"
+      mv "$OPTS_INDEX.tmp" "$OPTS_INDEX"
+      current_nixpkgs_version >"$OPTS_VER"
+    }
+
+    current_nixpkgs_version() {
+      nix-instantiate --eval --raw -E '(import <nixpkgs/lib> {}).version' 2>/dev/null || true
+    }
+
+    opts_index_fresh() {
+      local v
+      [[ -f $OPTS_INDEX && -f $OPTS_VER ]] || return 1
+      v=$(current_nixpkgs_version)
+      [[ -n $v && $v == "$(cat "$OPTS_VER")" ]]
+    }
+
+    # Rows fed to fzf: a kind column (pkg/opt) prefixes both indexes. Empty
+    # values survive the round-trip because cut (not read/IFS, which collapse
+    # whitespace IFS) extracts fields on the way back.
+    rows() {
+      if [[ -f $INDEX ]]; then sed 's/^/pkg\t/' "$INDEX"; fi
+      if [[ -f $OPTS_INDEX ]]; then sed 's/^/opt\t/' "$OPTS_INDEX"; fi
+    }
+
     # Upstream parity (omarchy-pkg-install): names in the list, details in a
-    # preview pane. Preview data comes from the index itself (instant) — a
-    # per-row nix eval would be far too slow.
+    # preview pane. Preview data comes from the indexes themselves (instant)
+    # — a per-row nix eval would be far too slow.
     fzf_args=(
       --multi
-      --prompt="Install package> "
-      --header="tab: multi-select, enter: install all picks"
+      --prompt="Install package/option> "
+      --header="tab: multi-select, enter: apply picks (pkg: add package, opt: set a NixOS option)"
       --delimiter='\t'
-      --with-nth=1
-      --preview 'printf "Name: %s\nVersion: %s\n\n%s\n" {1} {3} {2}'
+      --with-nth=1,2
+      --preview 'case {1} in
+        pkg) printf "Package: %s\nVersion: %s\n\n%s\n" {2} {4} {3} ;;
+        opt) printf "NixOS option: %s\nType:     %s\nDefault:  %s\nExample:  %s\n\n%s\n" {2} {3} {4} {5} {6} ;;
+      esac'
       --preview-label='alt-p: toggle description, alt-j/k: scroll'
       --preview-label-pos='bottom'
       --preview-window 'down:65%:wrap'
@@ -2192,12 +2455,67 @@ stdenv.mkDerivation (finalAttrs: {
       --color 'pointer:green,marker:green'
     )
 
+    # Echo the chosen JSON value for an option row, or return 1 when the
+    # user skips it. Booleans get a true/false menu, enums a choice menu
+    # (type description "one of \"a\", \"b\""), everything else a validated
+    # free-form JSON prompt — options are only written where they can be
+    # written honestly; a skipped pick prints nothing and writes nothing.
+    prompt_option_value() {
+      local path=$1 type=$2 default=$3 example=$4 desc=$5 v choices=()
+      echo
+      echo "NixOS option: $path"
+      if [[ -n $type ]]; then echo "Type:     $type"; fi
+      if [[ -n $default ]]; then echo "Default:  $default"; fi
+      if [[ -n $example ]]; then echo "Example:  $example"; fi
+      echo
+      if [[ -n $desc ]]; then echo "$desc"; echo; fi
+      if [[ $type == *boolean* ]]; then
+        PS3="Value for $path: "
+        select v in true false; do
+          if [[ -n $v ]]; then break; fi
+        done
+        [[ -n $v ]] || return 1
+        echo "$v"
+        return 0
+      fi
+      if [[ $type == "one of"* ]]; then
+        mapfile -t choices < <(grep -o '"[^"]*"' <<<"$type" | tr -d '"')
+        if ((0 < ''${#choices[@]} && ''${#choices[@]} <= 12)); then
+          PS3="Value for $path: "
+          select v in "''${choices[@]}"; do
+            if [[ -n $v ]]; then break; fi
+          done
+          [[ -n $v ]] || return 1
+          jq -Rn --arg v "$v" '$v'
+          return 0
+        fi
+      fi
+      echo "JSON value for $path — e.g. true, 3, \"text\", [\"a\",\"b\"];"
+      echo "empty skips (set values too complex for JSON in your flake):"
+      read -e -r -p "> " v
+      [[ -n $v ]] || return 1
+      if ! jq '.' <<<"$v" >/dev/null 2>&1; then
+        if jq '.' <<<"\"$v\"" >/dev/null 2>&1; then
+          v="\"$v\""
+        else
+          echo "Not valid JSON: $v — skipping $path." >&2
+          return 1
+        fi
+      fi
+      jq -c '.' <<<"$v"
+    }
+
     case "''${1:-}" in
       --refresh)
         build_index
+        if [[ -n $(current_nixpkgs_version) ]]; then
+          build_opts_index
+        fi
         exit 0
         ;;
       --filter)
+        # Package-name completion mode (kept pkg-only: callers pipe names
+        # straight into omarchy-nix-add).
         [[ -f $INDEX ]] || exit 1
         fzf --filter="''${2:-}" <"$INDEX" | cut -f1
         exit 0
@@ -2205,9 +2523,38 @@ stdenv.mkDerivation (finalAttrs: {
     esac
 
     [[ -f $INDEX ]] || build_index
-    mapfile -t choices < <(fzf "''${fzf_args[@]}" <"$INDEX" | cut -f1 || true)
-    ((''${#choices[@]} > 0)) || exit 0
-    exec omarchy-nix-add "''${choices[@]}"
+    if [[ ! -f $OPTS_INDEX ]] || ! opts_index_fresh; then
+      if [[ -n $(current_nixpkgs_version) ]]; then
+        build_opts_index
+      else
+        echo "omarchy-nix: <nixpkgs> is not resolvable — searching packages only (rebuild once to pin nix.nixPath)." >&2
+      fi
+    fi
+
+    mapfile -t picked < <(rows | fzf "''${fzf_args[@]}" || true)
+    ((''${#picked[@]} > 0)) || exit 0
+
+    args=()
+    skipped=0
+    for row in "''${picked[@]}"; do
+      if [[ $(cut -d$'\t' -f1 <<<"$row") == pkg ]]; then
+        args+=("$(cut -d$'\t' -f2 <<<"$row")")
+        continue
+      fi
+      _path=$(cut -d$'\t' -f2 <<<"$row")
+      _type=$(cut -d$'\t' -f3 <<<"$row")
+      _default=$(cut -d$'\t' -f4 <<<"$row")
+      _example=$(cut -d$'\t' -f5 <<<"$row")
+      _desc=$(cut -d$'\t' -f6 <<<"$row")
+      if value=$(prompt_option_value "$_path" "$_type" "$_default" "$_example" "$_desc"); then
+        args+=("opt:$_path=$value")
+      else
+        skipped=1
+      fi
+    done
+    ((''${#args[@]} > 0)) || exit 0
+    ((skipped == 0)) || echo "(skipped options were not written — apply them in your flake)"
+    exec omarchy-nix-add "''${args[@]}"
     EOF
     chmod +x "$dest/bin/omarchy-nix-search"
 

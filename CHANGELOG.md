@@ -6,6 +6,32 @@ Upstream adaptation details and the bump checklist:
 
 ## 2026-09-14
 
+- `omarchy-nix-search` (Install → Package) now searches **NixOS options**
+  next to nixpkgs packages: one picker, `pkg` and `opt` rows, over the
+  option set of this machine's own nixpkgs — the module pins
+  `nix.nixPath` to the running system's source (mkDefault), so the index
+  cannot offer an option this system cannot evaluate, and it rebuilds
+  when that nixpkgs version changes. Option picks get an honest value
+  prompt (true/false, enum choice, validated JSON otherwise — anything
+  JSON cannot express is skipped with its metadata, never guessed) and
+  land through the same locked transaction as packages:
+  `omarchy-nix-add opt:<path>=<value>` writes `omarchy-options.json`
+  plus a generated-once `omarchy-options.nix` loader with hash-checked
+  rollback of the pair; `omarchy-nix-remove` lists option paths too. The
+  fold lives in the loader, not the module, because the module system
+  forbids config whose key set depends on data (infinite recursion,
+  verified); consumers enable it with one `pathExists`-guarded import
+  (README). Two new checks: `omarchy-managed-options` proves the
+  generated loader folds picks into a real NixOS evaluation (bool/list,
+  empty no-op, conflict-throws), and the transactions check verifies the
+  loader against its golden template byte-for-byte, options-only ops
+  never creating a packages JSON, and pair rollback. Also fixed en
+  route: the add/remove no-op detection compared `jq -cS` outputs with
+  unquoted `[[ == ]]` — bash pattern-matches the right side, JSON's `[]`
+  form character classes, and the "already installed" short-circuit
+  never fired in bash (now quoted; behavior: genuine no-ops skip their
+  rebuild again).
+
 - Install → Development → Rust now yields the whole toolchain, not just
   the compiler: `rustfmt` and `clippy` join `rustc` and `cargo` in the
   catalog entry (#115, PR #116). Arch ships one `rust` package with

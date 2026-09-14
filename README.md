@@ -269,6 +269,32 @@ but missing (or unparseable) file fails evaluation loudly with the file
 path — silently falling back to empty sets would drop menu-installed
 packages on the next rebuild.
 
+**Install → Package also searches NixOS options** (`omarchy-nix-search`):
+one picker over nixpkgs packages and every NixOS option of this machine's
+own nixpkgs (the module pins `nix.nixPath` to the running system's source,
+so the index can never offer an option this system cannot evaluate).
+Booleans get a true/false prompt, enums a choice prompt, everything else a
+validated JSON prompt — and options are only written where they can be
+written honestly; anything JSON cannot express is skipped with its
+metadata instead. A pick lands as `opt:<option.path>=<value>` in
+`omarchy-nix-add`, which writes `<flake>/omarchy-options.json` (data) and
+a one-time loader `omarchy-options.nix` next to it — same locked
+transaction, same hash-checked rollback as the packages JSON. The module
+cannot fold that file itself (the module system forbids config whose key
+set depends on data), so the loader does the fold, and it needs one import
+line in your flake:
+
+```nix
+imports = [ omarchy-nix.nixosModules.default ]
+  ++ (if builtins.pathExists ./omarchy-options.nix
+       then [ ./omarchy-options.nix ] else [ ]);
+```
+
+Until you add that line, option picks are still recorded (and rolled back
+with everything else on a failed rebuild), but they do not reach the
+evaluation — nothing applies silently; the file is there to import. `omarchy-nix-remove` lists option
+paths alongside packages and features.
+
 All NixOS-specific commands (update, add, remove, presence checks, search)
 share one resolver for the consumer flake: `$OMARCHY_NIX_FLAKE` (either a
 directory containing `flake.nix` or the path to the `flake.nix` file itself,

@@ -239,6 +239,48 @@ i.e. library clones, while eval failures keep it). The JSON lands at
 `<flake_dir>/omarchy-packages.json` (see README /
 docs/install.md for the full resolver contract).
 
+### Menu-set NixOS options (`omarchy-options.json` + `omarchy-options.nix`)
+
+`omarchy-nix-search` (Install → Package) searches NixOS options alongside
+nixpkgs packages. An option pick (`omarchy-nix-add
+opt:<dotted.path>=<json-value>`) writes two files next to the packages
+JSON:
+
+- `omarchy-options.json` — the data: `{"services.tailscale.enable": true}`
+  style entries, participating in the same locked transaction and
+  hash-checked rollback as `omarchy-packages.json`;
+- `omarchy-options.nix` — a generated-once loader that folds those
+  entries into `config` via `lib.setAttrByPath`. The module cannot do
+  this fold itself: the NixOS module system forbids config whose key set
+  depends on data, while a plain module reading a file can (the loader is
+  that module). The template is byte-stable, guarded by
+  `checks.omarchy-nix-transactions` against the flake's golden copy.
+
+Wiring: import the loader with a `pathExists` guard, next to the module
+import (nothing applies until this line exists — picks are recorded
+either way):
+
+```nix
+imports = [ omarchy-nix.nixosModules.default ]
+  ++ (if builtins.pathExists ./omarchy-options.nix
+       then [ ./omarchy-options.nix ] else [ ]);
+```
+
+Values are whatever `builtins.fromJSON` yields (booleans, strings,
+numbers, lists, objects); validation is the evaluation itself — an
+unknown option path or a value conflicting with your own config fails
+the rebuild, and the transaction rolls both files back. `omarchy-nix-remove`
+lists option paths alongside packages and features (option membership in
+`omarchy-options.json` wins the classification when a name could be
+either).
+
+The options half of the search index is evaluated from `<nixpkgs>`, which
+the module pins to the running system's nixpkgs source via
+`nix.nixPath = mkDefault [ "nixpkgs=<system pkgs.path>" ]` — the picker
+cannot offer an option this machine cannot evaluate, and the index
+rebuilds when that nixpkgs version changes. Override `nix.nixPath` freely;
+the search then falls back to packages-only until `<nixpkgs>` resolves.
+
 ## System
 
 ### `omarchy.binfmtEmulatedSystems` *(listOf str, default `[]`)*

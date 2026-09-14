@@ -302,6 +302,29 @@
               omarchy = self;
               home-manager = inputs.home-manager;
             };
+          # The omarchy-options.nix loader written by omarchy-nix-add on the
+          # first opt: pick. Single source of truth: the pkglib template in
+          # pkgs/omarchy.nix must stay byte-identical (enforced by
+          # checks.omarchy-nix-transactions), and checks.omarchy-managed-options
+          # imports this copy to prove the generated file actually folds
+          # picks into a real NixOS evaluation.
+          optLoaderGolden = pkgs.writeText "omarchy-options.nix" ''
+            # Managed by omarchy-nix — omarchy-nix-search "opt:" picks land in
+            # omarchy-options.json next to this file; this loader folds them into
+            # your NixOS configuration. Generated once by omarchy-nix-add; do not
+            # edit. Import it from your flake (README: "Menu-set NixOS options"):
+            #   imports = [ omarchy-nix.nixosModules.default ]
+            #     ++ (if builtins.pathExists ./omarchy-options.nix then [ ./omarchy-options.nix ] else [ ]);
+            # Delete both files to clear every pick.
+            { lib, ... }:
+            let
+              json = builtins.fromJSON (builtins.readFile ./omarchy-options.json);
+              option = path: value: lib.setAttrByPath (lib.splitString "." path) value;
+            in
+            {
+              config = lib.mkIf (json != { }) (lib.mkMerge (lib.mapAttrsToList option json));
+            }
+          '';
         in
         {
           omarchy-desktop = pkgs.testers.nixosTest (loadTest ./tests/desktop.nix);
@@ -1815,6 +1838,62 @@
                 unset REBUILD_SERIAL_ROOT REBUILD_RELEASE_FILE
                 echo "case n (cross-state rollback serialization) OK"
 
+                # --- (o) NixOS options: opt: adds, mixed batches, validation,
+                # the loader golden, classification, remove and rollback ----
+                new_flake o
+                : >"$COUNT_FILE"
+                omarchy-nix-add opt:services.tailscale.enable=true >/dev/null
+                jq -e '. == {"services.tailscale.enable":true}' \
+                  "$OMARCHY_NIX_FLAKE/omarchy-options.json" >/dev/null ||
+                  fail "case o: bool option not written: $(cat "$OMARCHY_NIX_FLAKE/omarchy-options.json")"
+                [[ ! -f $OMARCHY_NIX_FLAKE/omarchy-packages.json ]] ||
+                  fail "case o: options-only add created a packages json"
+                cmp -s ${optLoaderGolden} "$OMARCHY_NIX_FLAKE/omarchy-options.nix" ||
+                  fail "case o: generated loader differs from the golden template"
+                omarchy-nix-add mc opt:services.tailscale.extraSetFlags='["--foo"]' >/dev/null
+                jq -e '. == {"services.tailscale.enable":true,"services.tailscale.extraSetFlags":["--foo"]}' \
+                  "$OMARCHY_NIX_FLAKE/omarchy-options.json" >/dev/null ||
+                  fail "case o: list option not written"
+                [[ $(json_pkgs) == '["mc"]' ]] ||
+                  fail "case o: mixed batch lost the package half"
+                [[ $(wc -l <"$COUNT_FILE") == 2 ]] ||
+                  fail "case o: options must batch into one rebuild per call"
+
+                # invalid JSON value: refused before any write/rebuild
+                pre=$(sha256sum "$OMARCHY_NIX_FLAKE/omarchy-options.json" | cut -d' ' -f1)
+                if omarchy-nix-add opt:services.x.y=notjson >/dev/null 2>&1; then
+                  fail "case o: non-JSON value accepted"
+                fi
+                # malformed ids: no value / no dotted path
+                if omarchy-nix-add opt:services.x.y >/dev/null 2>&1; then
+                  fail "case o: id without =value accepted"
+                fi
+                if omarchy-nix-add opt:nodot=true >/dev/null 2>&1; then
+                  fail "case o: undotted path accepted"
+                fi
+                [[ $(sha256sum "$OMARCHY_NIX_FLAKE/omarchy-options.json" | cut -d' ' -f1) == "$pre" ]] ||
+                  fail "case o: options json modified by a refused id"
+
+                # remove by bare path (classified by omarchy-options.json
+                # membership), leaving packages untouched
+                omarchy-nix-remove services.tailscale.enable >/dev/null
+                jq -e 'has("services.tailscale.enable") | not' \
+                  "$OMARCHY_NIX_FLAKE/omarchy-options.json" >/dev/null ||
+                  fail "case o: option not removed"
+                [[ $(json_pkgs) == '["mc"]' ]] ||
+                  fail "case o: option remove touched packages"
+
+                # failed rebuild rolls the options pair back as a unit
+                if FAKE_REBUILD_RC=1 omarchy-nix-add opt:virtualisation.docker.enable=true >/dev/null 2>&1; then
+                  fail "case o: failing rebuild must exit non-zero"
+                fi
+                jq -e 'has("virtualisation.docker.enable") | not' \
+                  "$OMARCHY_NIX_FLAKE/omarchy-options.json" >/dev/null ||
+                  fail "case o: failed rebuild left the new option behind"
+                grep -qr 'rollback: restored options pair' "$XDG_STATE_HOME/omarchy/nix-add/" ||
+                  fail "case o: audit log missing the options restore note"
+                echo "case o (NixOS options add/remove) OK"
+
                 # --- audit logs exist and are complete for a successful op ------
                 logf=$(grep -rl 'result: rebuild ok' "$XDG_STATE_HOME/omarchy/nix-add/" | head -1 || true)
                 [[ -n $logf ]] || fail "no successful audit log found"
@@ -2011,6 +2090,63 @@
                   fail "search->add did not write to the resolved repo"
                 echo "search path OK"
 
+                touch $out
+              '';
+
+          # Menu-set NixOS options: the omarchy-options.nix loader written by
+          # omarchy-nix-add (golden: optLoaderGolden) must fold
+          # omarchy-options.json picks into a real NixOS evaluation — next to
+          # our own module, which must stay import-clean alongside it.
+          # Evaluated at check-EVAL time (assertions are the derivation's
+          # env, like option-validation's negativeCases). Covers: bool/list
+          # folds, the empty-picks no-op, and the honest-conflict contract
+          # (a menu value colliding with the consumer's own config is an
+          # eval error, never a silent override).
+          omarchy-managed-options =
+            let
+              inherit (pkgs) lib;
+              mkFixture =
+                opts:
+                pkgs.runCommand "omarchy-options-fixture" { } ''
+                  mkdir -p "$out"
+                  cp ${optLoaderGolden} "$out/omarchy-options.nix"
+                  printf '%s\n' '${builtins.toJSON opts}' > "$out/omarchy-options.json"
+                '';
+              fixture = mkFixture {
+                "services.tailscale.enable" = true;
+                "services.tailscale.extraSetFlags" = [ "--accept-dns=false" ];
+              };
+              conflictFixture = mkFixture { "networking.hostName" = "menu-set"; };
+              emptyFixture = mkFixture { };
+              evalWith =
+                dir: extraModules:
+                import (pkgs.path + "/nixos/lib/eval-config.nix") {
+                  system = "x86_64-linux";
+                  modules = [
+                    self.nixosModules.default
+                    { omarchy.enable = true; }
+                    (import "${dir}/omarchy-options.nix")
+                  ]
+                  ++ extraModules;
+                };
+              ev = evalWith fixture [ ];
+              evEmpty = evalWith emptyFixture [ ];
+              evConflict = evalWith conflictFixture [ { networking.hostName = "flake-set"; } ];
+              conflictCaught =
+                !(builtins.tryEval (builtins.deepSeq evConflict.config.networking.hostName true)).success;
+              assertions = [
+                (lib.assertMsg ev.config.services.tailscale.enable "omarchy-managed-options: bool option not folded into config")
+                (lib.assertMsg (
+                  ev.config.services.tailscale.extraSetFlags == [ "--accept-dns=false" ]
+                ) "omarchy-managed-options: list option not folded into config")
+                (lib.assertMsg (
+                  !evEmpty.config.services.tailscale.enable
+                ) "omarchy-managed-options: empty picks must not set options")
+                (lib.assertMsg conflictCaught "omarchy-managed-options: menu value silently overrode the consumer's own config")
+              ];
+            in
+            pkgs.runCommand "omarchy-managed-options-check" { assertions = builtins.deepSeq assertions "ok"; }
+              ''
                 touch $out
               '';
 

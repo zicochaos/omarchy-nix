@@ -174,7 +174,12 @@ omarchy-nix-remove [catalog-id-or-nixpkgs-attribute]
 ```
 
 They update `omarchy-packages.json` beside the consumer flake and rebuild.
-Use `omarchy-nix-search` for an interactive nixpkgs search. Use a catalog ID
+Use `omarchy-nix-search` for an interactive search over nixpkgs packages
+and NixOS options of this machine's nixpkgs; option rows take a value
+prompt (bool/enum choice, validated JSON otherwise) and land as
+`omarchy-nix-add opt:<option.path>=<json-value>` in
+`omarchy-options.json` + a one-time `omarchy-options.nix` loader the
+consumer imports (README: menu-set NixOS options). Use a catalog ID
 when automating an opinionated menu choice. Raw nixpkgs names may be
 top-level (`ripgrep`) or nested attribute paths (`kdePackages.dolphin`).
 If the consumer manages packages directly in Nix, edit its configuration

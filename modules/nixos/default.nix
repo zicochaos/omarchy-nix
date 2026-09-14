@@ -1160,6 +1160,13 @@ in
         # docs this must be in place BEFORE the first build that pulls the
         # flake package; since the flake wrapper injects the package and we
         # enable it here, both land in the same evaluation.
+        # <nixpkgs> resolves to THIS system's nixpkgs source — the tree the
+        # machine was built from — so `nix-instantiate` one-liners and the
+        # NixOS-options half of omarchy-nix-search evaluate against the
+        # running generation's option set instead of a drifting channel.
+        # mkDefault: a consumer with its own nixPath wins untouched.
+        nix.nixPath = lib.mkDefault [ "nixpkgs=${toString pkgs.path}" ];
+
         nix.settings = {
           substituters = lib.mkBefore [ "https://hyprland.cachix.org" ];
           trusted-substituters = [ "https://hyprland.cachix.org" ];
