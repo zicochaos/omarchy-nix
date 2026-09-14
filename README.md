@@ -50,6 +50,22 @@ still need separate desktop verification after relevant changes.
 > `quattro` branch (release + post-release fixes). The vendored `version`
 > file still reads `4.0.0.alpha` — upstream does not bump it at release time.
 
+### Known app behaviour (zcode-desktop's desktop entry)
+
+On every start the ZCode app self-registers its deep-link handler: if no
+system `zcode.desktop` is visible in `$XDG_DATA_DIRS`, it writes a
+user-level `~/.local/share/applications/zcode.desktop` whose `Exec` is the
+running binary's absolute path — for a copy run outside the system profile
+(a build output, `nix run`, a test harness) that is an un-wrapped store
+path, which shadows the packaged entry and can dangle after garbage
+collection. Once the app is installed through the Install menu, the packaged
+entry is visible and the app removes its own leftover user file on the next
+start (recognized by the marker line `Comment=ZCode Desktop App`). A
+same-named file *without* that marker is kept — and permanently shadows the
+packaged one — so never recreate the entry by hand: delete a stray
+user-level `zcode.desktop` instead, and clean it up after running the app
+from a build output.
+
 ### Known VM limitation (VirtualBox VMSVGA)
 
 `quickshell` crashes with `unknown object (50), message attach` under

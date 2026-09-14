@@ -9,6 +9,21 @@
 # electron-updater metadata is removed: on NixOS the app lives in the store,
 # so updates come from the flake, never from an in-app package manager.
 #
+# Known upstream behaviour, documented rather than patched away: on every
+# start the app's deep-link module checks $XDG_DATA_DIRS for a system
+# applications/zcode.desktop. When one is visible (any install through the
+# catalog provides it), the app deletes a leftover user-level
+# ~/.local/share/applications/zcode.desktop — but only if the file carries
+# its own marker line `Comment=ZCode Desktop App`; a same-named file without
+# the marker is kept and shadows the packaged entry. When no system entry
+# exists, the app writes the user-level file itself, with Exec set to the
+# running binary's absolute path: for a non-installed copy (a build output,
+# a `nix run`, a test harness) that is the un-wrapped binary inside the
+# store path (<store-path>/opt/ZCode/zcode), missing this wrapper's
+# environment, and the entry can dangle once that store path is
+# garbage-collected. Anything running the app from a build output should
+# clean that user-level file up afterwards.
+#
 # Bump: version + hash from
 # https://cdn-zcode.z.ai/zcode/electron/releases/<version>/linux-x64/ZCode-<version>-linux-x64.deb
 # (the AUR z-code-bin PKGBUILD pins the same artifacts; upstream also ships
