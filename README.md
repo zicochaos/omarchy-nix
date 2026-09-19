@@ -78,7 +78,7 @@ for manual desktop exploration.
 
 ## Changelog
 
-- **2026-09-19** — Two waves. The upstream quattro bump (`60663fa`) brings
+- **2026-09-19** — The upstream quattro bump (`60663fa`) brings
   **Elsewhen**, the world clock plugin, to the default bar (built from the
   same omacom/elsewhen release upstream packages, linked into
   `~/.config/omarchy/plugins` by the home-manager module and refreshed
@@ -90,7 +90,10 @@ for manual desktop exploration.
   omarchy-nvim 2026.8.13, omarchy-fish 2026-09-19 (now carrying the
   upstream bashrc-template fix from omacom/omarchy-fish#11), yaru 26.10.3.
   Aether is held at 4.28.0 (lockfile-less npm resolution upstream) and
-  codex follows the stable nixpkgs channel (0.146.0).
+  codex follows the stable nixpkgs channel (0.146.0). Same-day fix: the
+  packaged **omp** shipped as plain Bun — its bun single-executable
+  payload breaks under any ELF rewrite, so the release binary is now
+  stored byte-identical and launched through the glibc loader wrapper.
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md). Upstream adaptation
 details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).

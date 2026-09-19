@@ -4,6 +4,22 @@ All notable changes to omarchy-nix, newest first. Dates are UTC.
 Upstream adaptation details and the bump checklist:
 [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
+## 2026-09-19 (2)
+
+- **omp fix**: the packaged `omp` was silently plain Bun. The release ELF
+  is a bun single-executable-application whose appended payload is
+  offset-keyed, and `autoPatchelf`'s ELF rewrite (≈ +1 KiB, payload
+  shifted) made the embedded entry undiscoverable — `omp --version`
+  printed Bun's `1.4.2` and `omp` printed bun's help. Found on the test
+  VM minutes after a fresh Menu → AI → omp install (the rebuild and
+  profile link were fine; the app never loaded). The derivation now
+  ships the release binary byte-identical (`dontStrip`, `dontPatchELF`,
+  stored under `libexec/`) and `bin/omp` is a `makeWrapper` shim that
+  invokes it through the nixpkgs glibc loader explicitly — verified:
+  `omp/18.2.6`, proper CLI help, payload sha256 identical to the
+  release artifact. A `doInstallCheck` gate now fails the build if
+  `omp --version` ever answers with anything but omp's own version.
+
 ## 2026-09-19
 
 - Upstream bump `b679363` → `60663fa` (2026-09-19, 41 commits). The
