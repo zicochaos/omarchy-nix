@@ -61,6 +61,16 @@
       class = "declarative-note";
       note = "Xbox controllers: use Menu -> Install -> Gaming -> Xbox Controllers, or set hardware.xpadneo.enable = true in your flake config.";
     };
+    # 2026-09-15: seeds the Claude extension's external-update JSON into
+    # /usr/share/{chromium,google-chrome,microsoft-edge}/extensions —
+    # /usr/share does not exist on NixOS and browser extension policy is
+    # module-owned. Called best-effort (2>/dev/null || true) by
+    # omarchy-default-agent after picking Claude, so the stub's note is only
+    # visible on direct invocation.
+    omarchy-install-chromium-claude = {
+      class = "declarative-note";
+      note = "The Claude browser extension is declarative: add id fcoeoabgfenejglbffodgkkbkcdhcgfn to programs.chromium.extensions (or your browser's extension option) in your flake config.";
+    };
     omarchy-remove-gaming-xbox-controllers = {
       class = "declarative-note";
       note = "Xbox controllers: use Menu -> Remove -> Gaming -> Xbox Controllers, or set hardware.xpadneo.enable = false in your flake config.";

@@ -18,13 +18,13 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "omawrite";
-  version = "0.4.0";
+  version = "0.5.0";
 
   src = fetchFromGitHub {
     owner = "omacom-io";
     repo = "omawrite";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-Da8O2VlyDMNInxmQ8VvGOVnDWdmn27JIweBX4DWUPsg=";
+    hash = "sha256-yS3GOL/kc03qx4naWzUdSZwAYxMuCjvrgmhexpwjsfA=";
   };
 
   nativeBuildInputs = [

@@ -118,7 +118,8 @@ in
         # fallback to the HM-local option; omarchy.enable stays an HM-local
         # switch the consumer sets explicitly.
 
-        # --- Class 0: agent skill links (managed on every activation) ---
+        # --- Class 0: agent skill links + default shell plugin (managed on
+        # every activation) ---
         # Upstream finalize-user creates these six links once (v4.0.1 added
         # .gemini/config/skills and .hermes/skills; hermes per-profile skill
         # dirs are covered by migration 1787843905, which runs as user-safe).
@@ -131,6 +132,13 @@ in
         #
         # Create all six agent skill dirs unconditionally (not gated on which
         # agents the user has installed) so the links match upstream finalize-user.
+        #
+        # The Elsewhen world clock plugin link (2026-09-19 upstream bump) is
+        # managed the same way: upstream's installer copies the tree's
+        # config/omarchy/plugins/omacom.elsewhen symlink into the home (and
+        # migration 1789581661 links it for existing homes), both pointing at
+        # the packaged plugin root — here $OMARCHY_PATH/plugins, refreshed per
+        # switch instead of dangling after a generation change.
         #
         # Real files/dirs at these paths are relocated before linkGeneration
         # (omarchySkillLinkSafety) so a user-owned skill clone is never deleted.
@@ -146,21 +154,22 @@ in
             .codex/skills/omarchy \
             .pi/agent/skills/omarchy \
             .gemini/config/skills/omarchy \
-            .hermes/skills/omarchy
+            .hermes/skills/omarchy \
+            .config/omarchy/plugins/omacom.elsewhen
           do
             omarchy_skill_target="$HOME/$omarchy_skill_rel"
-            # -e is false for a dangling symlink; -L catches those too, but we
-            # only relocate real files/dirs — leave every symlink for force.
+            # -e is false for a dangling symlink; -L catches those too, but
+            # we only relocate real files/dirs — leave every symlink for force.
             if [ -e "$omarchy_skill_target" ] && [ ! -L "$omarchy_skill_target" ]; then
               omarchy_skill_backup="''${omarchy_skill_target}.hm-backup-''${omarchy_skill_ts}"
-              echo "warning: omarchy skill target $omarchy_skill_target is a real file/directory; moving aside to $omarchy_skill_backup before linking" >&2
+              echo "warning: omarchy managed link target $omarchy_skill_target is a real file/directory; moving aside to $omarchy_skill_backup before linking" >&2
               mv "$omarchy_skill_target" "$omarchy_skill_backup"
             fi
           done
         '';
 
         home.file =
-          lib.genAttrs
+          (lib.genAttrs
             [
               ".agents/skills/omarchy"
               ".claude/skills/omarchy"
@@ -172,7 +181,14 @@ in
             (_: {
               source = effSkill;
               force = true;
-            });
+            })
+          )
+          // {
+            ".config/omarchy/plugins/omacom.elsewhen" = {
+              source = "${omarchyPathOf effPkg}/plugins/omacom.elsewhen";
+              force = true;
+            };
+          };
 
         # --- Class 1: user-editable stubs (seeded once) ---
         # Every file below is copied verbatim from the vendored upstream

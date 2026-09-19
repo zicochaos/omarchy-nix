@@ -52,6 +52,9 @@
   glib,
   makeWrapper,
   python3,
+  # Elsewhen world-clock plugin source (pkgs/elsewhen.nix) — folded into
+  # $out/share/omarchy/plugins below, mirroring the `elsewhen` Arch package.
+  elsewhen,
 }:
 
 let
@@ -864,41 +867,11 @@ stdenv.mkDerivation (finalAttrs: {
     EOF
         chmod +x bin/omarchy-theme-set-browser-policy
 
-        # omarchy-install-dev-env: drop the /etc/php mutations from the PHP
-        # flow (php.ini + xdebug.ini are declarative on NixOS); the mise-based
-        # per-user toolchain install and the Composer PATH setup stay.
-        # Anchors are verified and deleted as an explicit line range (no open
-        # `,+Nd` patterns) so an upstream restructure fails the build instead
-        # of silently deleting unrelated user-state logic.
-        {
-          dev_env=bin/omarchy-install-dev-env
-          # Fixed-string anchors (unique within install_php); fail-closed.
-          for pat in \
-            '  # Enable some extensions' \
-            'local php_ini_path="/etc/php/php.ini"' \
-            'local extensions_to_enable=(' \
-            '  # Enable Xdebug' \
-            'for ext in "''${extensions_to_enable[@]}"' \
-            '/etc/php/conf.d/xdebug.ini'
-          do
-            grep -qF "$pat" "$dev_env" || {
-              echo "omarchy-install-dev-env: expected PHP-mutation anchor missing: $pat" >&2
-              exit 1
-            }
-          done
-          start=$(grep -nF '  # Enable some extensions' "$dev_env" | head -1 | cut -d: -f1)
-          # The for-ext loop's closing `done` is the last line of the block.
-          end=$(awk -v s="$start" 'NR > s && /^  done$/ { print NR; exit }' "$dev_env")
-          if [[ -z "$start" || -z "$end" || "$end" -le "$start" ]]; then
-            echo "omarchy-install-dev-env: could not resolve PHP-mutation line range (start=$start end=$end)" >&2
-            exit 1
-          fi
-          sed -i "''${start},''${end}d" "$dev_env"
-        }
-        substituteInPlace bin/omarchy-install-dev-env \
-          --replace-fail \
-            $'install_php() {\n  omarchy-pkg-add' \
-            $'install_php() {\n  echo "NixOS: PHP extensions and php.ini are declarative (php.buildEnv / devshell); nothing is written under /etc."\n  omarchy-pkg-add'
+        # omarchy-install-dev-env: no patch needed since the 2026-09-16
+        # upstream rework — install_php is now pure mise + Composer
+        # (github:nunomaduro/static-php-builds), all under $HOME. The old
+        # /etc/php/php.ini + xdebug.ini mutation block (deleted here with
+        # fail-closed anchors until this bump) no longer exists upstream.
 
         # Menu: delete entries whose only implementation is an Arch
         # system mutation (the scripts behind them are stubbed above; ids are
@@ -1654,6 +1627,21 @@ stdenv.mkDerivation (finalAttrs: {
     # from here, verbatim upstream, refreshed with every omarchy-src bump.
     # See pkgs/omarchy-etc-manifest.nix for the per-file classification.
     cp -a default bin shell themes config migrations install applications etc "$dest/"
+
+    # Elsewhen world clock (default bar widget since the 2026-09-19 bump).
+    # Upstream ships it as the `elsewhen` Arch package whose files land in
+    # /usr/share/omarchy/plugins/omacom.elsewhen; pkgs/elsewhen.nix mirrors
+    # that layout into this package's plugins/ root, so the shell's plugin
+    # discovery (the ~/.config/omarchy/plugins symlink the HM module manages,
+    # migration 1789581661's adapter, and `omarchy plugin clone`) all resolve
+    # inside the generation-specific store path. The tree's own
+    # config/omarchy/plugins/omacom.elsewhen symlink targets /usr/share/... —
+    # retarget it relatively so a fresh-install seed from the vendored config
+    # tree lands on the plugin this package actually ships.
+    mkdir -p "$dest/plugins"
+    cp -a "${elsewhen}/share/omarchy/plugins/omacom.elsewhen" "$dest/plugins/"
+    rm "$dest/config/omarchy/plugins/omacom.elsewhen"
+    ln -s "../../../plugins/omacom.elsewhen" "$dest/config/omarchy/plugins/omacom.elsewhen"
 
     # B21: the upstream skill is Arch-specific (/usr/share/omarchy,
     # pacman/AUR, Arch package lifecycle). Replace it with the omarchy-nix

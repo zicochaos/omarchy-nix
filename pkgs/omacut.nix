@@ -11,13 +11,13 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "omacut";
-  version = "0.2.0";
+  version = "0.4.0";
 
   src = fetchFromGitHub {
     owner = "omacom-io";
     repo = "omacut";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-B1MkokDbvqV4et0Ox31mmtV/JjhnHEOQhLIuxhFEkkY=";
+    hash = "sha256-g6xtaj6XSkP4B49H6McLQXV2pK9y0i2MwSF8R341mxw=";
   };
 
   nativeBuildInputs = [

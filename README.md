@@ -78,13 +78,19 @@ for manual desktop exploration.
 
 ## Changelog
 
-- **2026-09-14** — Install → Development → Rust now yields the whole
-  toolchain: `rustfmt` and `clippy` join `rustc` and `cargo` in the
-  catalog entry (nixpkgs splits what Arch ships as one `rust` package,
-  so the menu used to give a compiler whose `cargo fmt`/`cargo clippy`
-  failed). Existing installs need one manual step to gain the two
-  binaries — Remove → Rust, then Install again — because the menu guard
-  already sees `rustc`/`cargo` as installed and hides the Install row.
+- **2026-09-19** — Two waves. The upstream quattro bump (`60663fa`) brings
+  **Elsewhen**, the world clock plugin, to the default bar (built from the
+  same omacom/elsewhen release upstream packages, linked into
+  `~/.config/omarchy/plugins` by the home-manager module and refreshed
+  every switch), switches TCP congestion control to **BBR + fq**, and
+  moves PHP/Laravel dev environments to pure mise. On top of it, a version
+  sweep of the pinned apps: zcode 3.14.0 (from the official downloads
+  page — the AUR lags), claude-desktop **2.2553.1**, omp 18.2.6,
+  omacut 0.4.0, omawrite 0.5.0, tensaku 0.29.0, try 1.10.1,
+  omarchy-nvim 2026.8.13, omarchy-fish 2026-09-19 (now carrying the
+  upstream bashrc-template fix from omacom/omarchy-fish#11), yaru 26.10.3.
+  Aether is held at 4.28.0 (lockfile-less npm resolution upstream) and
+  codex follows the stable nixpkgs channel (0.146.0).
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md). Upstream adaptation
 details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).

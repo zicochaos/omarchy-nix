@@ -27,13 +27,13 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "yaru-theme";
-  version = "25.10.3";
+  version = "26.10.3";
 
   src = fetchFromGitHub {
     owner = "ubuntu";
     repo = "yaru";
     rev = finalAttrs.version;
-    hash = "sha256-3cSVPObfmr62S6yTD2c8AO3s7lxb9KFVuYSydTIJ1jE=";
+    hash = "sha256-E8CYl0i9/UzlwhnmBl8IDDeAoB9AxOWAbOnPm2HOcz0=";
   };
 
   nativeBuildInputs = [
@@ -60,6 +60,12 @@ stdenv.mkDerivation (finalAttrs: {
   dontDropIconThemeCache = true;
 
   postPatch = "patchShebangs .";
+
+  # 26.10 wires glib-compile-schemas into the meson install scripts
+  # unconditionally, but yaru ships no gsettings schemas, so the schemas
+  # directory never exists when the script runs. Create it empty first —
+  # compiling zero schemas exits 0.
+  preInstall = "mkdir -p $out/share/glib-2.0/schemas";
 
   # Skip components Omarchy does not use (GNOME Shell, sounds, sessions).
   # Keep gtk=true: accent icon themes (Yaru-blue, …) are generated from GTK

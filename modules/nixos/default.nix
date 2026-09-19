@@ -969,7 +969,13 @@ in
         # reclaim tuned for swap-on-zram (see zramSwap above), page-cache
         # kept, bounded writeback bursts; tcp_mtu_probing fixes SSH stalls on
         # flaky links. Migration 1784961000 applies the same file on Arch.
+        # BBR + fq pacing (upstream 2026-09-13, migration 1789294350): BBR
+        # estimates bottleneck bandwidth and minimum RTT and paces to them,
+        # cutting queueing latency on fast links; fq is the qdisc BBR is
+        # built to pace through. Setting the sysctl autoloads tcp_bbr/sch_fq.
         boot.kernel.sysctl = lib.mapAttrs (_: lib.mkDefault) {
+          "net.ipv4.tcp_congestion_control" = "bbr";
+          "net.core.default_qdisc" = "fq";
           "net.ipv4.tcp_mtu_probing" = 1;
           "vm.swappiness" = 150;
           "vm.vfs_cache_pressure" = 50;

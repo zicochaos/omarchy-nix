@@ -113,6 +113,8 @@
             pipewire = pkgs.pipewire;
             systemd = pkgs.systemd;
             tailscale = pkgs.tailscale;
+            # Elsewhen world clock plugin folded into $out/share/omarchy/plugins.
+            elsewhen = pkgs.callPackage ./pkgs/elsewhen.nix { };
           };
           # Plymouth boot-splash theme + SDDM login theme/Hyprland greeter.
           # Consumed by the omarchy NixOS module (boot.plymouth.themePackages
@@ -1162,6 +1164,10 @@
               throw "demo config missing vm.dirty_bytes (etc/sysctl.d/99-omarchy-sysctl.conf)"
             else if sysctl."net.ipv4.tcp_mtu_probing" != 1 then
               throw "demo config missing net.ipv4.tcp_mtu_probing=1 (etc/sysctl.d/99-omarchy-sysctl.conf)"
+            else if sysctl."net.ipv4.tcp_congestion_control" != "bbr" then
+              throw "demo config missing net.ipv4.tcp_congestion_control=bbr (etc/sysctl.d/99-omarchy-sysctl.conf, 2026-09-13)"
+            else if sysctl."net.core.default_qdisc" != "fq" then
+              throw "demo config missing net.core.default_qdisc=fq (etc/sysctl.d/99-omarchy-sysctl.conf, 2026-09-13)"
             else if sysctl."fs.inotify.max_user_watches" != 524288 then
               throw "demo config lost fs.inotify.max_user_watches=524288 (nixpkgs sysctl.nix default changed)"
             else if !(hasInfix "HandlePowerKey=ignore" logindConf) then

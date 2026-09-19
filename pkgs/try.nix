@@ -8,7 +8,7 @@
 # `require_relative 'lib/...'` resolves — matching upstream's own flake.nix
 # and Homebrew Formula layout.
 #
-# Pinned to the latest release tag v1.9.3.
+# Pinned to the latest release tag v1.10.1.
 {
   lib,
   stdenv,
@@ -20,13 +20,13 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "try";
-  version = "1.9.3";
+  version = "1.10.1";
 
   src = fetchFromGitHub {
     owner = "tobi";
     repo = "try";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-yDPQAI/3M1AFsNxBklM5lq8uQwHPr6ryZJBgC2aXGfQ=";
+    hash = "sha256-ZSt6LSp0AQTbdN86lJGJPWcx6oFR63AFi4s8Vjr5a5o=";
   };
 
   nativeBuildInputs = [ makeBinaryWrapper ];

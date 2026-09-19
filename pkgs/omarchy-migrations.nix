@@ -228,4 +228,22 @@
   #                           # rejected — catalog is final; not a menu entry; the
   #                           # preinstalls-removed guard can legitimately exist via
   #                           # omarchy-remove-preinstalls, so skip is the safe class)
+
+  # --- bump 60663fa (2026-09-19) ---
+  "1789294350.sh" = "skip"; # live-apply the BBR + fq sysctls (etc/sysctl.d/
+  #                           # 99-omarchy-sysctl.conf) — boot.kernel.sysctl owns
+  #                           # them on NixOS; the module gained the two keys in
+  #                           # this bump and nixos-rebuild applies them at boot
+  #                           # (same doctrine as 1784961000)
+  "1789325478.sh" = "skip"; # linux-omarchy default kernel + Limine BOOT_ORDER
+  #                           # (Arch kernel/boot machinery; boot.kernelPackages
+  #                           # and boot.loader.* are declarative here)
+  "1789444024.sh" = "skip"; # DKMS kernel headers repair (pacman; NixOS builds
+  #                           # matching kernel headers declaratively)
+  "1789581661.sh" = "adapter"; # Elsewhen world clock plugin: keep the plugin
+  #                           # link + shell rescan + bar placement; the
+  #                           # omarchy-pkg-add step is dropped (the plugin
+  #                           # ships inside the omarchy package at
+  #                           # $OMARCHY_PATH/plugins/omacom.elsewhen — see
+  #                           # pkgs/elsewhen.nix)
 }

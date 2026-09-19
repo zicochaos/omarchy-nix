@@ -74,9 +74,11 @@ nixpkgs moves is guarded.
 ### `omarchy.fish.enable` *(bool, default `false`)*
 
 Install Fish and the vendored Omarchy Fish profile (`omarchy-fish`, pinned
-`1.5.0-unstable-2026-09-05` — the fork rev carrying
+`1.5.0-unstable-2026-09-19` — the fork tip carrying
 [omacom-io/omarchy-fish#7](https://github.com/omacom-io/omarchy-fish/pull/7)
-— + fzf.fish v10.3): sets `programs.fish.enable` and adds the package
+plus the cherry-picked bashrc-template fix from
+[omacom-io/omarchy-fish#11](https://github.com/omacom-io/omarchy-fish/pull/11),
+and fzf.fish v10.3): sets `programs.fish.enable` and adds the package
 to the system profile, whose `share/fish/vendor_*` directories Fish reads
 automatically. Does NOT change any account's login shell; that stays an
 explicit per-account setting (`users.users.<name>.shell = pkgs.fish`). Off

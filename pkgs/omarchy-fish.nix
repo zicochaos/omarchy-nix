@@ -31,13 +31,18 @@
 }:
 
 let
-  version = "1.5.0-unstable-2026-09-05";
+  # Pin date follows the fork branch's tip commit. 2026-09-19 additionally
+  # carries the cherry-picked omacom/omarchy-fish#11 (bashrc template:
+  # stale Omarchy-3.x rc path -> $OMARCHY_PATH/default/bash/rc, plus the
+  # env-bootstrap source above the interactive guard, whose /usr/share
+  # guard correctly no-ops on NixOS).
+  version = "1.5.0-unstable-2026-09-19";
 
   src = fetchFromGitHub {
     owner = "zicochaos";
     repo = "omarchy-fish";
-    rev = "b1c8639a00a183be168c59a77bb6db95db1e6777";
-    hash = "sha256-eFPlT9+IPVA1DGsJlk3+dapVpKyjfDW8bKxVEuHRKPg=";
+    rev = "2fe53fa6b9c1575e4c08679e06c9ce5147cc4065";
+    hash = "sha256-4WCXudko3JSd6jxkir33p1KrNtTrWE2uY/1gP5eQq3o=";
   };
 
   # Same fzf.fish revision the canonical PKGBUILD bundles.

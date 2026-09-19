@@ -4,6 +4,111 @@ All notable changes to omarchy-nix, newest first. Dates are UTC.
 Upstream adaptation details and the bump checklist:
 [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
+## 2026-09-19
+
+- Upstream bump `b679363` → `60663fa` (2026-09-19, 41 commits). The
+  headline change is **Elsewhen**, the world clock shell plugin, now a
+  default bar widget upstream. On Arch it arrives as the `elsewhen`
+  package installing `/usr/share/omarchy/plugins/omacom.elsewhen`, with
+  the tree's `config/omarchy/plugins/omacom.elsewhen` symlink seeding
+  `~/.config/omarchy/plugins/` and migration `1789581661` linking +
+  placing it for existing homes. The port keeps every piece of that
+  shape: `pkgs/elsewhen.nix` builds the same release the upstream
+  PKGBUILD pins (omacom/elsewhen v1.0.0) into
+  `$out/share/omarchy/plugins/omacom.elsewhen`, the tree symlink is
+  retargeted from `/usr/share/...` to the in-package plugins root, the
+  home-manager module manages `~/.config/omarchy/plugins/omacom.elsewhen`
+  as a force link refreshed to the active generation every switch (real
+  dirs are relocated like the agent-skill links, never deleted), and
+  migration `1789581661` runs as an adapter: plugin link + bar
+  placement kept, `omarchy-pkg-add` dropped. One deliberate deviation:
+  the adapter skips `omarchy-shell shell rescanPlugins` when no shell is
+  live — the login-time `omarchy-migrate` unit runs before the session,
+  and an unconditional rescan would leave the migration pending forever
+  (an absent shell scans `~/.config/omarchy/plugins` at startup anyway;
+  a failing rescan on a live shell still fails the migration like
+  upstream). Fresh installs get the new default `shell.json` (Elsewhen
+  before the center clock) through the existing seed; the widget needs
+  `python3` on the session PATH, which the module already ships.
+
+- TCP congestion control: upstream switched to **BBR with fq pacing**
+  (`etc/sysctl.d/99-omarchy-sysctl.conf`, migration `1789294350`). The
+  module's `boot.kernel.sysctl` block gains
+  `net.ipv4.tcp_congestion_control = "bbr"` and
+  `net.core.default_qdisc = "fq"` (setting the sysctl autoloads
+  `tcp_bbr`/`sch_fq`), and `checks.omarchy-etc-parity` pins both keys.
+  The migration itself is `skip` — `nixos-rebuild` applies the keys at
+  activation and boot (same doctrine as 1784961000).
+
+- New upstream `bin/omarchy-install-chromium-claude` (called
+  best-effort by `omarchy-default-agent` after picking Claude) seeds the
+  Claude browser extension's external-update JSON into
+  `/usr/share/{chromium,google-chrome,microsoft-edge}/extensions/` —
+  `/usr/share` does not exist on NixOS and extension policy is
+  module-owned, so it is a `declarative-note` stub pointing at
+  `programs.chromium.extensions`.
+
+- PHP/Laravel dev environments: upstream rewrote `install_php` to pure
+  mise + Composer (`github:nunomaduro/static-php-builds`, all under
+  `$HOME`). The port's `/etc/php` mutation-deletion patch (the anchored
+  line-range delete of the php.ini/xdebug.ini block) is obsolete and
+  removed; `omarchy install dev-env php|laravel|symfony` now runs the
+  upstream mise flow verbatim, and the menu guards follow the new
+  `~/.local/share/mise/installs/php` paths.
+
+- Migration classification wave:
+  `1789294350` (BBR sysctl live-apply) `skip`,
+  `1789325478` (linux-omarchy default kernel + Limine BOOT_ORDER) `skip`,
+  `1789444024` (DKMS kernel-headers repair) `skip`,
+  `1789581661` (Elsewhen) `adapter` — kernels and boot entries are
+  `boot.kernelPackages`/`boot.loader.*` on NixOS.
+
+- Version sweep of the in-repo pinned apps: **zcode-desktop** 3.11.2 →
+  3.14.0 (the official downloads page is the version source of truth —
+  the AUR `z-code-bin` package lags releases and still pinned 3.12.3
+  when 3.14.0 shipped; the bump note in the derivation now says so),
+  **claude-desktop** 1.52386.3 → 2.2553.1 (the vendor's stable index
+  moved to 2.x; the deb's inner layout and the launcher anchor are
+  unchanged), **omp** 18.1.18 → 18.2.6, **omacut** 0.2.0 → 0.4.0,
+  **omawrite** 0.4.0 → 0.5.0, **tensaku** 0.26.6 → 0.29.0 (0.29 adds
+  input handling that links `libxkbcommon` directly — added to
+  buildInputs — and one upstream unit test asserting exact TIFF encoder
+  bytes fails in the sandbox, so it is skipped by name; the capture/edit
+  flow still exercises the encoder end-to-end in `checks.omarchy-ux`),
+  **try** 1.9.3 → 1.10.1, **omarchy-nvim** 2026.7.27 → 2026.8.13 (the
+  omarchy-pkgs rev moves; the LazyVim starter rev is unchanged — still
+  `main`'s head), **omarchy-fish** → quattro-bash-parity 2026-09-19
+  (b1c8639 → 2fe53fa: the fork tip gained the `mup` completions commit
+  and a cherry-pick of upstream PR omacom/omarchy-fish#11 — the bashrc
+  template sourced the Omarchy-3.x path
+  `~/.local/share/omarchy/default/bash/rc`, which does not exist on 4.x,
+  silently dropping every Omarchy alias in nested bash; the fix sources
+  `$OMARCHY_PATH/default/bash/rc`, which works as-is on NixOS, while the
+  PR's guarded env-bootstrap line no-ops here exactly as the port
+  intends), and **yaru-theme** 25.10.3 → 26.10.3 (26.10 wires
+  `glib-compile-schemas` into the meson install scripts unconditionally
+  while shipping no schemas, so the derivation pre-creates an empty
+  schemas directory).
+
+- Held back deliberately: **aether** stays 4.28.0 — upstream ships no
+  frontend lockfile and the offline npm resolution drifts between the
+  `fetchNpmDeps` cache and the build-time resolve (`xmlchars-2.2.0`
+  requested but not cached), so the 4.29.9 bump needs its own fix
+  rather than a hash dance. **codex** stays 0.146.0 — it resolves from
+  the pinned `nixos-26.05` channel (the fresh channel carries the same
+  version; `nixos-unstable` has 0.154.0 vs 0.155.1 upstream), and the
+  stable-nixpkgs input policy means it moves with the channel, not
+  ahead of it.
+
+- Vendored security fixes that flow in unchanged: the Windows VM's RDP
+  password no longer appears in the client's argument list,
+  screen-recording state and the debug log moved out of world-writable
+  `/tmp` into `XDG_RUNTIME_DIR`/`XDG_STATE_HOME`,
+  unsafe project-`bin/` PATH injection removed, `omarchy-hook` /
+  `omarchy-hook-install` / `omarchy-state` refuse path-like names, and
+  the factory reset scrubs old password hashes. `omarchy up` (alias for
+  `omarchy update`) works through the vendored dispatcher as-is.
+
 ## 2026-09-14
 
 - `omarchy-nix-search` (Install → Package) now searches **NixOS options**
