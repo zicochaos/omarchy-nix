@@ -37,7 +37,7 @@ Set automatically by the flake when `omarchy.sddm.theme` is true.
 
 Upstream-owned Omarchy packages packaged by this flake because they are
 absent from nixpkgs: aether, asdcontrol, omacalc, omacut, omawrite,
-tensaku, try, yaru-theme, hyprland-guiutils,
+omasnap, monologue, owe, try, yaru-theme, hyprland-guiutils,
 hyprland-preview-share-picker, omarchy-nvim. Set automatically by the
 flake's `nixosModules.default`; override to trim or extend the set.
 Entries are still subject to `omarchy.exclude_packages` filtering.

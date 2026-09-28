@@ -113,8 +113,6 @@
             pipewire = pkgs.pipewire;
             systemd = pkgs.systemd;
             tailscale = pkgs.tailscale;
-            # Elsewhen world clock plugin folded into $out/share/omarchy/plugins.
-            elsewhen = pkgs.callPackage ./pkgs/elsewhen.nix { };
           };
           # Plymouth boot-splash theme + SDDM login theme/Hyprland greeter.
           # Consumed by the omarchy NixOS module (boot.plymouth.themePackages
@@ -132,7 +130,10 @@
           # aether: theme generator (Wails). asdcontrol: Apple Studio Display
           # brightness. omacalc: calculator. omacut: video cutter (needs
           # ffmpeg on PATH at runtime).
-          # omawrite: markdown writer. tensaku: screenshot annotator.
+          # omawrite: markdown writer. omasnap: screenshot capture + editor
+          # (replaced tensaku upstream in 349ecc0).
+          # monologue: webcam recorder (default app since 349ecc0).
+          # owe: wallpaper engine — video backgrounds + lock feed (349ecc0).
           # try: tobi's experiment-worktree CLI. hyprland-guiutils: hyprwm
           # dialog/run/welcome tools. hyprland-preview-share-picker: xdp
           # screencopy picker. omarchy-nvim: LazyVim starter + omarchy overlay.
@@ -150,7 +151,9 @@
           omacalc = pkgs.callPackage ./pkgs/omacalc.nix { };
           omacut = pkgs.callPackage ./pkgs/omacut.nix { };
           omawrite = pkgs.callPackage ./pkgs/omawrite.nix { };
-          tensaku = pkgs.callPackage ./pkgs/tensaku.nix { };
+          monologue = pkgs.callPackage ./pkgs/monologue.nix { };
+          owe = pkgs.callPackage ./pkgs/owe.nix { };
+          omasnap = pkgs.callPackage ./pkgs/omasnap.nix { };
           try = pkgs.callPackage ./pkgs/try.nix { };
           hyprland-guiutils = pkgs.callPackage ./pkgs/hyprland-guiutils.nix { };
           hyprland-preview-share-picker = pkgs.callPackage ./pkgs/hyprland-preview-share-picker.nix { };
@@ -223,7 +226,9 @@
                     omacalc
                     omacut
                     omawrite
-                    tensaku
+                    monologue
+                    omasnap
+                    owe
                     try
                     hyprland-guiutils
                     hyprland-preview-share-picker

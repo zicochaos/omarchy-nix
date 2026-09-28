@@ -167,7 +167,10 @@
     };
     omarchy-update-pkg-prune = {
       class = "declarative-note";
-      note = "There is no pacman package cache on NixOS: old generations are garbage-collected with nix-collect-garbage -d (or nix.settings.auto-optimise-store / gc.options in your flake).";
+      # Never recommend `nix-collect-garbage -d` here: it deletes every old
+      # generation, i.e. every rollback, which is the opposite of upstream's
+      # keep-two-versions cache policy.
+      note = "No pacman package cache to prune; old system generations are your rollbacks. To reclaim space while keeping recent ones, enable nix.gc.automatic with nix.gc.options set to --delete-older-than 14d in your flake, or run sudo nix-collect-garbage --delete-older-than 14d.";
     };
     # v4.0.1: the browser-accent policy helper — its only caller
     # (omarchy-theme-set-browser) is a no-op stub on NixOS, and the helper
@@ -248,12 +251,22 @@
     # only, package removal routes into omarchy-pkg-drop.
     omarchy-install-ai-hermes = {
       class = "user-safe";
-      # systemctl --user enable/start of the per-user hermes gateway unit.
+      # 349ecc0 slimmed it to `omarchy-install-hermes-cli --now` + the
+      # desktop launch; the gateway-unit handling moved into install-hermes-cli.
+      allow = [ "systemctl-user" ];
+    };
+    omarchy-install-hermes-cli = {
+      class = "user-safe";
+      # 349ecc0: systemctl --user stop of the per-user omarchy-hermes-theme
+      # unit (|| true); its hermes-desktop pkg-add routes into the
+      # declarative stub. Reached by migration 1790017600 (skipped here) and
+      # install-ai-hermes, not by the port's menu.
       allow = [ "systemctl-user" ];
     };
     omarchy-remove-ai-hermes = {
       class = "user-safe";
-      # systemctl --user disable/stop of the per-user hermes gateway unit.
+      # systemctl --user disable/stop of the per-user hermes gateway units and
+      # the omarchy-hermes-theme unit.
       allow = [ "systemctl-user" ];
     };
     omarchy-remove-ai-openclaw = {

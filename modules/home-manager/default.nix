@@ -133,12 +133,11 @@ in
         # Create all six agent skill dirs unconditionally (not gated on which
         # agents the user has installed) so the links match upstream finalize-user.
         #
-        # The Elsewhen world clock plugin link (2026-09-19 upstream bump) is
-        # managed the same way: upstream's installer copies the tree's
-        # config/omarchy/plugins/omacom.elsewhen symlink into the home (and
-        # migration 1789581661 links it for existing homes), both pointing at
-        # the packaged plugin root — here $OMARCHY_PATH/plugins, refreshed per
-        # switch instead of dangling after a generation change.
+        # The Elsewhen plugin link this module managed after the 2026-09-19
+        # bump is gone: upstream folded Elsewhen into the shell as the
+        # first-party omarchy.elsewhen (349ecc0), so dropping the entry lets
+        # Home Manager remove the old link and migration 1790528634 renames
+        # the bar entry.
         #
         # Real files/dirs at these paths are relocated before linkGeneration
         # (omarchySkillLinkSafety) so a user-owned skill clone is never deleted.
@@ -154,8 +153,7 @@ in
             .codex/skills/omarchy \
             .pi/agent/skills/omarchy \
             .gemini/config/skills/omarchy \
-            .hermes/skills/omarchy \
-            .config/omarchy/plugins/omacom.elsewhen
+            .hermes/skills/omarchy
           do
             omarchy_skill_target="$HOME/$omarchy_skill_rel"
             # -e is false for a dangling symlink; -L catches those too, but
@@ -169,7 +167,7 @@ in
         '';
 
         home.file =
-          (lib.genAttrs
+          lib.genAttrs
             [
               ".agents/skills/omarchy"
               ".claude/skills/omarchy"
@@ -181,14 +179,7 @@ in
             (_: {
               source = effSkill;
               force = true;
-            })
-          )
-          // {
-            ".config/omarchy/plugins/omacom.elsewhen" = {
-              source = "${omarchyPathOf effPkg}/plugins/omacom.elsewhen";
-              force = true;
-            };
-          };
+            });
 
         # --- Class 1: user-editable stubs (seeded once) ---
         # Every file below is copied verbatim from the vendored upstream
@@ -346,7 +337,16 @@ in
               omarchy_state="$HOME/.local/state/omarchy"
               if [ ! -e "$omarchy_state/current/theme.name" ]; then
                 omarchy_pkg="${omarchyPathOf effPkg}"
-                PATH="$omarchy_pkg/bin:$PATH" \
+                # The activation PATH lacks awk and flock, which the
+                # template renderer (one awk pass) and theme-set's lock
+                # need since 349ecc0; without them the render half-fails
+                # silently and first-run's theme.sh aborts provision-user.
+                PATH="$omarchy_pkg/bin:${
+                  lib.makeBinPath [
+                    pkgs.gawk
+                    pkgs.util-linux
+                  ]
+                }:$PATH" \
                 OMARCHY_PATH="$omarchy_pkg" \
                 OMARCHY_THEME_HEADLESS=1 \
                   "$omarchy_pkg/bin/omarchy-theme-set" "${effTheme}" >/dev/null 2>&1 \

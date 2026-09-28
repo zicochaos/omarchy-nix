@@ -68,7 +68,7 @@
 
     # Upstream-owned packages not available in nixpkgs, built under pkgs/
     # and injected by the flake wrapper (aether, asdcontrol, omacalc,
-    # omacut, omawrite, tensaku, try, yaru-theme, hyprland-guiutils,
+    # omacut, omawrite, omasnap, monologue, owe, try, yaru-theme, hyprland-guiutils,
     # hyprland-preview-share-picker, omarchy-nvim). Added to
     # environment.systemPackages; entries are still subject to
     # omarchy.exclude_packages filtering.

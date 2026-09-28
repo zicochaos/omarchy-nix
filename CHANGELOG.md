@@ -4,6 +4,73 @@ All notable changes to omarchy-nix, newest first. Dates are UTC.
 Upstream adaptation details and the bump checklist:
 [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
+## 2026-09-27
+
+- Upstream bump `60663fa` → `349ecc0` (2026-09-27, 165 commits). What
+  changed in the port:
+  - **Update flow**: upstream rewrote `omarchy-update` around
+    command-scoped sudo (one password prompt per update, `bash -p`
+    startup verified through `/proc/$$/exe`, every tool called by an
+    absolute `/usr/bin` path, AUR phase through a `sudo -N` wrapper).
+    The hardening is kept. On NixOS the tools point at store paths and
+    the setuid `/run/wrappers/bin/{sudo,pkexec}`, the sanitized PATH is
+    `/run/wrappers/bin:/run/current-system/sw/bin`, and the source-root
+    check compares resolved paths, because `$OMARCHY_PATH` is a
+    symlinked profile path. An unmapped `/usr/bin` tool now fails the
+    build. The port's `omarchy-update-restart` gained upstream's
+    `--services-only`/`--reboot-only` phases. `omarchy-remove-dev-env`'s
+    sudo probes use the wrapper too.
+  - **Elsewhen** moved into the shell as the first-party
+    `omarchy.elsewhen`, so `pkgs/elsewhen.nix`, the plugin fold-in, the
+    home-manager plugin link and the `1789581661` adapter are gone.
+    Home Manager removes the old link on the next switch and upstream
+    migration `1790528634` renames the bar entry.
+  - **New upstream-owned packages** (none are in nixpkgs):
+    - `omasnap` 1.21.0: screenshots. The PRINT binding and
+      `omarchy-clipboard-open` exec it, and it replaces tensaku, which
+      upstream dropped. `pkgs/tensaku.nix` is removed.
+    - `owe` 0.2.7: video backgrounds and the lock-screen feed. The
+      shell's own video playback and `qt6.qtmultimedia` are gone
+      upstream. `owed.service` is registered through `systemd.packages`
+      and enabled for `graphical-session.target`. First-run and
+      migration `1789764927` install its theme-set hook from
+      `/run/current-system/sw/share/owe` and skip cleanly when `owe` is
+      excluded.
+    - `monologue` 0.2.0: the new default webcam recorder.
+  - `omarchy-nvim` 2026.8.13 → **2026.9.21**. It carries the
+    remote-clipboard fix that migration `1788996284` (a NixOS adapter:
+    stale-provider hash gate instead of `pacman -Q`/`vercmp`) installs.
+  - The first-login theme render (home-manager activation) now gets
+    `gawk` and `util-linux` on its PATH. Upstream's template renderer
+    became a single awk pass and `omarchy-theme-set` takes a `flock`, so
+    without them the render half-failed silently (no `pi.json`) and
+    first-run's `theme.sh` aborted `omarchy-provision-user` before it set
+    the default browser. The ux VM test caught this.
+  - Runtime deps: `curl` is added (weather and Elsewhen panels), and
+    `socat` is now on the sleep-lock unit PATH as well
+    (`omarchy-shell` talks to the shell's own socket).
+  - ux VM test: upstream's overlays (menu, OSD, clipboard, emoji) now
+    stay mapped as a 1x1 bottom layer when hidden (#13419), so the layer
+    probe and the OSD render guards check for a shown (>1x1) surface
+    instead of namespace presence. The notification OCR reads both a
+    `-normalize` and an `-auto-level` crop, because OWE's black
+    background under llvmpipe defeats `-normalize` alone. The manual
+    `tests/probe-quickshell-reload.nix` gets the same shown-OSD check, and
+    its documented invocation now allows obsidian (the default app set is
+    unfree-gated per package, so it no longer evaluated). Re-run: PASS on
+    the pinned quickshell.
+  - The runtime manifest classifies `omarchy-install-hermes-cli`
+    (user-scope `systemctl --user`). Ten new migrations are classified,
+    and the ux QML exec baseline goes 124 → 134.
+  - herdr 0.8.0 → **0.9.1**, now built from herdrdev/herdr (the project
+    moved from omacom-io; Omarchy's PKGBUILD follows it) with Zig 0.16,
+    mirroring upstream's `nix/package.nix`. The new Herdr theme sync
+    (`omarchy-theme-set-herdr-machines`, menu toggle) needs its
+    `herdr machine` subcommand.
+  - `omarchy-update-pkg-prune`'s note no longer recommends
+    `nix-collect-garbage -d`, which deletes every rollback. It points at
+    `nix.gc` / `--delete-older-than` instead.
+
 ## 2026-09-19 (2)
 
 - **omp fix**: the packaged `omp` was silently plain Bun. The release ELF

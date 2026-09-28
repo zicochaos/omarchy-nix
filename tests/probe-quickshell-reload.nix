@@ -22,7 +22,11 @@
 #   nix build --impure --no-link --print-out-paths --expr '
 #     let f = builtins.getFlake "path:/path/to/omarchy-nix";
 #         system = "x86_64-linux";
-#         pkgs = import f.inputs.nixpkgs { inherit system; };
+#         # obsidian is in the default app set; like the flake's pkgsFor,
+#         # allow just that instead of a global allowUnfree.
+#         pkgs = import f.inputs.nixpkgs { inherit system;
+#           config.allowUnfreePredicate = p:
+#             builtins.elem (f.inputs.nixpkgs.lib.getName p) [ "obsidian" ]; };
 #     in pkgs.testers.nixosTest (import /path/to/omarchy-nix/tests/probe-quickshell-reload.nix {
 #          inherit pkgs; lib = pkgs.lib; omarchy = f;
 #          home-manager = f.inputs.home-manager; })'
@@ -112,6 +116,7 @@
     };
 
   testScript = ''
+    import json
     import re
 
     machine.start()
@@ -152,6 +157,25 @@
 
     machine.log("layer namespaces at baseline: %s" % (namespaces(),))
 
+    # Shown, not merely mapped: since omarchy 349ecc0 (#13419) the OSD keeps
+    # its surface and parks it hidden as a 1x1 bottom layer between popups,
+    # so the namespace alone is always present.
+    def osd_shown():
+        def walk(node):
+            if isinstance(node, dict):
+                if (
+                    node.get("namespace") == "omarchy-osd"
+                    and node.get("w", 0) > 1
+                    and node.get("h", 0) > 1
+                ):
+                    return True
+                return any(walk(v) for v in node.values())
+            if isinstance(node, list):
+                return any(walk(v) for v in node)
+            return False
+
+        return walk(json.loads(machine.succeed(as_demo("hyprctl -j layers"))))
+
     def osd_renders(label):
         # The ux test fires the OSD inside a retry loop (wait_until_succeeds);
         # a single shot can land before the OSD panel is ready, so retry here
@@ -161,8 +185,7 @@
                 as_demo("omarchy-osd -i volume-high -p 50 -d 4000")
             )
             machine.sleep(2)
-            layers = machine.succeed(as_demo("hyprctl -j layers"))
-            if "omarchy-osd" in layers:
+            if osd_shown():
                 machine.log("OSD probe (%s): layer up on attempt %d" % (label, attempt + 1))
                 return True
             if attempt == 0:
@@ -208,7 +231,7 @@
     # detect, so this check does not retry.
     _, _ = machine.execute(as_demo("omarchy-osd -i volume-high -p 50 -d 4000"))
     machine.sleep(2)
-    rendered = "omarchy-osd" in machine.succeed(as_demo("hyprctl -j layers"))
+    rendered = osd_shown()
     machine.log("OSD probe (after reload, first call): layer=%s" % rendered)
 
     machine.screenshot("qs-reload-probe")

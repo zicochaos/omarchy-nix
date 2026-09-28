@@ -1040,13 +1040,11 @@
         # QML, not in menu.jsonc, so the extraction below never sees it.
         machine.succeed("command -v gtk-launch")
 
-        # Same class of blind spot: omarchy-capture-screenshot opens the
-        # editor via $OMARCHY_SCREENSHOT_EDITOR (default: tensaku-edit) when
-        # the notification is clicked. tensaku-edit is a wrapper shipped by
-        # upstream's Arch tensaku package (flags: --filename/--output-filename
-        #/--actions-on-enter save-to-clipboard/--save-after-copy/--copy-command
-        # wl-copy); the reference lives in a bash script, not in menu.jsonc.
-        machine.succeed("command -v tensaku-edit")
+        # Same class of blind spot: omarchy-capture-screenshot (the PRINT
+        # binding) and omarchy-clipboard-open exec omasnap (349ecc0 replaced
+        # the tensaku-edit editor path); the reference lives in bash
+        # scripts, not in menu.jsonc.
+        machine.succeed("command -v omasnap")
 
         # Same class: the network panel's Wi-Fi band toggle (quattro 14f1bb6c)
         # execs omarchy-network-band from QML (shell/plugins/panels/network/
@@ -1082,7 +1080,13 @@
         # either is absent — fingerprint stays out of scope here) and
         # battery/Service.qml gained powerprofilesctl get (argv form; the
         # module enables power-profiles-daemon, so the CLI is on PATH).
-        qml_exec_baseline = 124
+        # 349ecc0: 124 → 134 — Elsewhen moved into the shell (panel + globe:
+        # bash/date timezone probes, timedatectl list-timezones, curl
+        # geocode/weather), BrightnessKeys service (brightnessctl +
+        # omarchy-hw-display), image-picker theme rows
+        # (omarchy-theme-switcher --print-rows) and the lock video poster
+        # (bash poster.sh → ffmpegthumbnailer).
+        qml_exec_baseline = 134
         qml_exec_count = int(machine.succeed(
             as_demo(
                 "grep -rE --include=\"*.qml\" "
@@ -1326,12 +1330,15 @@
     # ext-session-lock surfaces (see the header comment).
 
     # Layer probe for as_demo (the su -c wrapper forbids single quotes, so
-    # the jq program is double-quoted with escaped inner quotes).
+    # the jq program is double-quoted with escaped inner quotes). "Present"
+    # means shown: larger than 1x1. Since 349ecc0 (#13419) the menu, OSD,
+    # clipboard and emoji overlays keep their surface mapped and park it
+    # hidden as a 1x1 bottom layer instead of unmapping it.
     def layer_probe(ns, present):
         op = "> 0" if present else "== 0"
         return as_demo(
             "hyprctl -j layers | jq -e \"[.. | objects | select(.namespace? == \\\""
-            + ns + "\\\")] | length " + op + "\""
+            + ns + "\\\" and (.w // 0) > 1 and (.h // 0) > 1)] | length " + op + "\""
         )
 
     # Lock lifecycle evidence (runs as root): the shell logs
@@ -1452,10 +1459,19 @@
         # then has a local histogram again and reads title+body with the
         # pinned toolchain (psm 6 and 11). Negative fixture below still
         # applies to the same chain.
+        # 349ecc0 re-tune: OWE now owns the desktop background and renders
+        # it black under llvmpipe here, and -normalize over a black crop
+        # washes the card text out (0/2 strings; -auto-level reads both,
+        # reproduced on the VM's grim artifact with the pinned toolchain).
+        # OCR both preprocessings of one grab and match on the union, so
+        # either background works.
+        ocr_crop = "magick /tmp/notif.png -crop 640x400+640+0 +repage -colorspace Gray -resize 200% "
         ocr_chain = (
             "WAYLAND_DISPLAY=wayland-1 grim /tmp/notif.png"
-            + " && magick /tmp/notif.png -crop 640x400+640+0 +repage -colorspace Gray -resize 200% -normalize /tmp/notif-proc.png"
-            + " && tesseract /tmp/notif-proc.png stdout --psm 11 2>/dev/null"
+            + " && " + ocr_crop + "-normalize /tmp/notif-proc.png"
+            + " && " + ocr_crop + "-auto-level /tmp/notif-proc-level.png"
+            + " && { tesseract /tmp/notif-proc.png stdout --psm 11;"
+            + " tesseract /tmp/notif-proc-level.png stdout --psm 11; } 2>/dev/null"
         )
         try:
             machine.wait_until_succeeds(
@@ -1503,7 +1519,7 @@
         # the popup (its hide timer restarts), so the layer probe runs
         # while the card is still visible.
         machine.wait_until_succeeds(
-            as_demo("omarchy-audio-output-volume raise && hyprctl -j layers | jq -e \"[.. | objects | select(.namespace? == \\\"omarchy-osd\\\")] | length > 0\""),
+            as_demo("omarchy-audio-output-volume raise && hyprctl -j layers | jq -e \"[.. | objects | select(.namespace? == \\\"omarchy-osd\\\" and (.w // 0) > 1 and (.h // 0) > 1)] | length > 0\""),
             timeout=30,
         )
         machine.screenshot("behavioral-osd")
@@ -1614,10 +1630,15 @@
             )
         return ok
 
+    # Shown, not merely mapped: the OSD surface stays parked at 1x1 between
+    # popups since 349ecc0 (see layer_probe).
+    def osd_shown():
+        return machine.execute(layer_probe("omarchy-osd", True))[0] == 0
+
     def osd_renders(_last=False):
         machine.execute(as_demo("omarchy-osd -i volume-high -p 50 -d 4000"))
         machine.sleep(2)
-        return "omarchy-osd" in machine.succeed(as_demo("hyprctl -j layers"))
+        return osd_shown()
 
     # Warm the OSD panel before the reload: the first call of a session can
     # be cold (the probe observes the baseline needing a second attempt), and
@@ -1659,7 +1680,7 @@
         # target is the one this port relies on and the one that broke.
         machine.execute(as_demo("omarchy-osd -i volume-high -p 50 -d 4000"))
         machine.sleep(2)
-        assert "omarchy-osd" in machine.succeed(as_demo("hyprctl -j layers")), \
+        assert osd_shown(), \
             "OSD dead on the first call after the plugin reload (stale IpcHandler)"
 
         machine.succeed(as_demo("omarchy plugin remove demo.clock --yes"))

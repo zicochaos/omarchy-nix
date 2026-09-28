@@ -16,6 +16,11 @@
 # classified here. One revision, one classification commit.
 {
   # ---------------------------------------------------------------- adapters
+  # nvim remote clipboard repair (349ecc0): replace a known-stale provider
+  # with the fixed one from the omarchy-nvim profile path; the pacman -Q /
+  # vercmp version gate becomes a check that the packaged provider is not
+  # one of the stale versions.
+  "1788996284.sh" = "adapter";
   # nvim remote clipboard: provider file lives in the system profile, not
   # /usr/share/omarchy-nvim.
   "1781587663.sh" = "adapter";
@@ -240,10 +245,34 @@
   #                           # and boot.loader.* are declarative here)
   "1789444024.sh" = "skip"; # DKMS kernel headers repair (pacman; NixOS builds
   #                           # matching kernel headers declaratively)
-  "1789581661.sh" = "adapter"; # Elsewhen world clock plugin: keep the plugin
-  #                           # link + shell rescan + bar placement; the
-  #                           # omarchy-pkg-add step is dropped (the plugin
-  #                           # ships inside the omarchy package at
-  #                           # $OMARCHY_PATH/plugins/omacom.elsewhen — see
-  #                           # pkgs/elsewhen.nix)
+
+  # --- bump 349ecc0 (2026-09-27) ---
+  # (1789581661, the Elsewhen plugin-link adapter, was renamed upstream to
+  # 1790042972 once Elsewhen moved into the shell; its key and adapter are gone.)
+  "1788129995.sh" = "user-safe"; # Omasnap replaces Satty/Tensaku: pkg-add/pkg-drop
+  #                           # route into the declarative stubs (omasnap ships in
+  #                           # appPackages); the imv Ctrl+E rewrite and stale
+  #                           # launcher cleanup are $HOME-only
+  "1788163635.sh" = "skip"; # revoke legacy passwordless sudo grants in
+  #                           # /etc/sudoers.d (never written on NixOS —
+  #                           # omarchy-sudo-passwordless is a declarative stub)
+  "1789764927.sh" = "adapter"; # OWE video backgrounds + lock feed: keep the
+  #                           # theme-set hook and owed.service enable, with the
+  #                           # hook sourced from the owe package instead of
+  #                           # /usr/share/owe (pkg-add is module-level)
+  "1790017600.sh" = "skip"; # retire the mise-built Hermes wrapper (mise model
+  #                           # rejected; the wrapper never existed here)
+  "1790042972.sh" = "user-safe"; # Elsewhen on the bar: shell rescan (best-effort)
+  #                           # + omarchy-bar put — the widget is now built into
+  #                           # the vendored shell
+  "1790282866.sh" = "user-safe"; # hybrid NVIDIA VA-API fix: sysfs probes +
+  #                           # omarchy-state reboot-required ($HOME)
+  "1790457067.sh" = "skip"; # loosen the offline mise Node pin (mise model
+  #                           # rejected; that config is never seeded here)
+  "1790528634.sh" = "user-safe"; # omacom.elsewhen -> omarchy.elsewhen in
+  #                           # shell.json + cache clear; its /usr/share link
+  #                           # removal never matches here (the HM module drops
+  #                           # the old store link) and pkg-drop is a stub
+  "1790539857.sh" = "skip"; # Monologue via omarchy-pkg-add (package swap is a
+  #                           # module concern: monologue ships in appPackages)
 }

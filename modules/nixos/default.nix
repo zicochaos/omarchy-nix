@@ -53,6 +53,11 @@ let
   # Drop packages whose attribute name appears in omarchy.exclude_packages.
   filterExcluded = lib.filter (p: !builtins.elem (pkgAttrName p) excluded);
 
+  # OWE (video backgrounds + lock feed, 349ecc0) arrives through appPackages;
+  # its owed user unit and theme-set hook follow it, so excluding "owe"
+  # drops all three together.
+  owePkg = lib.findFirst (p: pkgAttrName p == "owe") null (filterExcluded cfg.appPackages);
+
   # Menu-managed packages (omarchy-packages.json), read once and shared by
   # the (B0) unfree whitelist and the (B0b) managed-packages block.
   # null = menu-managed packages disabled (empty sets). A non-null path that
@@ -310,7 +315,10 @@ let
         nerd-fonts.jetbrains-mono
 
         # --- Misc utilities used across bin/omarchy-* scripts ---
+        # socat: omarchy-shell talks to the shell's own IPC socket (349ecc0).
         socat
+        # curl: the shell's weather and Elsewhen panels geocode/fetch over it.
+        curl
         inotify-tools
         # parted: fish format-drive.fish partitioning (omarchy-fish profile).
         parted
@@ -339,11 +347,6 @@ let
         # for the shell — v4.0.2 stores theme backgrounds as webp
         # (migration 1787133200 installs the Arch package; we ship it).
         qt6.qtimageformats
-        # qt6-multimedia (nixpkgs attr qt6.qtmultimedia): native video
-        # wallpaper playback — v4.0.3 (migration 1786609204 installs the
-        # Arch qt6-multimedia + qt6-multimedia-ffmpeg pair; nixpkgs builds
-        # qtmultimedia with the ffmpeg backend included).
-        qt6.qtmultimedia
         # vi: a standard terminal editor (v4.0.2; migration 1788596255
         # installs the Arch `vi` package). The nixpkgs 26.05 pin has no `vi`
         # attr — nvi provides the same `vi` command.
@@ -555,6 +558,9 @@ in
           "/share/omarchy"
           "/share/xdg-terminal-exec"
           "/share/applications"
+          # OWE's theme-set hook, copied in by first-run and migration
+          # 1789764927 from /run/current-system/sw/share/owe.
+          "/share/owe"
         ];
 
         # OMARCHY_PATH + the omarchy-* bin scripts. Upstream expects the bin
@@ -680,7 +686,8 @@ in
         # Path-adapted user units from pkgs/omarchy.nix ($out/lib/systemd/user).
         # generateUnits (type=user) symlinks systemd.packages' lib/systemd/user
         # into /etc/systemd/user. Enabling is separate — see block (H).
-        systemd.packages = [ cfg.package ];
+        # owe contributes owed.service the same way.
+        systemd.packages = [ cfg.package ] ++ lib.optional (owePkg != null) owePkg;
       })
 
       # (B) Runtime dependencies (filtered by omarchy.exclude_packages).
@@ -1386,7 +1393,8 @@ in
           # sleep-lock monitor execs bare `bash`, `systemd-inhibit`, and
           # `dbus-monitor`. On PrepareForSleep it then runs
           # omarchy-system-sleep-lock, which talks to the shell via bare
-          # `omarchy-shell` / `qs` / `jq` and notifies via
+          # `omarchy-shell` (over `socat` to the shell socket since 349ecc0) /
+          # `qs` / `jq` and notifies via
           # `omarchy-notification-send`. User-unit PATH is sparse (no
           # /run/current-system unless hyprland setPath is on), so put them
           # on the unit PATH rather than rewriting the vendored script body.
@@ -1401,6 +1409,7 @@ in
                 systemd
                 dbus
                 jq
+                socat
               ])
               ++ [ quickshellPkg ]
               ++ [
@@ -1413,6 +1422,9 @@ in
           # + agent diagnosis). Upstream enables it from
           # install/user/first-run/enable-user-units.sh.
           omarchy-crash-watch.wantedBy = [ "graphical-session.target" ];
+          # owed: OWE's wallpaper daemon (349ecc0; enable-user-units.sh
+          # enables it upstream). The unit ships in the owe package.
+          owed = lib.mkIf (owePkg != null) { wantedBy = [ "graphical-session.target" ]; };
           omarchy-tailscale-receive.wantedBy = lib.mkIf config.services.tailscale.enable [
             "graphical-session.target"
           ];

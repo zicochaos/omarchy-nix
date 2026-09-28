@@ -52,9 +52,10 @@
   glib,
   makeWrapper,
   python3,
-  # Elsewhen world-clock plugin source (pkgs/elsewhen.nix) — folded into
-  # $out/share/omarchy/plugins below, mirroring the `elsewhen` Arch package.
-  elsewhen,
+  bash,
+  coreutils,
+  util-linux,
+  gnugrep,
 }:
 
 let
@@ -212,6 +213,17 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace install/user/xcompose.sh \
           --replace-fail 'include "/usr/share/omarchy/default/xcompose"' \
           "include \"$out/share/omarchy/default/xcompose\""
+
+        # OWE (349ecc0): owed.service and its theme-set hook come from the
+        # owe package (systemd.packages + /run/current-system/sw/share/owe),
+        # which omarchy.exclude_packages can drop. Enable both only when the
+        # unit exists, so first-run (set -euo pipefail) still completes
+        # without owe; the hook source moves off /usr/share.
+        substituteInPlace install/user/first-run/enable-user-units.sh \
+          --replace-fail $'  bt-agent.service \\\n  owed.service \\\n' $'  bt-agent.service \\\n' \
+          --replace-fail \
+            'omarchy-hook-install theme-set /usr/share/owe/10-owe-sync' \
+            $'if systemctl --user cat owed.service >/dev/null 2>&1; then\n  systemctl --user enable --now owed.service\n  omarchy-hook-install theme-set /run/current-system/sw/share/owe/10-owe-sync\nfi'
 
         # mise is Arch packaging (tarballs under /opt/packages, omarchy-mise-install
         # wrappers). Upstream runs these from install/user/all.sh and again from
@@ -712,7 +724,12 @@ stdenv.mkDerivation (finalAttrs: {
         # omarchy-remove-dev-env: mise/rustup/opam arms are user-level (kept).
         # (Post-v4.0.2 upstream replaced the two pacman arms with
         # omarchy-pkg-drop, which this port already routes declaratively —
-        # no substitution needed anymore.)
+        # no substitution needed anymore.) Its sudo boundary probes call
+        # /usr/bin/sudo by absolute path (349ecc0); NixOS's setuid sudo is
+        # the /run/wrappers one.
+        substituteInPlace bin/omarchy-remove-dev-env \
+          --replace-fail '/usr/bin/sudo' '/run/wrappers/bin/sudo' \
+          --replace-fail '/usr/bin/rm' '${coreutils}/bin/rm'
 
         # omarchy-remove-launcher-entry: on NixOS a .desktop outside $HOME
         # belongs to a system package — point at omarchy-nix-remove instead of
@@ -773,46 +790,64 @@ stdenv.mkDerivation (finalAttrs: {
         # omarchy-update-restart: a NixOS kernel update is a new
         # /run/current-system generation — compare it against the booted
         # one (upstream probes kernel files with pacman -Qo, which on
-        # NixOS would report "kernel updated" after EVERY update).
+        # NixOS would report "kernel updated" after EVERY update). Keeps
+        # upstream's phase split: omarchy-update restarts services while it
+        # still holds sudo, then offers the reboot after releasing it.
         cat >bin/omarchy-update-restart <<'EOF'
     #!/bin/bash
     # omarchy:summary=Prompt for required reboot or service restarts after updates
 
-    echo
+    # omarchy:args=[--services-only|--reboot-only]
 
+    mode="''${1:-all}"
+    case "$mode" in
+      all|--services-only|--reboot-only) ;;
+      *) echo "Unknown restart phase: $mode" >&2; exit 2 ;;
+    esac
+
+    echo
     confirm_reboot() {
-      gum confirm "$1" && { omarchy-system-reboot; exit 0; }
+      if [[ ''${OMARCHY_UPDATE_UNATTENDED:-0} == "1" ]]; then
+        echo "$1 Run omarchy-system-reboot when ready."
+      elif gum confirm "$1"; then
+        omarchy-system-reboot
+        exit 0
+      fi
     }
 
-    # omarchy-nix: generation-based kernel check (no pacman).
-    kernel_updated=false
+    if [[ $mode != "--services-only" ]]; then
+      # omarchy-nix: generation-based kernel check (no pacman).
+      kernel_updated=false
 
-    if [[ -e /run/booted-system/kernel && -e /run/current-system/kernel ]]; then
-      if [[ $(readlink -f /run/booted-system/kernel) != $(readlink -f /run/current-system/kernel) ]]; then
-        kernel_updated=true
+      if [[ -e /run/booted-system/kernel && -e /run/current-system/kernel ]]; then
+        if [[ $(readlink -f /run/booted-system/kernel) != $(readlink -f /run/current-system/kernel) ]]; then
+          kernel_updated=true
+        fi
+      fi
+
+      if [[ $kernel_updated == "true" ]]; then
+        confirm_reboot "Linux kernel has been updated. Reboot?"
+      elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
+        confirm_reboot "Updates require reboot. Ready?"
+      fi
+
+      running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
+      if [[ $running_hyprland == *"(deleted)"* ]]; then
+        confirm_reboot "Hyprland has been updated. Reboot?"
       fi
     fi
 
-    if [[ $kernel_updated == "true" ]]; then
-      confirm_reboot "Linux kernel has been updated. Reboot?"
-    elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
-      confirm_reboot "Updates require reboot. Ready?"
+    if [[ $mode != "--reboot-only" ]]; then
+      for file in "$HOME"/.local/state/omarchy/restart-*-required; do
+        if [[ -f $file ]]; then
+          filename=$(basename "$file")
+          service=$(echo "$filename" | sed 's/restart-\(.*\)-required/\1/')
+          echo "Restarting $service"
+          omarchy-state clear "$filename"
+          omarchy-restart-"$service"
+        fi
+      done
     fi
-
-    running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
-    if [[ $running_hyprland == *"(deleted)"* ]]; then
-      confirm_reboot "Hyprland has been updated. Reboot?"
-    fi
-
-    for file in "$HOME"/.local/state/omarchy/restart-*-required; do
-      if [[ -f $file ]]; then
-        filename=$(basename "$file")
-        service=$(echo "$filename" | sed 's/restart-\(.*\)-required/\1/')
-        echo "Restarting $service"
-        omarchy-state clear "$filename"
-        omarchy-restart-"$service"
-      fi
-    done
     EOF
         chmod +x bin/omarchy-update-restart
 
@@ -1012,6 +1047,53 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail \
             'correct the error, and retry the update.\n\nIf you need assistance' \
             'correct the error, and retry the update.\n\nFull log: /tmp/omarchy-update.log\n\nIf you need assistance'
+
+        # Command-scoped sudo (quattro 349ecc0): omarchy-update, its sleep
+        # inhibitor and the sudo-no-update wrapper start under `bash -p`,
+        # verify the interpreter via /proc/$$/exe, and call every tool by an
+        # absolute /usr/bin path so a user PATH cannot substitute one. Keep
+        # the hardening, point it at NixOS's fixed locations: the setuid
+        # wrappers for sudo/pkexec, store paths for everything else. An
+        # unmapped /usr/bin tool fails the build instead of a live update.
+        substituteInPlace bin/omarchy-update \
+          --replace-fail 'PATH="$OMARCHY_PATH/bin:/usr/bin:/usr/sbin:/bin:/sbin"' \
+                         'PATH="$OMARCHY_PATH/bin:/run/wrappers/bin:/run/current-system/sw/bin"'
+        # OMARCHY_PATH is /run/current-system/sw/share/omarchy (a symlinked
+        # buildEnv path, never canonical): accept the command when it is the
+        # file OMARCHY_PATH's bin resolves to, which keeps the check's point
+        # (the selected root supplies the code that runs).
+        substituteInPlace bin/omarchy-security-functions \
+          --replace-fail 'PATH="$wrapper_dir:$OMARCHY_PATH/bin:/usr/bin:/usr/sbin:/bin:/sbin"' \
+                         'PATH="$wrapper_dir:$OMARCHY_PATH/bin:/run/wrappers/bin:/run/current-system/sw/bin"' \
+          --replace-fail \
+            $'  if [[ ''${OMARCHY_PATH:-} != /* || $(/usr/bin/realpath -e -- "$OMARCHY_PATH") != "$OMARCHY_PATH" ]] ||\n    ! { [[ $command_source == "$OMARCHY_PATH/bin/$command_name" ]] ||' \
+            $'  if [[ ''${OMARCHY_PATH:-} != /* ]] ||\n    ! { [[ $command_source == "$(/usr/bin/readlink -e -- "$OMARCHY_PATH/bin/$command_name")" ]] ||'
+        for f in \
+          bin/omarchy-update \
+          bin/omarchy-security-functions \
+          bin/omarchy-update-stay-awake \
+          default/omarchy/sudo-no-update/sudo
+        do
+          # Pin the interpreter the startup check compares against.
+          sed -i '1s|^#!/bin/bash -p$|#!${bash}/bin/bash -p|' "$f"
+          for tool in $(grep -o '/usr/bin/[a-z][a-z-]*' "$f" | sort -u); do
+            name=''${tool#/usr/bin/}
+            case "$name" in
+              sudo | pkexec) dir=/run/wrappers/bin ;;
+              bash) dir=${bash}/bin ;;
+              systemd-inhibit) dir=${systemd}/bin ;;
+              setpriv | flock) dir=${util-linux}/bin ;;
+              grep) dir=${gnugrep}/bin ;;
+              chmod | dirname | env | id | install | mktemp | mv | od | readlink | realpath | rm | sleep | stat | tr | true)
+                dir=${coreutils}/bin ;;
+              *)
+                echo "omarchy-nix: unmapped $tool in $f" >&2
+                exit 1
+                ;;
+            esac
+            sed -i "s|$tool\b|$dir/$name|g" "$f"
+          done
+        done
 
         # Snapshot: snapper/limine are Arch. Exit 0 with a note so
         # `omarchy-snapshot create || (($? == 127))` in omarchy-update
@@ -1340,8 +1422,8 @@ stdenv.mkDerivation (finalAttrs: {
         # mutate user state). Migrations handle their own dry-run internally.
         substituteInPlace bin/omarchy-update \
           --replace-fail \
-            $'  omarchy-migrate\n  omarchy-hook post-update\n' \
-            $'  omarchy-migrate\n  if [[ ''${OMARCHY_NIX_UPDATE_DRY_RUN:-} != 1 ]]; then\n    omarchy-hook post-update\n  fi\n'
+            $'  PATH="$user_path" "$OMARCHY_PATH/bin/omarchy-hook" post-update\n' \
+            $'  if [[ ''${OMARCHY_NIX_UPDATE_DRY_RUN:-} != 1 ]]; then\n    PATH="$user_path" "$OMARCHY_PATH/bin/omarchy-hook" post-update\n  fi\n'
 
         # Menu: Install Package / Remove Package → nix-native flows; the AUR
         # entry is deleted outright (no AUR analogue on NixOS — a dead item
@@ -1627,21 +1709,6 @@ stdenv.mkDerivation (finalAttrs: {
     # from here, verbatim upstream, refreshed with every omarchy-src bump.
     # See pkgs/omarchy-etc-manifest.nix for the per-file classification.
     cp -a default bin shell themes config migrations install applications etc "$dest/"
-
-    # Elsewhen world clock (default bar widget since the 2026-09-19 bump).
-    # Upstream ships it as the `elsewhen` Arch package whose files land in
-    # /usr/share/omarchy/plugins/omacom.elsewhen; pkgs/elsewhen.nix mirrors
-    # that layout into this package's plugins/ root, so the shell's plugin
-    # discovery (the ~/.config/omarchy/plugins symlink the HM module manages,
-    # migration 1789581661's adapter, and `omarchy plugin clone`) all resolve
-    # inside the generation-specific store path. The tree's own
-    # config/omarchy/plugins/omacom.elsewhen symlink targets /usr/share/... —
-    # retarget it relatively so a fresh-install seed from the vendored config
-    # tree lands on the plugin this package actually ships.
-    mkdir -p "$dest/plugins"
-    cp -a "${elsewhen}/share/omarchy/plugins/omacom.elsewhen" "$dest/plugins/"
-    rm "$dest/config/omarchy/plugins/omacom.elsewhen"
-    ln -s "../../../plugins/omacom.elsewhen" "$dest/config/omarchy/plugins/omacom.elsewhen"
 
     # B21: the upstream skill is Arch-specific (/usr/share/omarchy,
     # pacman/AUR, Arch package lifecycle). Replace it with the omarchy-nix

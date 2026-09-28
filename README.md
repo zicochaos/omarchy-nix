@@ -78,22 +78,16 @@ for manual desktop exploration.
 
 ## Changelog
 
-- **2026-09-19** — The upstream quattro bump (`60663fa`) brings
-  **Elsewhen**, the world clock plugin, to the default bar (built from the
-  same omacom/elsewhen release upstream packages, linked into
-  `~/.config/omarchy/plugins` by the home-manager module and refreshed
-  every switch), switches TCP congestion control to **BBR + fq**, and
-  moves PHP/Laravel dev environments to pure mise. On top of it, a version
-  sweep of the pinned apps: zcode 3.14.0 (from the official downloads
-  page — the AUR lags), claude-desktop **2.2553.1**, omp 18.2.6,
-  omacut 0.4.0, omawrite 0.5.0, tensaku 0.29.0, try 1.10.1,
-  omarchy-nvim 2026.8.13, omarchy-fish 2026-09-19 (now carrying the
-  upstream bashrc-template fix from omacom/omarchy-fish#11), yaru 26.10.3.
-  Aether is held at 4.28.0 (lockfile-less npm resolution upstream) and
-  codex follows the stable nixpkgs channel (0.146.0). Same-day fix: the
-  packaged **omp** shipped as plain Bun — its bun single-executable
-  payload breaks under any ELF rewrite, so the release binary is now
-  stored byte-identical and launched through the glibc loader wrapper.
+- **2026-09-27** — The upstream quattro bump (`349ecc0`, 165 commits)
+  keeps upstream's hardened **one-prompt `omarchy update`** (command-scoped
+  sudo, pointed at NixOS store paths and `/run/wrappers`). It moves
+  **Elsewhen** into the shell, so the separate plugin package is gone, and
+  ships three new upstream apps packaged here: **omasnap** (screenshots,
+  replacing tensaku), **owe** (video backgrounds and the lock-screen feed,
+  with its `owed` user unit) and **monologue** (webcam recorder).
+  `omarchy-nvim` goes to 2026.9.21 for the remote-clipboard fix its new
+  migration installs, and herdr goes to 0.9.1 (now from herdrdev/herdr) for
+  the new Herdr theme sync.
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md). Upstream adaptation
 details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
@@ -336,12 +330,12 @@ the same semantics as upstream's static `/usr/share/omarchy`; a
 store-path value would freeze the tree at login and make the update
 flow's post-rebuild steps read stale migrations), the full upstream default
 package set from nixpkgs (foot, neovim, btop, lazygit, chromium, nautilus,
-libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 13
+libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 15
 upstream-owned packages packaged by this flake (aether, omacut, omawrite,
-omacalc, tensaku, try, asdcontrol, yaru-theme, hyprland-guiutils,
-hyprland-preview-share-picker, omarchy-nvim, herdr, ttfx), the parity services
-(avahi, printing, docker, gnome-keyring, fwupd, udiskie, …, all
-`mkDefault`), a uwsm-managed Hyprland session (≥0.56 for the
+omacalc, omasnap, monologue, owe, try, asdcontrol, yaru-theme,
+hyprland-guiutils, hyprland-preview-share-picker, omarchy-nvim, herdr, ttfx),
+the parity services (avahi, printing, docker, gnome-keyring, fwupd, udiskie,
+…, all `mkDefault`), a uwsm-managed Hyprland session (≥0.56 for the
 Lua config), default SDDM, PipeWire/NetworkManager/Bluetooth daemons, the
 Omarchy Plymouth boot splash, and the Omarchy SDDM login theme + Hyprland
 greeter.
@@ -410,10 +404,11 @@ limitations.
 ```
 flake.nix              # inputs + outputs (packages, modules, checks, configs)
 config.nix             # omarchy.* option schema
-pkgs/                  # vendoring + themes + 13 upstream-owned packages:
+pkgs/                  # vendoring + themes + 15 upstream-owned packages:
   omarchy.nix          #   the upstream tree -> $out/share/omarchy
   plymouth-omarchy-theme.nix sddm-omarchy-theme.nix yaru-theme.nix
-  aether.nix asdcontrol.nix omacalc.nix omacut.nix omawrite.nix tensaku.nix
+  aether.nix asdcontrol.nix omacalc.nix omacut.nix omawrite.nix omasnap.nix
+  monologue.nix owe.nix
   try.nix hyprland-guiutils.nix hyprland-preview-share-picker.nix
   omarchy-nvim.nix omarchy-fish.nix ttfx.nix herdr.nix
   omarchy-catalog.nix  #   Install/Remove menu catalog (nix-catalog.json)

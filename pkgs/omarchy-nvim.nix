@@ -29,10 +29,10 @@
 
 let
   # Mirrors pkgver from the upstream PKGBUILD; bump together with the revs.
-  version = "2026.8.13";
+  version = "2026.9.21";
 
   # LazyVim template (branch `main` — upstream has no release tags; the
-  # pinned rev is still main's head at 2026-09-19).
+  # pinned rev is still main's head at 2026-09-27).
   starter = fetchFromGitHub {
     owner = "LazyVim";
     repo = "starter";
@@ -44,8 +44,8 @@ let
   omarchyPkgs = fetchFromGitHub {
     owner = "omacom-io";
     repo = "omarchy-pkgs";
-    rev = "6afd935759aaeb8af587bed7c0b1b8eb7d8bf21b";
-    hash = "sha256-3eZ+7SFi58zvxWfEUXHvdXNIJ5DGtPxsdYnmJwaawZc=";
+    rev = "e2bc7586e2bebfa09365fc5e32059969f0714ddc";
+    hash = "sha256-yAN/F0nRr3XiMUFuI1TD+Ve43F3cNE/2fOaDEipwk2U=";
   };
 in
 stdenvNoCC.mkDerivation (finalAttrs: {
