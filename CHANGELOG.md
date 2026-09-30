@@ -6,6 +6,21 @@ Upstream adaptation details and the bump checklist:
 
 ## 2026-09-30
 
+- **Bash gets the Omarchy shell setup.** Before this, nothing on the port
+  sourced upstream's `default/bash/rc`, so bash users had none of the
+  Omarchy aliases, functions, starship/zoxide init or fzf key bindings.
+  The Home-Manager module now seeds `~/.bashrc` from upstream's
+  `default/bashrc` (the Arch `/etc/skel` file) when the file is absent,
+  and never replaces an existing file or link. `default/bash/init` reads
+  fzf's key bindings from `/run/current-system/sw/share/fzf` (the module
+  links `/share/fzf` into the system profile); upstream's
+  `/usr/share/fzf` path does not exist on NixOS. The ux VM test asserts
+  the seed and that an interactive bash has the `ff` alias and the
+  Ctrl-T/Ctrl-R fzf widgets.
+- `nixpkgs` (nixos-26.05) `21a67dc` (2026-09-11) → `7fc6f2c`
+  (2026-09-28) and home-manager (release-26.05) `b1d1b60` (2026-09-12)
+  → `e5fcd29` (2026-09-30). Stable nixpkgs still carries quickshell
+  0.3.0, so the 0.3.1 pin stays.
 - Upstream bump `349ecc0` → `8b4eae6` (2026-09-29, 29 commits). What
   changed in the port:
   - **Hype** 0.4.3, upstream's new default Markdown presentation app, is

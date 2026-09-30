@@ -561,6 +561,8 @@ in
           # OWE's theme-set hook, copied in by first-run and migration
           # 1789764927 from /run/current-system/sw/share/owe.
           "/share/owe"
+          # fzf's key-bindings.bash, sourced by default/bash/init.
+          "/share/fzf"
         ];
 
         # OMARCHY_PATH + the omarchy-* bin scripts. Upstream expects the bin

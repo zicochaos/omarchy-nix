@@ -914,10 +914,22 @@
             "~/.local/share/nautilus-python/extensions/transcode.py",
             "~/.local/state/tensaku/state.toml",
             "~/.config/fastfetch/config.jsonc",
+            "~/.bashrc",
         ]:
             machine.succeed(as_demo("test -f " + path))
             machine.succeed(as_demo("test ! -L " + path))
             machine.succeed(as_demo("test -w " + path))
+
+        # The ~/.bashrc seed is upstream's default/bashrc: an interactive
+        # bash walks default/bash/rc (the ff alias) into init, which sources
+        # fzf's key bindings from the system profile (Ctrl-T/Ctrl-R).
+        bash_out = machine.succeed(as_demo(
+            "bash -ic \"type -t __fzf_history__; alias ff; bind -X\" "
+            "</dev/null 2>/dev/null"
+        ))
+        for needle in ["function", "alias ff=", "fzf-file-widget", "__fzf_history__"]:
+            assert needle in bash_out, \
+                "interactive bash lacks %r from the omarchy rc chain: %r" % (needle, bash_out)
         machine.succeed("fc-list | grep -qi omarchy")
         machine.succeed("test -e /etc/fonts/conf.d/50-omarchy.conf")
         mono = machine.succeed("fc-match monospace").strip()

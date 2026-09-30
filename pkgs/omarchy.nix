@@ -116,6 +116,14 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace default/bash/env-bootstrap \
           --replace-fail "/usr/share/omarchy" "$out/share/omarchy"
 
+        # fzf key bindings (Ctrl-R/Ctrl-T/Alt-C) live in the fzf package's
+        # share/fzf; the module links it into the system profile
+        # (environment.pathsToLink), so the -f guard still skips cleanly when
+        # fzf is excluded.
+        substituteInPlace default/bash/init \
+          --replace-fail "/usr/share/fzf/key-bindings.bash" \
+            "/run/current-system/sw/share/fzf/key-bindings.bash"
+
         # The tree's only Python script: /usr/bin/python3 is dead
         # on NixOS. Point it at the pygobject3-enabled store interpreter; the
         # GI_TYPELIB_PATH wrap happens in postFixup.

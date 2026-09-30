@@ -84,7 +84,9 @@ for manual desktop exploration.
   toggle from the menu), grouped notifications and a faster bash prompt.
   Upstream's per-user **SSH Agent** entries are hidden: NixOS already
   runs `gcr-ssh-agent` declaratively through
-  `services.gnome.gcr-ssh-agent`.
+  `services.gnome.gcr-ssh-agent`. Bash now gets the Omarchy shell setup
+  (aliases, functions, starship, zoxide, fzf key bindings) through a
+  seeded `~/.bashrc`, which is only created when absent.
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md). Upstream adaptation
 details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
@@ -343,7 +345,12 @@ files the entry point `require()`s, the quickshell `shell.json`, the
 omarchy-nvim LazyVim starter (`~/.config/nvim`), and the default theme
 rendered into `~/.local/state/omarchy/current/theme`, all as mutable
 copies: user edits (and upstream tooling writes, e.g. theme switches)
-survive rebuilds. It also keeps the package-owned `omarchy` agent skill
+survive rebuilds. A missing `~/.bashrc` gets upstream's default, which
+sources `$OMARCHY_PATH/default/bash/rc` (aliases, functions, starship,
+zoxide, fzf key bindings). An existing one, including a Home-Manager
+`programs.bash` link, is never touched; add
+`source "$OMARCHY_PATH/default/bash/rc"` to it to get the same setup. It
+also keeps the package-owned `omarchy` agent skill
 linked into Agents, Claude, Codex, Pi, Gemini, and Hermes on every
 activation, so links follow the active Nix store generation after
 updates. Real, user-owned

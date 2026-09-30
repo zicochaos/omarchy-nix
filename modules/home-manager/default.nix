@@ -272,6 +272,19 @@ in
           ${seedFileFrom "${omarchyPathOf effPkg}/default/nautilus-python/extensions/transcode.py" ".local/share/nautilus-python/extensions/transcode.py"}
           ${seedFileFrom "${omarchyPathOf effPkg}/default/tensaku/state.toml" ".local/state/tensaku/state.toml"}
 
+          # --- ~/.bashrc (/etc/skel parity): upstream's default/bashrc
+          # sources $OMARCHY_PATH/default/bash/rc (aliases, functions,
+          # starship, zoxide, fzf key bindings). Seeded only when absent.
+          # Unlike seedFileFrom, an existing ~/.bashrc is never replaced,
+          # not even a store symlink: that is HM's programs.bash or another
+          # dotfile manager owning the file. Kept verbatim (its guarded
+          # /usr/share env-bootstrap line is inert here) so upstream
+          # migrations still recognize the default file.
+          if [ ! -e "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ]; then
+            cp -a "${omarchyPathOf effPkg}/default/bashrc" "$HOME/.bashrc"
+            chmod u+w "$HOME/.bashrc"
+          fi
+
           # --- voxtype dictation config. Upstream copies this in
           # omarchy-voxtype-install; the package is shipped declaratively
           # (runtimeDeps), so seed the default config up front — the install
