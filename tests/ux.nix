@@ -1086,7 +1086,10 @@
         # omarchy-hw-display), image-picker theme rows
         # (omarchy-theme-switcher --print-rows) and the lock video poster
         # (bash poster.sh → ffmpegthumbnailer).
-        qml_exec_baseline = 134
+        # 8b4eae6: 134 → 135 — Commons/Style.qml gained animationsProc
+        # (hyprctl -j getoption animations:enabled, argv form) so the shell
+        # follows the new no-animations toggle; hyprctl is already probed.
+        qml_exec_baseline = 135
         qml_exec_count = int(machine.succeed(
             as_demo(
                 "grep -rE --include=\"*.qml\" "

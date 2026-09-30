@@ -275,4 +275,13 @@
   #                           # the old store link) and pkg-drop is a stub
   "1790539857.sh" = "skip"; # Monologue via omarchy-pkg-add (package swap is a
   #                           # module concern: monologue ships in appPackages)
+
+  # --- bump 8b4eae6 (2026-09-30) ---
+  "1788279117.sh" = "skip"; # YT6801 ethernet: retire the yt6801-dkms vendor
+  #                           # driver for the in-kernel dwmac-motorcomm via
+  #                           # pacman + modprobe (kernel modules are
+  #                           # boot.kernelPackages on NixOS; yt6801-dkms was
+  #                           # never installed here)
+  "1790542069.sh" = "skip"; # Hype via omarchy-pkg-add (package swap is a
+  #                           # module concern: hype ships in appPackages)
 }

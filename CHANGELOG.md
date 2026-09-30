@@ -4,6 +4,41 @@ All notable changes to omarchy-nix, newest first. Dates are UTC.
 Upstream adaptation details and the bump checklist:
 [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
+## 2026-09-30
+
+- Upstream bump `349ecc0` → `8b4eae6` (2026-09-29, 29 commits). What
+  changed in the port:
+  - **Hype** 0.4.3, upstream's new default Markdown presentation app, is
+    packaged as `pkgs/hype.nix` (not in nixpkgs) and ships in
+    `omarchy.appPackages`. Its code-block highlighter `source-highlight`
+    is on the wrapper PATH; ffmpeg comes from the session PATH as for
+    omacut and monologue. Migration `1790542069` (install via
+    `omarchy-pkg-add`) is `skip`.
+  - **SSH Agent**: upstream's new Setup/Remove entries toggle
+    `gcr-ssh-agent.socket` per user. NixOS already runs it system-wide
+    (`services.gnome.gcr-ssh-agent`, which defaults to the
+    `gnome-keyring` the module enables), and a user `systemctl --user
+    disable` cannot undo a unit enabled from `/etc`. Both scripts are
+    declarative-note stubs and both menu entries are hidden.
+  - **No-animations mode** (`omarchy-toggle-animations`, on by default
+    in VMs through first-run's `vm-no-animations.sh`) is kept. The
+    first-run copy and `omarchy-hyprland-toggle` now copy flag files
+    with `--no-preserve=mode`. A 0444 flag copied from the store made a
+    second `on` fail, because `cp` cannot open the read-only
+    destination.
+  - Migration `1788279117` (retire the YT6801 DKMS driver with pacman +
+    modprobe) is `skip`: kernel modules are `boot.kernelPackages` here.
+  - Kept verbatim: the browser handoff to a running Chromium (it only
+    recognizes Arch's `/usr/bin` browsers, so NixOS launches fall back
+    to the existing `uwsm-app` path), the `mimeapps.list` default-browser
+    lookup, grouped notifications, the faster bash prompt, and Hunk
+    theme sync.
+  - ux VM test: the QML exec baseline goes 134 → 135 for
+    `Commons/Style.qml`'s new `hyprctl getoption animations:enabled`
+    probe.
+  - README: the upstream-owned package count in the intro read 13; it
+    is now 16, matching the list.
+
 ## 2026-09-27
 
 - Upstream bump `60663fa` → `349ecc0` (2026-09-27, 165 commits). What

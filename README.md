@@ -21,7 +21,7 @@ the desktop you get is the real Omarchy desktop, not a reimplementation.
 reproduces the real Omarchy desktop: Hyprland session via uwsm,
 quickshell bar/menus, Super+Enter terminal, theme switching with live
 colors (not just wallpaper), editable user configs, first-run hooks, the
-full upstream package set (including the 13 upstream-owned packages
+full upstream package set (including the 16 upstream-owned packages
 absent from nixpkgs, packaged under `pkgs/`), and a NixOS-native
 `omarchy update` flow. Verified in a running session on real Intel GPU
 hardware (2026-07-28). The automated acceptance suite checks the subset
@@ -78,16 +78,13 @@ for manual desktop exploration.
 
 ## Changelog
 
-- **2026-09-27** — The upstream quattro bump (`349ecc0`, 165 commits)
-  keeps upstream's hardened **one-prompt `omarchy update`** (command-scoped
-  sudo, pointed at NixOS store paths and `/run/wrappers`). It moves
-  **Elsewhen** into the shell, so the separate plugin package is gone, and
-  ships three new upstream apps packaged here: **omasnap** (screenshots,
-  replacing tensaku), **owe** (video backgrounds and the lock-screen feed,
-  with its `owed` user unit) and **monologue** (webcam recorder).
-  `omarchy-nvim` goes to 2026.9.21 for the remote-clipboard fix its new
-  migration installs, and herdr goes to 0.9.1 (now from herdrdev/herdr) for
-  the new Herdr theme sync.
+- **2026-09-30** — The upstream quattro bump (`8b4eae6`, 29 commits)
+  ships upstream's new default app **Hype** (Markdown presentations,
+  packaged here), the **no-animations mode** (on by default in VMs,
+  toggle from the menu), grouped notifications and a faster bash prompt.
+  Upstream's per-user **SSH Agent** entries are hidden: NixOS already
+  runs `gcr-ssh-agent` declaratively through
+  `services.gnome.gcr-ssh-agent`.
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md). Upstream adaptation
 details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
@@ -330,9 +327,9 @@ the same semantics as upstream's static `/usr/share/omarchy`; a
 store-path value would freeze the tree at login and make the update
 flow's post-rebuild steps read stale migrations), the full upstream default
 package set from nixpkgs (foot, neovim, btop, lazygit, chromium, nautilus,
-libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 15
+libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 16
 upstream-owned packages packaged by this flake (aether, omacut, omawrite,
-omacalc, omasnap, monologue, owe, try, asdcontrol, yaru-theme,
+omacalc, omasnap, monologue, hype, owe, try, asdcontrol, yaru-theme,
 hyprland-guiutils, hyprland-preview-share-picker, omarchy-nvim, herdr, ttfx),
 the parity services (avahi, printing, docker, gnome-keyring, fwupd, udiskie,
 …, all `mkDefault`), a uwsm-managed Hyprland session (≥0.56 for the
@@ -404,11 +401,11 @@ limitations.
 ```
 flake.nix              # inputs + outputs (packages, modules, checks, configs)
 config.nix             # omarchy.* option schema
-pkgs/                  # vendoring + themes + 15 upstream-owned packages:
+pkgs/                  # vendoring + themes + 16 upstream-owned packages:
   omarchy.nix          #   the upstream tree -> $out/share/omarchy
   plymouth-omarchy-theme.nix sddm-omarchy-theme.nix yaru-theme.nix
   aether.nix asdcontrol.nix omacalc.nix omacut.nix omawrite.nix omasnap.nix
-  monologue.nix owe.nix
+  monologue.nix hype.nix owe.nix
   try.nix hyprland-guiutils.nix hyprland-preview-share-picker.nix
   omarchy-nvim.nix omarchy-fish.nix ttfx.nix herdr.nix
   omarchy-catalog.nix  #   Install/Remove menu catalog (nix-catalog.json)

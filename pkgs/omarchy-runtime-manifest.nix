@@ -103,6 +103,18 @@
       class = "declarative-note";
       note = "Sunshine is declarative: set services.sunshine.enable = false in your flake config and rebuild.";
     };
+    # 8b4eae6 SSH Agent service: upstream enables/disables gcr-ssh-agent.socket
+    # per user. NixOS enables it system-wide (services.gnome.gcr-ssh-agent,
+    # default follows gnome-keyring, which the module turns on), and a user
+    # `systemctl --user disable` cannot undo a unit enabled from /etc.
+    omarchy-setup-security-ssh-agent = {
+      class = "declarative-note";
+      note = "The SSH agent is declarative: services.gnome.gcr-ssh-agent.enable (on by default with omarchy's gnome-keyring) already runs gcr-ssh-agent and exports SSH_AUTH_SOCK.";
+    };
+    omarchy-remove-service-ssh-agent = {
+      class = "declarative-note";
+      note = "The SSH agent is declarative: set services.gnome.gcr-ssh-agent.enable = false in your flake config and rebuild.";
+    };
     omarchy-remove-service-tailscale = {
       class = "declarative-note";
       note = "Use Menu -> Remove -> Service -> Tailscale (omarchy-nix-remove), or services.tailscale.enable = false in your flake config.";
@@ -406,5 +418,9 @@
     "setup.network.dns.cloudflare"
     "setup.network.dns.google"
     "setup.network.dns.custom"
+    # 8b4eae6 Setup/Remove > SSH Agent: gcr-ssh-agent is enabled declaratively
+    # (services.gnome.gcr-ssh-agent); both scripts are declarative-note stubs.
+    "setup.security.ssh-agent"
+    "remove.service.ssh-agent"
   ];
 }

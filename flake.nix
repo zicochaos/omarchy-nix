@@ -133,6 +133,7 @@
           # omawrite: markdown writer. omasnap: screenshot capture + editor
           # (replaced tensaku upstream in 349ecc0).
           # monologue: webcam recorder (default app since 349ecc0).
+          # hype: Markdown presentations (default app since 8b4eae6).
           # owe: wallpaper engine — video backgrounds + lock feed (349ecc0).
           # try: tobi's experiment-worktree CLI. hyprland-guiutils: hyprwm
           # dialog/run/welcome tools. hyprland-preview-share-picker: xdp
@@ -152,6 +153,7 @@
           omacut = pkgs.callPackage ./pkgs/omacut.nix { };
           omawrite = pkgs.callPackage ./pkgs/omawrite.nix { };
           monologue = pkgs.callPackage ./pkgs/monologue.nix { };
+          hype = pkgs.callPackage ./pkgs/hype.nix { };
           owe = pkgs.callPackage ./pkgs/owe.nix { };
           omasnap = pkgs.callPackage ./pkgs/omasnap.nix { };
           try = pkgs.callPackage ./pkgs/try.nix { };
@@ -227,6 +229,7 @@
                     omacut
                     omawrite
                     monologue
+                    hype
                     omasnap
                     owe
                     try

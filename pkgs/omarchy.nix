@@ -29,7 +29,7 @@
 #     omarchy-provision-user / omarchy-refresh-applications resolve
 #     $OMARCHY_PATH/install and $OMARCHY_PATH/applications (OMARCHY_INSTALL
 #     defaults to $OMARCHY_PATH/install).
-#   - store→$HOME copies in bin/ and install/user/hardware/asus/: add
+#   - store→$HOME copies in bin/ and install/user/hardware/: add
 #     --no-preserve=mode so cp does not inherit the store's 444/555 modes
 #     (which break theme swaps, config refresh, and branding edits).
 #   - Update/Install/Remove (P4): pacman-coupled bin scripts become NixOS-
@@ -362,6 +362,16 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace install/user/hardware/asus/fix-audio-mixer.sh \
           --replace-fail 'cp "$OMARCHY_PATH/default/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf"' \
                          'cp --no-preserve=mode "$OMARCHY_PATH/default/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf"'
+
+        # Hyprland toggle flags (8b4eae6 adds no-animations, set by first-run
+        # in VMs and by omarchy-toggle-animations): a 444 copy makes a second
+        # `on` fail, since cp cannot open the read-only destination.
+        substituteInPlace install/user/hardware/vm-no-animations.sh \
+          --replace-fail 'cp "$OMARCHY_PATH/default/hypr/toggles/no-animations.lua"' \
+                         'cp --no-preserve=mode "$OMARCHY_PATH/default/hypr/toggles/no-animations.lua"'
+        substituteInPlace bin/omarchy-hyprland-toggle \
+          --replace-fail 'cp "$FLAG_SOURCE" "$FLAG_FILE"' \
+                         'cp --no-preserve=mode "$FLAG_SOURCE" "$FLAG_FILE"'
 
         # omarchy-plugin-clone copies plugin sources out of the store via the
         # catalog sourceDir with mode-preserving cp -aL: clones land in
