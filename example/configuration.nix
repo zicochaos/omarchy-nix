@@ -11,7 +11,7 @@
 #       ./configuration.nix
 #       omarchy-nix.nixosModules.default
 #       home-manager.nixosModules.home-manager
-#       { home-manager.sharedModules = [ omarchy-nix.homeManagerModules.default ]; }
+#       { home-manager.sharedModules = [ omarchy-nix.homeModules.default ]; }
 #     ];
 #   };
 #
@@ -58,9 +58,14 @@
       "networkmanager"
       "ydotool" # voxtype dictation types via ydotoold (group-owned socket)
     ];
-    # Console/SDDM login only: the module forces keys-only SSH by default,
-    # so this documented password is not SSH-able. On real hardware use
-    # initialHashedPassword instead (see docs/install.md).
+    # DEMO VM ONLY. This is a plaintext, publicly documented password for
+    # a wheel user: it is world-readable in /nix/store, and anyone at the
+    # console or the SDDM greeter can log in with it and sudo to root.
+    # On a real install, delete this line and set hashedPasswordFile (a
+    # root-only file outside the store) or initialHashedPassword (a hash
+    # from `mkpasswd -m yescrypt`); see docs/install.md. SSH defaults to
+    # keys-only (a module mkDefault), so it is not accepted over the
+    # network unless you enable password authentication.
     initialPassword = "omarchy";
   };
 

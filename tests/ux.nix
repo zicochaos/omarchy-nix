@@ -25,7 +25,7 @@
 # evdev keypress via QEMU's sendkey (QKeyCode meta_l = left Super, ret = Enter).
 # That is the kernel-level path, the same one ydotool/uinput takes on real
 # hardware and the ONLY path that reaches Hyprland's binding layer (Wayland
-# virtual-keyboard protocols like wtype do not). On the nixos-omarchy Incus VM
+# virtual-keyboard protocols like wtype do not). On an Incus VM guest
 # QMP sendkey is unavailable (incusd holds the monitor socket); the NixOS test
 # driver owns QMP, so send_key works here.
 {
@@ -39,9 +39,6 @@
 {
   name = "omarchy-ux";
   meta.maintainers = [ ];
-
-  # testScriptWithTypes chokes on dynamic dispatch (same as tests/desktop.nix).
-  skipTypeCheck = true;
 
   nodes.machine =
     {
@@ -120,7 +117,7 @@
       };
 
       home-manager.users.demo = {
-        imports = [ omarchy.homeManagerModules.default ];
+        imports = [ omarchy.homeModules.default ];
         home.username = "demo";
         home.homeDirectory = "/home/demo";
         home.stateVersion = "26.05";
@@ -141,8 +138,14 @@
     };
 
   testScript = ''
+    import collections
+    import difflib
     import json
     import re
+    import subprocess
+    import sys
+
+    ${builtins.readFile ./checks/jsonc.py}
 
     machine.start()
 
@@ -271,9 +274,12 @@
 
     # --- (3) Default browser = chromium. -----------------------------------
     # finalize-user (run from first-run on session start) does
-    # `xdg-settings set default-web-browser chromium.desktop`; the HM activation
-    # mirror is best-effort (`|| true`) and may not resolve chromium.desktop
-    # during root-run system activation.
+    # `xdg-settings set default-web-browser chromium.desktop`. The HM
+    # activation step sets the same association only when none exists (it
+    # calls xdg-settings by store path, since HM's activation PATH has no
+    # xdg-utils); in this VM `xdg-settings get` already resolves one from
+    # mimeinfo.cache, so the HM step is a no-op here and finalize-user's
+    # write is the one under test.
     #
     # Settle first-run before touching the association. The flaky failure this
     # comment replaces (four VM runs, 2026-09-12/13) was a concurrent-writer
@@ -661,10 +667,15 @@
     with machine.nested("waiting for Super+Enter to open foot"):
         retry(foot_open, timeout_seconds=30)
 
-    foot_windows = [c for c in foot_classes() if c == "foot"]
-    assert foot_windows, "no foot window after Super+Enter"
-    assert all(c == "foot" for c in foot_windows), \
-        "unexpected terminal class: %r" % foot_windows
+    # The retry above only proves that some foot window exists. The
+    # keypress must have added exactly one client, and that client is
+    # foot: one bind firing, resolved to foot rather than to another
+    # terminal (or to foot plus a fallback).
+    new_clients = sorted(
+        (collections.Counter(foot_classes()) - collections.Counter(before)).elements()
+    )
+    assert new_clients == ["foot"], \
+        "Super+Enter must open exactly one foot window; new clients: %r" % new_clients
 
     # --- (6) Systemd user units. -------------------------------------------
     # The omarchy-* units are tied to graphical-session.target (uwsm activates
@@ -1072,10 +1083,14 @@
 
         # Tripwire over vendored shell/ QML exec-ish call sites (Quickshell
         # Process { … } plus Quickshell/Util.execDetached). The five probes
-        # above are manual; this count forces a re-audit when upstream adds
-        # sites. New upstream execs must be reviewed (and any new binaries
-        # probed) before the baseline is bumped deliberately. Double quotes
-        # only — as_demo wraps cmd in single quotes.
+        # above are manual; this list forces a re-audit when upstream adds,
+        # drops or changes a site: tests/qml-exec-sites.py prints one
+        # "file: command" line per site and the result must equal
+        # tests/fixtures/qml-exec-sites.txt, so a bump fails with a diff of
+        # exactly the sites that changed. Review them (and probe any new
+        # binary above), then regenerate the fixture with the command in
+        # the script header (also in docs/UPSTREAM.md, bump checklist).
+        # Audit history from the count-only era (site counts):
         # v4.0.0: 114 → 121 — new panels (agents, speedtest, disk-speedtest,
         # wifiqr) + SpeedTestOverlay; audited execs: omarchy-network-status,
         # omarchy-disk-speedtest, coreutils find, agents-panel usage
@@ -1101,20 +1116,31 @@
         # 8b4eae6: 134 → 135 — Commons/Style.qml gained animationsProc
         # (hyprctl -j getoption animations:enabled, argv form) so the shell
         # follows the new no-animations toggle; hyprctl is already probed.
-        qml_exec_baseline = 135
-        qml_exec_count = int(machine.succeed(
-            as_demo(
-                "grep -rE --include=\"*.qml\" "
-                "-e \"Process \\{\" "
-                "-e \"Quickshell\\.execDetached\" "
-                "-e \"Util\\.execDetached\" "
-                "$OMARCHY_PATH/shell | wc -l"
+        # The list is read from the flake's omarchy package on the driver
+        # side; first prove the VM runs that same package.
+        omarchy_pkg = "${omarchy.packages.${pkgs.stdenv.hostPlatform.system}.omarchy}"
+        vm_version_bin = machine.succeed(
+            "readlink -f /run/current-system/sw/share/omarchy/bin/omarchy-version"
+        ).strip()
+        assert vm_version_bin == omarchy_pkg + "/share/omarchy/bin/omarchy-version", (
+            "VM runs %r, not the flake package %r" % (vm_version_bin, omarchy_pkg)
+        )
+        qml_sites = subprocess.run(
+            [sys.executable, "${./qml-exec-sites.py}", omarchy_pkg + "/share/omarchy/shell"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        with open("${./fixtures/qml-exec-sites.txt}") as f:
+            qml_sites_expected = f.read().splitlines()
+        assert qml_sites == qml_sites_expected, (
+            "shell/ QML exec-ish sites changed — review them, probe new "
+            "binaries, then regenerate tests/fixtures/qml-exec-sites.txt:\n"
+            + "\n".join(
+                difflib.unified_diff(
+                    qml_sites_expected, qml_sites, "fixture", "package", lineterm=""
+                )
             )
-        ).strip())
-        assert qml_exec_count == qml_exec_baseline, (
-            "shell/ QML exec-ish site count is %d, expected %d — review new "
-            "upstream execs and bump the baseline deliberately"
-            % (qml_exec_count, qml_exec_baseline)
         )
 
         # Shell keywords/builtins/system binaries that are always present and
@@ -1176,12 +1202,39 @@
             return cmds
 
         # (a) Menu actions — parse $OMARCHY_PATH/default/omarchy/omarchy-menu.jsonc
-        menu = machine.succeed(
+        # with the string-aware JSONC parser (tests/checks/jsonc.py, shared
+        # with checks.catalog-consistency) and walk the tree. The former line
+        # regex cut 12 of the 264 actions short at a "//" inside a URL or at
+        # an escaped quote; on the 8b4eae6 menu every command word still
+        # preceded the cut, but any command after one (`… 'https://…' &&
+        # omarchy-x`) would have silently left this coverage.
+        menu_json = jsonc_to_json(machine.succeed(
             as_demo("cat $OMARCHY_PATH/default/omarchy/omarchy-menu.jsonc")
+        ))
+        menu_tree = json.loads(menu_json)
+
+        def menu_fields(node, key, found):
+            # Every string value stored under `key`, at any depth.
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    if k == key and isinstance(v, str):
+                        found.append(v)
+                    menu_fields(v, key, found)
+            elif isinstance(node, list):
+                for v in node:
+                    menu_fields(v, key, found)
+            return found
+
+        actions = menu_fields(menu_tree, "action", [])
+        # The parse must account for every "action" key in the comment-free
+        # text: json.loads keeps only the last of duplicate entry ids, and the
+        # walk skips non-string values, so a mismatch means actions were lost
+        # between the file and this coverage.
+        action_keys = len(re.findall(r'"action"\s*:', menu_json))
+        assert len(actions) == action_keys, (
+            "menu parse yielded %d actions but the file has %d \"action\" keys "
+            "(duplicate ids or non-string actions?)" % (len(actions), action_keys)
         )
-        menu = re.sub(r"//.*$", "", menu, flags=re.MULTILINE)
-        menu = re.sub(r"/\*.*?\*/", "", menu, flags=re.DOTALL)
-        actions = re.findall(r'"action"\s*:\s*"([^"]*)"', menu)
         # Min-count guard: if upstream renames the file or changes the menu
         # schema, extraction silently empties and every PATH check below
         # passes vacuously. Conservative floor (>=100); live count is in the
@@ -1198,7 +1251,7 @@
         # (omarchy-toggle-enabled, omarchy-hibernation-available, omarchy-hw-*,
         # omarchy-cmd-present, omarchy-pkg-present, …). First token of each
         # when command (after a leading `!`) must resolve on PATH too.
-        whens = re.findall(r'"when"\s*:\s*"([^"]*)"', menu)
+        whens = menu_fields(menu_tree, "when", [])
         for when in whens:
             s = when.strip()
             while s.startswith("!"):
@@ -1213,7 +1266,7 @@
         # omitted from coverage. Parse them too so optional integrations such
         # as Flatpak and every package-presence probe remain an explicit review
         # point when upstream changes the menu.
-        disableds = re.findall(r'"disabled"\s*:\s*"((?:\\.|[^"\\])*)"', menu)
+        disableds = menu_fields(menu_tree, "disabled", [])
         assert len(disableds) >= 50, (
             "menu disabled-guard extraction yielded only %d entries (need >= 50; "
             "file/schema moved?)" % len(disableds)
@@ -1388,6 +1441,7 @@
                     "send_chars_retry %d/%d for %r did not meet success"
                     % (attempt, attempts, text)
                 )
+        assert last is not None, "send_chars_retry needs attempts >= 1"
         raise last
 
     with machine.nested("menu IPC: apps search launches the top hit"):
@@ -1441,8 +1495,8 @@
         # -u critical: Service.qml's durationFor() returns 0 for critical
         # urgency (never expires); every other urgency is capped at
         # maxPopupDuration=30s regardless of the requested expire-time.
-        # In-VM OCR retries are slow enough (grim+magick+tesseract on a
-        # 2560x1600 frame ≈ 10s each) that a normal-urgency popup expired
+        # In-VM OCR retries are slow enough (grim+magick+tesseract, several
+        # seconds per attempt) that a normal-urgency popup expired
         # mid-loop on the v4.0.3 bump — the layer unmaps, later grims
         # capture a cardless desktop, and the wait times out chasing a
         # popup that is already gone. Critical keeps the card on screen
@@ -1480,7 +1534,13 @@
         # reproduced on the VM's grim artifact with the pinned toolchain).
         # OCR both preprocessings of one grab and match on the union, so
         # either background works.
-        ocr_crop = "magick /tmp/notif.png -crop 640x400+640+0 +repage -colorspace Gray -resize 200% "
+        # The grab is the full 1280x800 virtio-gpu output (measured: grim
+        # PNG 1280 x 800, hyprctl monitors Virtual-1 1280x800); the crop is
+        # its top-right quadrant, taken relative to the frame size
+        # (NorthEast gravity, 50%x50%) so a different output mode still
+        # crops the zone the popup anchors to. At 1280x800 it is
+        # pixel-identical to the former fixed 640x400+640+0 crop.
+        ocr_crop = "magick /tmp/notif.png -gravity NorthEast -crop 50%x50%+0+0 +repage +gravity -colorspace Gray -resize 200% "
         ocr_chain = (
             "WAYLAND_DISPLAY=wayland-1 grim /tmp/notif.png"
             + " && " + ocr_crop + "-normalize /tmp/notif-proc.png"
@@ -1660,7 +1720,10 @@
     # the strict post-reload check below must not fail for that reason.
     with machine.nested("OSD warm-up before the plugin reload"):
         retry(osd_renders, timeout_seconds=30)
-    machine.sleep(5)  # let it hide (4000 ms + animation)
+    # The warm-up popup (4000 ms + hide animation) must be gone before the
+    # reload, or the strict first-call check below could observe it instead
+    # of the post-reload popup.
+    machine.wait_until_succeeds(layer_probe("omarchy-osd", False), timeout=30)
 
     with machine.nested("omarchy plugin clone runs end to end"):
         machine.succeed(as_demo("omarchy plugin clone omarchy.clock"))
@@ -1693,10 +1756,16 @@
         # log duplicate-handler warnings for the bar-widget targets on 0.3.1
         # (upstream's broader class, omacom/omarchy#9533/#10746); the OSD
         # target is the one this port relies on and the one that broke.
+        # One call, then poll the layer (no re-fire): the popup stays up for
+        # 4000 ms, so polling observes it whenever it appears, without a
+        # fixed sleep racing the render.
         machine.execute(as_demo("omarchy-osd -i volume-high -p 50 -d 4000"))
-        machine.sleep(2)
-        assert osd_shown(), \
-            "OSD dead on the first call after the plugin reload (stale IpcHandler)"
+        try:
+            machine.wait_until_succeeds(layer_probe("omarchy-osd", True), timeout=10)
+        except Exception:
+            raise AssertionError(
+                "OSD dead on the first call after the plugin reload (stale IpcHandler)"
+            )
 
         machine.succeed(as_demo("omarchy plugin remove demo.clock --yes"))
         with machine.nested("remove converges (shell rescan is async)"):

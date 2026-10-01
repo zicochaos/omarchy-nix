@@ -6,8 +6,8 @@
 # (qml-plugin/, module Owe.LockFeed) the Omarchy lock screen loads through a
 # Loader so a missing module costs only the lock video. nixpkgs does not
 # package owe, so this derivation ports Arch's two packages
-# (omacom-io/omarchy-pkgs: pkgbuilds/owe + pkgbuilds/owe-lockfeed, both
-# pkgver 0.2.7, same source tarball) into one $out: the plugin is useless
+# (omacom/omarchy-pkgs: pkgbuilds/owe + pkgbuilds/owe-lockfeed, both
+# from the same source tarball) into one $out: the plugin is useless
 # without the daemon and the daemon's lock-screen feed without the plugin.
 #
 # What the package must provide for Omarchy (vendored tree expectations):
@@ -52,13 +52,13 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "owe";
-  version = "0.2.7";
+  version = "0.2.8";
 
   src = fetchFromGitHub {
     owner = "omacom";
     repo = "owe";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-fiKVsqtVcogstwSx0LTQ/K/bUjYdPWXoj4LGPxvoVkw=";
+    hash = "sha256-2GfzL66OQ2r7UwBQ09dSFW2pw6wH84+m1VsBBvyxIaA=";
   };
 
   nativeBuildInputs = [
@@ -95,6 +95,12 @@ stdenv.mkDerivation (finalAttrs: {
   # owe builds twice from one tree (mirrors the two Arch packages): the C
   # binaries go through the standard meson phases, and the QML plugin is
   # configured/built/installed alongside them from qml-plugin/.
+  #
+  # cmake is on nativeBuildInputs only for those hand-run qml-plugin calls,
+  # so its setup hook must not claim the configure phase; meson's does (it
+  # only won by hook order before this was explicit).
+  dontUseCmakeConfigure = true;
+
   postConfigure = ''
     cmake -S "${finalAttrs.src}/qml-plugin" -B build-qml \
       -DCMAKE_BUILD_TYPE=Release \
@@ -156,6 +162,7 @@ stdenv.mkDerivation (finalAttrs: {
   meta = {
     description = "Wallpaper engine for Omarchy (video/GIF/still backgrounds) with the lock-screen video feed QML module";
     homepage = "https://github.com/omacom/owe";
+    # The repo ships no LICENSE file; MIT is what the omarchy-pkgs PKGBUILD declares.
     license = lib.licenses.mit;
     mainProgram = "owed";
     platforms = lib.platforms.linux;

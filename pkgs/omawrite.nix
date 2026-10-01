@@ -1,7 +1,7 @@
 # omawrite — distraction-free Markdown writer (upstream Omarchy app).
 #
-# Upstream: github.com/omacom-io/omawrite — Qt Quick + C++ app built with
-# qmake (omawrite.pro). Pinned to release tag v0.4.0 (tags exist since v0.2.1).
+# Upstream: github.com/omacom/omawrite — Qt Quick + C++ app built with
+# qmake (omawrite.pro). Pinned to a release tag (tags exist since v0.2.1).
 #
 # Qt modules from omawrite.pro:
 #   core gui widgets printsupport dbus -> qtbase
@@ -21,7 +21,7 @@ stdenv.mkDerivation (finalAttrs: {
   version = "0.5.0";
 
   src = fetchFromGitHub {
-    owner = "omacom-io";
+    owner = "omacom";
     repo = "omawrite";
     rev = "v${finalAttrs.version}";
     hash = "sha256-yS3GOL/kc03qx4naWzUdSZwAYxMuCjvrgmhexpwjsfA=";
@@ -56,7 +56,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   meta = {
     description = "Dead-simple Markdown writing app built with Qt Quick (Omarchy app)";
-    homepage = "https://github.com/omacom-io/omawrite";
+    homepage = "https://github.com/omacom/omawrite";
     license = [
       lib.licenses.mit
       lib.licenses.ofl

@@ -1,7 +1,8 @@
-# Manual probe (NOT wired into `nix flake check`): does the quickshell build
+# Manual probe (not run by `nix flake check`; checks.omarchy-probe-quickshell-
+# reload-eval only evaluates it so it cannot rot): does the quickshell build
 # under test survive a plugin reload with a working OSD?
 #
-# Context (docs/MAINTAINERS.md "Known broken", pkgs/quickshell.nix): on
+# Context (the pkgs/quickshell.nix header has the measurements): on
 # quickshell 0.3.0 the reload triggered by `omarchy plugin clone` left the
 # OSD dead — the re-created IpcHandler was rejected ("another handler is
 # registered for target osd") and the live registration belonged to the
@@ -107,7 +108,7 @@
       };
 
       home-manager.users.demo = {
-        imports = [ omarchy.homeManagerModules.default ];
+        imports = [ omarchy.homeModules.default ];
         home.username = "demo";
         home.homeDirectory = "/home/demo";
         home.stateVersion = "26.05";

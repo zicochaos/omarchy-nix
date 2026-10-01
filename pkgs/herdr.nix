@@ -6,15 +6,32 @@
 # config via omarchy-refresh-config herdr/config.toml; nothing else to wire.
 #
 # Source: herdrdev/herdr (the project moved there from omacom-io/herdr; the
-# Omarchy PKGBUILD builds herdrdev v0.9.1 since the 349ecc0 bump, and
-# omarchy-theme-set-herdr-machines needs its `herdr machine` subcommand).
+# Omarchy PKGBUILD builds herdrdev v0.9.1 since the 349ecc0 bump — this pin
+# may run ahead of it — and omarchy-theme-set-herdr-machines needs its
+# `herdr machine` subcommand).
 #
 # Build mirrors upstream's own nix/package.nix: the Rust build script
 # compiles the vendored libghostty-vt terminal parser with Zig 0.16, feeding
-# it the zon dependencies as a --system dir (build.zig.zon.nix is generated
-# by zon2nix and shipped in the repo) so the sandbox build never fetches.
-# Zig is only referenced through $ZIG, not put on nativeBuildInputs, so its
-# setup hook never replaces cargo's build phase.
+# it the zon dependencies as a --system dir so the sandbox build never
+# fetches. Zig is only referenced through $ZIG, not put on
+# nativeBuildInputs, so its setup hook never replaces cargo's build phase.
+#
+# No import-from-derivation: upstream's package.nix reads Cargo.lock and
+# vendor/libghostty-vt/build.zig.zon.nix out of the source tree, which from
+# a fetched src is IFD (`.#herdr` and every host config would then fail
+# under allow-import-from-derivation = false). Here the crates come from
+# cargoHash (fetchCargoVendor) and the zon2nix file is a committed copy,
+# pkgs/herdr-zig-deps.nix.
+#
+# Bump: set version, then
+#   1. hash: `nix flake prefetch --json github:herdrdev/herdr/v<version>`
+#      (the "hash" field; "storePath" is the unpacked tree for step 2);
+#   2. zig deps: replace everything below the header comment of
+#      pkgs/herdr-zig-deps.nix with
+#      <storePath>/vendor/libghostty-vt/build.zig.zon.nix, update the
+#      version named in that header, then `nix fmt`;
+#   3. cargoHash: set to lib.fakeHash, `nix build .#herdr`, paste the
+#      reported hash.
 {
   lib,
   rustPlatform,
@@ -28,16 +45,16 @@
 }:
 
 let
-  version = "0.9.1";
+  version = "0.9.3";
 
   src = fetchFromGitHub {
     owner = "herdrdev";
     repo = "herdr";
-    rev = "v${version}";
-    hash = "sha256-N6+kprfWRyh0AkAiopkGsNXUGGORyPVFHEaDHCpGQs8=";
+    tag = "v${version}";
+    hash = "sha256-uu452Xe23pSvFk7w7fKPjiaqY5QenUIljao2SFAxpc0=";
   };
 
-  zigDeps = callPackage "${src}/vendor/libghostty-vt/build.zig.zon.nix" {
+  zigDeps = callPackage ./herdr-zig-deps.nix {
     name = "herdr-libghostty-vt-zig-cache";
     inherit zstd;
     # linkFarm flattened to a single output dir, as upstream's
@@ -56,7 +73,7 @@ rustPlatform.buildRustPackage {
   pname = "herdr";
   inherit version src;
 
-  cargoLock.lockFile = "${src}/Cargo.lock";
+  cargoHash = "sha256-+gTWtEheyuI59yf2PqRbcbcFIW+/cYb7zZ2mPv2VN0Y=";
 
   nativeBuildInputs = [
     git

@@ -1,11 +1,15 @@
 echo "Repair remote Neovim clipboard yanks and paste"
 
 nvim_provider="$HOME/.config/nvim/lua/config/remote_clipboard.lua"
-# NixOS: omarchy-nvim lives in the system or per-user profile, not /usr/share.
+# NixOS: omarchy-nvim is not under /usr/share. Use the system or per-user
+# profile when it links share/omarchy-nvim, else the package behind the
+# omarchy-nvim-setup command (by default the profile links only that).
 provider_source=""
+nvim_setup=$(command -v omarchy-nvim-setup 2>/dev/null) && nvim_setup=$(readlink -f -- "$nvim_setup") || nvim_setup=""
 for cand in \
   /run/current-system/sw/share/omarchy-nvim/config/lua/config/remote_clipboard.lua \
-  /etc/profiles/per-user/$USER/share/omarchy-nvim/config/lua/config/remote_clipboard.lua; do
+  "/etc/profiles/per-user/${USER:-}/share/omarchy-nvim/config/lua/config/remote_clipboard.lua" \
+  ${nvim_setup:+"${nvim_setup%/bin/omarchy-nvim-setup}/share/omarchy-nvim/config/lua/config/remote_clipboard.lua"}; do
   if [[ -f $cand ]]; then
     provider_source=$cand
     break

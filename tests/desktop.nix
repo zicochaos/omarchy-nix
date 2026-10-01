@@ -35,10 +35,6 @@
   name = "omarchy-desktop";
   meta.maintainers = [ ];
 
-  # testScriptWithTypes chokes on dynamic machine.succeed/execute dispatch
-  # (same as sway.nix); skip it.
-  skipTypeCheck = true;
-
   nodes.machine =
     {
       config,
@@ -76,7 +72,7 @@
 
       # Seed the per-user config (Hyprland Lua entry + user stubs + theme).
       home-manager.users.demo = {
-        imports = [ omarchy.homeManagerModules.default ];
+        imports = [ omarchy.homeModules.default ];
         home.username = "demo";
         home.homeDirectory = "/home/demo";
         home.stateVersion = "26.05";

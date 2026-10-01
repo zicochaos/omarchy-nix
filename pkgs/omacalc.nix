@@ -13,7 +13,7 @@ stdenv.mkDerivation (finalAttrs: {
   version = "0.2.2";
 
   src = fetchFromGitHub {
-    owner = "omacom-io";
+    owner = "omacom";
     repo = "omacalc";
     rev = "v${finalAttrs.version}";
     hash = "sha256-I+WxkMz/2hCf4OpJKu99+30c0CxyxFD0M6eSLFDLs1I=";
@@ -40,8 +40,12 @@ stdenv.mkDerivation (finalAttrs: {
 
   meta = {
     description = "Simple calculator (Omarchy app)";
-    homepage = "https://github.com/omacom-io/omacalc";
-    license = lib.licenses.mit;
+    homepage = "https://github.com/omacom/omacalc";
+    # MIT (app) + OFL-1.1 (the embedded fonts), as the omarchy-pkgs PKGBUILD declares.
+    license = [
+      lib.licenses.mit
+      lib.licenses.ofl
+    ];
     platforms = lib.platforms.linux;
     mainProgram = "omacalc";
   };

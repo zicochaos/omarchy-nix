@@ -11,7 +11,8 @@
 # them (done in the nixpkgs PR) is skipped here — every other feature
 # works, the VM feature fails at use time.
 #
-# Bump: version + hash come from the vendor index
+# Bump: version + hash come from the vendor index (SHA256 field; convert
+# with `nix hash convert --hash-algo sha256 --to sri <hex>`)
 # https://downloads.claude.ai/claude-desktop/apt/stable/dists/stable/main/binary-amd64/Packages
 {
   lib,
@@ -60,11 +61,11 @@
 }:
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "claude-desktop";
-  version = "2.2553.1";
+  version = "2.9939.4";
 
   src = fetchurl {
     url = "https://downloads.claude.ai/claude-desktop/apt/stable/pool/main/c/claude-desktop/claude-desktop_${finalAttrs.version}_amd64.deb";
-    sha256 = "1y76dwmfy2gq73s3g7fdkflhzr6innggdhhj774vi9kp9vcgs037";
+    hash = "sha256-PP3bI78pEeBeJ7TtOFa455XflGQ7LDW1nesxfPmVvKA=";
   };
 
   nativeBuildInputs = [

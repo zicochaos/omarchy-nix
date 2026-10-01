@@ -4,6 +4,232 @@ All notable changes to omarchy-nix, newest first. Dates are UTC.
 Upstream adaptation details and the bump checklist:
 [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
+## 2026-10-01
+
+- **CI checks the whole flake on every PR, and the nightly became an
+  input canary.** The fast lane now runs `nix flake check --no-build`, so
+  a consumer-side evaluation break (the `example` configuration) or a
+  broken host configuration fails the PR instead of the nightly after
+  merge. The nightly used to re-check an unchanged, fully cached tree and
+  pass without running anything. It now updates every flake input in its
+  own checkout (nothing is committed), builds the package, runs the full
+  flake check, including the VM tests, which the new lock forces to
+  re-run, and the all-systems evaluation, so upstream breakage shows up
+  before the next bump. Failure logs are uploaded again: the old upload
+  action refused Forgejo outright, and every step now records its output
+  as it runs. Runs on `main` are no longer cancelled by the next merge;
+  they queue. The VM lane runs its tests two at a time to stay inside the
+  runner's 16 GiB, and finds them by itself instead of from a hand-kept
+  list. The Install-menu packages the flake builds itself (claude-desktop,
+  omp, zcode-desktop, hermes-agent) are now built by a check
+  (`omarchy-owned-packages`) instead of only evaluated.
+- **Several tests could not fail, and now can.** The SDDM greeter check
+  passed a theme whose QML failed to load: SDDM falls back to its
+  built-in theme and keeps running, and its errors go to the journal,
+  not the output the test read. It now reads the journal and fails on the
+  fallback or any QML error. Also fixed: the agent-skill check's
+  "forbidden Arch guidance" lines never fired; the quickshell version
+  check accepted 0.3.10; the Super+Enter test could not notice a second
+  window; and several checks passed on empty input. The four VM tests are
+  type-checked again and wait for real conditions instead of fixed
+  sleeps.
+- **Catalog permits must be needed.** `checks.catalog-consistency` now
+  withdraws each unfree and insecure permit of every Install-menu entry
+  in turn and requires the entry to stop evaluating, so a permit that
+  does nothing (like bitwarden's former electron-39 one) fails the check.
+- **The shell's exec sites are pinned by a reviewed list.**
+  `checks.omarchy-ux` compares every program the vendored QML shell
+  launches with `tests/fixtures/qml-exec-sites.txt`, so an upstream bump
+  that adds or changes one fails with a diff instead of a changed count.
+  Regenerating the list is part of the bump checklist. The manual
+  quickshell reload probe is now evaluated by `nix flake check`; it had
+  broken twice unnoticed.
+- **`omarchy update` offers the reboot again.** Updates rebuild with
+  `nixos-rebuild boot`, which never changes the running system, so the
+  end-of-update reboot prompt (it compared the booted and the running
+  kernel) never fired. It now appears whenever a new generation is
+  installed but not active, and says the update takes effect only after
+  the reboot; the new generation's migrations run at the first login
+  after it.
+- **Menu installs and `omarchy update` no longer interleave.** The
+  update's flake update and rebuild take the same per-flake lock as
+  Install/Remove, and a waiting operation says so.
+- **A package that installed with failing units stays installed.** When
+  `nixos-rebuild switch` installs the new generation and then reports
+  failed units, `omarchy-packages.json` keeps the package instead of
+  rolling back and silently dropping it on the next rebuild.
+- **NixOS option picks from Install → Package work.** The picker passed
+  its own prompt text along with the value, so every option pick was
+  refused. Values must now be exactly one JSON value; an empty value or
+  `1 2` is refused before anything is locked or written.
+- **Migrations that ask a question no longer swallow the queue.** A
+  migration reading stdin consumed the list of later migrations, which
+  were then skipped silently; the list now travels on its own file
+  descriptor, as upstream does.
+- **The Neovim remote-clipboard migrations find their source.** Both
+  always skipped on NixOS. They now install and repair the provider, keep
+  a dotfile-managed (symlinked) config untouched, and stop resetting
+  `options.lua` to mode 0600. The tmux and browser-flags migrations now
+  edit symlinked configs through the link and skip read-only ones instead
+  of failing every update.
+- **The Arch-mutator scan is fail-closed for real.** Any `sudo`/`pkexec`
+  call now needs a classification, files are scanned whatever their mode,
+  and the scan covers `install/user/**`, `default/bash/fns` and the
+  NixOS adapters; manifest keys are checked against the upstream tree.
+  `omarchy-install-gaming-lutris` and `omarchy-remove-service-1password`
+  became declarative notes (their `sudo` steps target `/usr` paths NixOS
+  does not have). Every hand-written overwrite of an upstream file now
+  fails the build if that file disappears upstream.
+- **Smaller hardening:** the Install/Remove and search scripts use
+  unpredictable temp files and keep the JSON's mode; root git runs only
+  in root-owned flakes, with fsmonitor and hooks disabled; the update's
+  `OMARCHY_PATH` check requires a store root; the host name is no longer
+  spliced into the resolver's Nix expression; stub notes are
+  shell-quoted; and before the first install the menu resolves the flake
+  once per menu batch instead of 58 times. New checks:
+  `omarchy-update-flow`, `omarchy-migration-adapters`,
+  `omarchy-build-guards`, `omarchy-bash-syntax`.
+- **Hyprland is pinned to the v0.56.2 release, and 32-bit Mesa now
+  matches.** The `hyprland` input followed Hyprland's main branch (an
+  untagged 2026-07-29 snapshot reporting 0.56.0). It now pins the v0.56.2
+  release commit `34170f6`. The `v0.56.2` tag itself (`efb5099`) only
+  adds an automated lock bump to a nixpkgs with glaze 8, which the
+  release's CMake rejects, so the tag's flake does not build.
+  `hardware.graphics.package` and `package32` both come from Hyprland's
+  own nixpkgs (Mesa 26.1.5); before, 32-bit clients such as Steam loaded
+  stable's 26.1.8 next to a 26.1.5 64-bit driver. Neither this Hyprland
+  build nor the previous pin is on hyprland.cachix.org (it only keeps
+  recent main builds), so Hyprland compiles locally on a fresh install.
+- **The bar's keyboard-layout widget works again.** Since upstream
+  2026-08-09 the widget and `omarchy-menu-keybindings` call `xkbcli`,
+  which was not on PATH. The module now ships `libxkbcommon`. The new
+  `checks.omarchy-qml-commands` requires every program the vendored shell
+  starts by literal name to resolve on the system PATH.
+- **`omarchy.exclude_packages` accepts the attribute names the docs ask
+  for.** `"libreoffice-fresh"`, `"tesseract5"` and `"qt6.qtwayland"` now
+  remove exactly that package; before they matched nothing, because
+  matching only compared package names. Package names still work. An
+  entry that matches nothing now produces an evaluation warning instead
+  of silently doing nothing. Excluding `"chromium"` also drops its
+  desktop alias.
+- **A consumer's own `allowUnfreePredicate` no longer breaks
+  evaluation.** The module's unfree whitelist (obsidian plus
+  menu-installed unfree packages) was a `mkDefault` predicate that any
+  consumer predicate replaced. It now uses the merging
+  `nixpkgs.config.allowUnfreePackages` list.
+- **udiskie runs once.** Upstream's autostart already launches it, and
+  the module's extra user service doubled mounts and notifications.
+- **New `omarchy.systemTuning.enable` (default on), and the zram tuning
+  now follows zram.** One switch drops the module's sysctls, USB
+  autosuspend-off, the Kyber scheduler rule and the zswap switch; before,
+  the modprobe and udev lines needed `mkForce`. With
+  `zramSwap.enable = false`, the zram reclaim sysctls (swappiness 150,
+  page-cluster 0, …) and zswap-off no longer apply.
+- **New `omarchy.hyprlandCache.enable` (default on)** removes the
+  Hyprland Cachix substituter and its key on hosts that must not trust a
+  third-party cache.
+- **SDDM greeter, autologin relogin and PipeWire defaults are
+  overridable.** The greeter command no longer uses `mkForce`.
+  `relogin`, rtkit and the PipeWire switches are `mkDefault`, so a
+  consumer's `false` replaces them instead of conflicting.
+- **The greeter preselects the uwsm session without autologin.** The
+  theme's own "prefer uwsm" logic never fires under SDDM 0.21 (it asks
+  for a display role the session model does not answer), and
+  `DefaultSession` was empty. A desktop module's own default (for
+  example Plasma's) still wins. The SDDM theme is only installed while
+  SDDM is the display manager.
+- **`omarchy-migrate` can no longer stall the graphical session.** It now
+  has a 2-minute start timeout; a migration that times out is retried at
+  the next login.
+- **`omarchy.monitors` accepts Hyprland's full monitor grammar.** That
+  covers `auto-center-*` positions, `maxwidth` and `"NAME, disable"`, and
+  the validator now rejects unknown `auto-*` positions and scales below
+  0.25. `omarchy.theme` rejects `.` and `..`.
+- Checks: `omarchy-disabled-state` now compares the whole system, and
+  `omarchy-option-validation` checks each rejected value against a valid
+  one of the same option. Seven new checks cover exclusions, unfree
+  handling, udiskie, tuning, overrides and the module defaults (sshd,
+  nixPath, Plymouth, theme, cache).
+- **Home Manager no longer overwrites files your own Home Manager
+  configuration manages.** The seed treated every symlink into the Nix
+  store as a leftover from old module versions, including the links Home
+  Manager had just created: with `programs.git` or `programs.starship`
+  (likewise tmux, kitty, foot, alacritty, btop, lazygit, ghostty, imv,
+  fastfetch, opencode) the first switch replaced the generated file with
+  upstream's copy, and the next one aborted with "Existing file ... would
+  be clobbered". A config directory Home Manager owns as a whole broke
+  the first switch. Files Home Manager manages (a `home.file` or
+  `xdg.configFile` target, or a file inside one) are now never seeded,
+  and only links into an omarchy tree are replaced; other tools' links
+  stay.
+- **`omarchy.*` set inside Home Manager: one source, and a warning when
+  it is ignored.** Under NixOS the Home-Manager module takes `package`,
+  `nvimPackage`, `theme`, `scale` and `monitors` from the system
+  configuration; a different per-user value used to be dropped silently
+  and now gets an evaluation warning, as does any option only the NixOS
+  module reads. Standalone Home Manager reads its own values, and the
+  flake now provides the omarchy package there (before,
+  `omarchy.enable = true` seeded nothing); enabling without any package
+  fails with an assertion. The module is exported as
+  `homeModules.default`, the output name Nix knows;
+  `homeManagerModules.default` keeps working.
+- **The default-browser step runs.** Home Manager activates with its own
+  minimal PATH, which has no `xdg-settings`, so the step that initializes
+  `chromium.desktop` never ran there; it now calls xdg-settings by store
+  path, and stays out when Home Manager manages `mimeapps.list`
+  (`xdg.mimeApps`).
+- **The Neovim starter seed is retried after a failure.** A failed
+  `omarchy-nvim-setup` left a half-written `~/.config/nvim` that was
+  never retried, silently (it always failed after the copy, because
+  `xdg-mime` is not on the activation PATH). The seed now runs in a
+  staging directory with xdg-utils available and is moved into place
+  only when it succeeded; a failure prints a warning and the next
+  activation tries again.
+- **Dry runs (`home-manager switch -n`) no longer change `$HOME`.** The
+  seeds, the `~/.bashrc` seed, the first-run markers, the theme render
+  and the move-aside of user-owned skill directories all wrote during a
+  dry run; the move-aside also runs after Home Manager's own checks now.
+  New checks: `omarchy-hm-activation` runs real Home Manager activations
+  in the build sandbox (owned files, `monitors.lua`, `~/.bashrc`, user
+  edits, legacy links, skill move-aside, nvim retry, dry run),
+  `omarchy-hm-eval` covers where the values come from, and
+  `omarchy-browser-default` runs the real activation instead of the step
+  text with a PATH stub.
+- **herdr evaluates without import-from-derivation.** `pkgs/herdr.nix`
+  read `Cargo.lock` and libghostty-vt's zon2nix file out of the fetched
+  source, so with `allow-import-from-derivation = false` neither `.#herdr`
+  nor any host config evaluated (herdr is a default app, so every
+  consumer was affected). The crates now come from `cargoHash`, and the
+  zon file is committed as `pkgs/herdr-zig-deps.nix`, with the
+  regeneration steps in herdr.nix's header. herdr 0.9.1 → 0.9.3.
+- Package bumps: aether 4.28.0 → 4.31.1, ttfx 0.3.2 → 0.5.0, monologue
+  0.2.0 → 0.3.0, omp 18.2.6 → 18.4.5, owe 0.2.7 → 0.2.8, claude-desktop
+  2.2553.1 → 2.9939.4, zcode-desktop 3.14.0 → 3.14.4. `hermes-agent`
+  `d595e63` (2026-09-12) → `6633626` (2026-10-01); upstream moved to date
+  releases, so the package is now named `hermes-agent-0.0.0`
+  (`hermes --version` reports 2026.9.24). Its home-manager input now
+  follows ours instead of locking a second one.
+- **`try` no longer adds `bin/lib/` to every profile.** Its Ruby sources
+  live in `share/try` and `bin/try` is a wrapper.
+- The Bitwarden Install entry no longer permits the insecure
+  `electron-39.8.10`; bitwarden-desktop on the pin evaluates without it.
+  omacalc's license is MIT + OFL-1.1 (embedded fonts), and the sources
+  follow upstream's GitHub moves (`bjarneo/aether` and `omacom-io/*` →
+  `omacom/*`), with unchanged hashes.
+- **Security: two passwordless paths to root removed.** The NixOS module
+  granted every wheel user NOPASSWD `sudo tzupdate` with any arguments;
+  tzupdate's `-l`/`-d`/`-z` flags write symlinks and files at
+  caller-chosen paths, so any process running as that user could write
+  root-owned files (for example a script that root's shells source) without
+  the password. Nothing ran `sudo tzupdate`, and upstream only grants
+  `timedatectl set-timezone <zone>`, which stays. The module also put
+  `@wheel` in `nix.settings.trusted-users`, which Nix treats as
+  root-equivalent; the Hyprland Cachix it was added for works from the
+  system-level substituter and key settings alone. Both grants are gone,
+  and `checks.omarchy-etc-parity` now fails if either comes back. A
+  consumer who wants a trusted Nix user sets `nix.settings.trusted-users`
+  in their own configuration.
+
 ## 2026-09-30
 
 - **Bash gets the Omarchy shell setup.** Before this, nothing on the port
@@ -272,7 +498,7 @@ Upstream adaptation details and the bump checklist:
 
 - Install → Development → Rust now yields the whole toolchain, not just
   the compiler: `rustfmt` and `clippy` join `rustc` and `cargo` in the
-  catalog entry (#115, PR #116). Arch ships one `rust` package with
+  catalog entry. Arch ships one `rust` package with
   formatter and linter included; nixpkgs splits them across attributes,
   so the menu gave a compiler whose `cargo fmt`/`cargo clippy` failed
   with "no such command". The four attributes cover every binary in

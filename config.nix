@@ -1,8 +1,9 @@
 # Shared omarchy.* option schema.
 #
 # Imported by both the NixOS module and the Home-Manager module. Consumers set
-# options once at the system level; the HM module mirrors osConfig.omarchy
-# into HM config.omarchy so per-user modules can read the same values.
+# options once at the system level: under NixOS the HM module reads the values
+# it uses (package, nvimPackage, theme, scale, monitors) from osConfig.omarchy
+# and warns about differing HM-level ones; standalone HM reads its own.
 #
 # This is deliberately a small surface. Quattro's desktop is driven by the
 # vendored upstream tree (Lua config + quickshell shell.json + theme engine),
@@ -49,8 +50,8 @@
       default = null;
       description = ''
         The plymouth-omarchy-theme derivation ($out/share/plymouth/themes/
-        omarchy). Set automatically by the flake's nixosModules.default when
-        omarchy.plymouth.enable is true.
+        omarchy). Set automatically by the flake's nixosModules.default;
+        used only while omarchy.plymouth.enable is true.
       '';
     };
 
@@ -62,14 +63,16 @@
       description = ''
         The sddm-omarchy-theme derivation ($out/share/sddm/themes/omarchy +
         hyprland.lua greeter config). Set automatically by the flake's
-        nixosModules.default when omarchy.sddm.theme is true.
+        nixosModules.default; used only while omarchy.sddm.theme is true
+        and SDDM is the display manager.
       '';
     };
 
     # Upstream-owned packages not available in nixpkgs, built under pkgs/
-    # and injected by the flake wrapper (aether, asdcontrol, omacalc,
-    # omacut, omawrite, omasnap, monologue, hype, owe, try, yaru-theme, hyprland-guiutils,
-    # hyprland-preview-share-picker, omarchy-nvim). Added to
+    # and injected by the flake wrapper (16: aether, asdcontrol, omacalc,
+    # omacut, omawrite, omasnap, monologue, hype, owe, try, yaru-theme,
+    # hyprland-guiutils, hyprland-preview-share-picker, omarchy-nvim, herdr,
+    # ttfx). Added to
     # environment.systemPackages; entries are still subject to
     # omarchy.exclude_packages filtering.
     appPackages = lib.mkOption {
@@ -227,10 +230,12 @@
     # an enum because users can drop their own theme under
     # ~/.config/omarchy/themes/<name>/. The character whitelist
     # still permits every upstream theme name while blocking path traversal
-    # ("../") and newline injection — the name is interpolated into filesystem
-    # paths and shell commands by the theme engine.
+    # and newline injection — the name is interpolated into filesystem
+    # paths and shell commands by the theme engine. No "/" is allowed, and
+    # at least one character must not be a dot, which rejects "." and ".."
+    # (themes/. or themes/.. would name the themes dir or its parent).
     theme = lib.mkOption {
-      type = lib.types.strMatching "[A-Za-z0-9._-]+";
+      type = lib.types.strMatching "[A-Za-z0-9._-]*[A-Za-z0-9_-][A-Za-z0-9._-]*";
       default = "ethereal";
       description = ''
         Default Omarchy theme name (matches a dir in upstream themes/, or a
@@ -243,7 +248,8 @@
     };
 
     # Default terminal resolved through xdg-terminal-exec. Quattro ships foot
-    # as the default; ghostty and alacritty/kitty are optional. This option
+    # as the default; ghostty and alacritty/kitty are optional and not
+    # installed by the module (foot stays the fallback entry). This option
     # picks which .desktop entry xdg-terminal-exec should resolve to. Same
     # character whitelist as theme: the value is written raw into
     # /etc/xdg/hyprland-xdg-terminals.list (one entry per line), so a newline
@@ -252,14 +258,19 @@
       type = lib.types.strMatching "[A-Za-z0-9._-]+";
       default = "foot";
       example = "ghostty";
-      description = "Default terminal desktop entry (foot, ghostty, alacritty, kitty).";
+      description = ''
+        Default terminal desktop entry id for xdg-terminal-exec (e.g. foot,
+        ghostty, alacritty, kitty). Only foot is installed by default;
+        install the named terminal yourself, otherwise foot is used.
+      '';
     };
 
     # Hyprland monitor lines. Empty = let Hyprland auto-detect. Each entry is
     # a Hyprland monitor directive string, e.g.
     #   "DP-1, 2560x1440@120, 0x0, 1"
-    # Fields: output, mode, position, scale (number or "auto"), transform
-    # (0-7); everything after output is optional. Entries are validated and
+    # Fields: output, mode, position, scale (number >= 0.25 or "auto"),
+    # transform (0-7); everything after output is optional; "NAME, disable"
+    # turns an output off. Entries are validated and
     # Lua-escaped at evaluation time (modules/lib/omarchy-formats.nix) — a
     # malformed entry fails the build with a clear error instead of writing a
     # monitors.lua that Hyprland cannot parse.
@@ -315,18 +326,57 @@
       '';
     };
 
+    # Hyprland's Cachix as a system-wide substituter + trusted key. On by
+    # default: the flake's Hyprland stack is not built by Hydra, so without
+    # a cache it compiles from source. Off for hosts whose policy forbids
+    # trusting a third-party binary cache.
+    hyprlandCache.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Register https://hyprland.cachix.org and its signing key in
+        nix.settings (substituters, trusted-substituters,
+        trusted-public-keys). Disable to keep the host from trusting that
+        third-party cache; the Hyprland stack then builds locally unless
+        another configured cache provides it.
+      '';
+    };
+
+    # Upstream's kernel/VM/IO tuning (etc/sysctl.d, modprobe.d, udev rules,
+    # tmpfiles zswap switch). On by default for parity; one switch for
+    # hosts that manage their own tuning. The modprobe/udev lines are
+    # appended at normal priority (nixpkgs defines both options), so
+    # without this a consumer could only drop them with mkForce, losing
+    # every other module's lines too. zramSwap itself is not covered: it
+    # has its own zramSwap.enable.
+    systemTuning.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Apply Omarchy's system tuning: network and writeback sysctls, the
+        zram reclaim sysctls and the zswap-off switch (both only while
+        zramSwap.enable is true), USB autosuspend off, and the Kyber I/O
+        scheduler on whole disks. Disable to keep the host's own tuning.
+      '';
+    };
+
     # Packages to exclude from the default runtime set. Lets a consumer opt
-    # out of e.g. obsidian or signal-desktop without forking the module.
-    # (List of package *attribute names* as strings, not derivations, so it
-    # composes cleanly across the NixOS/HM boundary.)
+    # out of e.g. obsidian or libreoffice without forking the module.
+    # (List of nixpkgs *attribute paths* as strings, not derivations, so it
+    # composes cleanly across the NixOS/HM boundary; plain package names
+    # still match for compatibility. An entry matching nothing warns.)
     exclude_packages = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
       example = [
         "obsidian"
-        "signal-desktop"
+        "libreoffice-fresh"
       ];
-      description = "Package attribute names to exclude from the default set.";
+      description = ''
+        nixpkgs attribute paths (e.g. "libreoffice-fresh", "qt6.qtwayland")
+        or package names (pname) to exclude from the module's default
+        package set. Entries that match nothing produce a warning.
+      '';
     };
 
     # Path to the menu-managed package list (omarchy-packages.json) written by

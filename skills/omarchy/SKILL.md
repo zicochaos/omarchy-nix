@@ -26,9 +26,11 @@ printf 'OMARCHY_PATH=%s\n' "$OMARCHY_PATH"
 omarchy version
 ```
 
-Use `$OMARCHY_PATH` for all packaged Omarchy files. It points into the active
-Nix store package and changes across system generations. Never assume a fixed
-system path and never modify `$OMARCHY_PATH` or any `/nix/store` path.
+Use `$OMARCHY_PATH` for all packaged Omarchy files. It is the stable profile
+path `/run/current-system/sw/share/omarchy`, which resolves to the active
+generation's read-only Nix store package, so its contents change when the
+system is rebuilt. Never hardcode a `/nix/store` path and never modify
+`$OMARCHY_PATH` or anything under `/nix/store`.
 
 Read packaged files freely to understand defaults and command behavior:
 
@@ -152,7 +154,7 @@ Common runtime groups:
 | `launch` | Launch apps (user-safe) | `omarchy launch browser` |
 | `capture` | Screenshots and recording | `omarchy capture --help` |
 | `reminder` | Desktop reminders | `omarchy reminder --help` |
-| `install` | Optional software; see the NixOS note below | `omarchy install webapp` |
+| `install` | Optional software; see the NixOS note below | `omarchy install --help` |
 | `setup` | Setup wizards; mostly declarative stubs on NixOS | `omarchy setup security fingerprint` |
 | `update` | Update flake inputs and rebuild | `omarchy update` |
 

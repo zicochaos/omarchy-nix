@@ -12,21 +12,29 @@
 # ownership doctrine nothing under $HOME that upstream tooling touches
 # may be a store symlink. We split the seed into classes:
 #   1. User-editable stubs -> activation script with [ ! -e ] / legacy
-#      store-symlink guard (pattern from HM programs/t3code.nix + gpg.nix)
+#      omarchy-symlink guard (pattern from HM programs/t3code.nix + gpg.nix)
 #   2. Vendored defaults -> NOT copied; bootstrap.lua loads them from
 #      $OMARCHY_PATH via package.path
+# Paths Home Manager itself manages (home.file, xdg.configFile, ... -- e.g.
+# programs.git owns ~/.config/git/config) are never seeded: they belong to
+# the user's HM configuration.
 #
-# NOTE on osConfig mirroring: the common idiom `omarchy = osConfig.omarchy`
-# inside `mkIf cfg.enable` creates an evaluation cycle (cfg.enable <- mirror
-# <- config.omarchy <- cfg.enable). Instead we read the effective values
-# directly from osConfig with a fallback to the HM-local option, computed
-# inside the config block (lazily) so they never gate the option that gates
-# them. The mirror, when present, uses mkDefault so a standalone HM user's
-# explicit values win.
+# Where the omarchy.* values come from: under NixOS (osConfig.omarchy
+# exists) the system configuration is the single source -- package,
+# nvimPackage, theme, scale and monitors are read from osConfig.omarchy, and
+# a differing value set here in Home Manager is ignored with an evaluation
+# warning. Standalone Home Manager reads this module's own omarchy.*; the
+# flake's homeModules.default injects package/nvimPackage there. Options
+# this module never reads (everything else but enable) warn when set here.
+# The values are read directly rather than mirrored (`omarchy =
+# osConfig.omarchy` inside `mkIf cfg.enable` would form an evaluation
+# cycle: cfg.enable <- mirror <- config.omarchy <- cfg.enable);
+# omarchy.enable stays an HM-local switch.
 {
   config,
   lib,
   pkgs,
+  options,
   osConfig ? { },
   ...
 }:
@@ -38,25 +46,42 @@ let
   upstreamConfig = pkg: "${pkg}/share/omarchy/config";
   omarchyPathOf = pkg: "${pkg}/share/omarchy";
 
+  # Targets Home Manager links itself, relative to $HOME: home.file, which
+  # also carries xdg.configFile/dataFile/stateFile.
+  hmTargets = map (file: file.target) (
+    lib.filter (file: file.enable) (lib.attrValues config.home.file)
+  );
+  # Whether Home Manager manages the path or one of its parent directories.
+  # Seeding there would replace HM's link with a copy (or write into a
+  # read-only store directory), and HM's next activation aborts on the file
+  # it no longer recognizes ("would be clobbered").
+  hmManages = target: lib.any (t: t == target || lib.hasPrefix "${t}/" target) hmTargets;
+
   # Seed a user-editable file only if it does not already exist (or is a
-  # legacy store symlink from older module versions that used xdg.configFile).
+  # legacy symlink into an omarchy tree, from older module versions that
+  # used xdg.configFile). Any other symlink -- HM's own, another dotfile
+  # manager's -- belongs to someone else and is left alone.
   # The first home-manager switch copies the upstream template; later switches
   # never touch a real file, so user edits survive. `cp -a` (not `ln -s`)
   # produces a regular file the user can edit. chmod u+w makes it actually
   # writable — cp -a preserves the store's read-only mode, but upstream
   # runtime tooling (omarchy-hyprland-monitor-scaling) writes to monitors.lua
-  # via sed -i, and users need to edit all stubs.
+  # via sed -i, and users need to edit all stubs. `run` keeps dry runs
+  # (home-manager switch -n) read-only.
   # seedFileFrom takes a path relative to $HOME (for seeds that live outside
   # ~/.config, e.g. the skel parity files under ~/.local/share and
   # ~/.local/state); seedStubFrom is the ~/.config convenience wrapper.
-  seedFileFrom = source: target: ''
-    omarchy_seed_target="$HOME/${target}"
-    if [ ! -e "$omarchy_seed_target" ] || { [ -L "$omarchy_seed_target" ] && [[ "$(readlink -f "$omarchy_seed_target")" == /nix/store/* ]]; }; then
-      mkdir -p "$(dirname "$omarchy_seed_target")"
-      rm -f "$omarchy_seed_target"
-      cp -a "${source}" "$omarchy_seed_target"
-      chmod u+w "$omarchy_seed_target"
-    fi'';
+  seedFileFrom =
+    source: target:
+    lib.optionalString (!hmManages target) ''
+      omarchy_seed_target="$HOME/${target}"
+      if { [ ! -e "$omarchy_seed_target" ] && [ ! -L "$omarchy_seed_target" ]; } \
+        || { [ -L "$omarchy_seed_target" ] && [[ "$(readlink -m "$omarchy_seed_target")" == ${builtins.storeDir}/*/share/omarchy/* ]]; }; then
+        run mkdir -p "$(dirname "$omarchy_seed_target")"
+        run rm -f "$omarchy_seed_target"
+        run cp -a "${source}" "$omarchy_seed_target"
+        run chmod u+w "$omarchy_seed_target"
+      fi'';
 
   seedStubFrom = source: target: seedFileFrom source ".config/${target}";
 
@@ -108,16 +133,51 @@ in
       effTheme = (osConfig.omarchy or cfg).theme;
       effNvimPkg = (osConfig.omarchy or cfg).nvimPackage or null;
       effSkill = "${omarchyPathOf effPkg}/default/agents/skills/omarchy";
-    in
-    lib.mkIf cfg.enable (
-      lib.mkIf (effPkg != null) {
-        # NOTE: we deliberately do NOT mirror `omarchy = osConfig.omarchy`
-        # here. That idiom would assign omarchy.enable from osConfig and form
-        # an evaluation cycle with the `mkIf cfg.enable` gate above. Instead
-        # effPkg/effScale/effTheme read directly from osConfig.omarchy with a
-        # fallback to the HM-local option; omarchy.enable stays an HM-local
-        # switch the consumer sets explicitly.
 
+      # The omarchy.* values this module reads (the eff* above); every other
+      # option except enable configures the NixOS module only.
+      readHere = [
+        "package"
+        "nvimPackage"
+        "theme"
+        "scale"
+        "monitors"
+      ];
+      # Options given a value in this Home Manager configuration (anything
+      # above the option default's priority), omarchy.enable excepted, with
+      # their path below omarchy (opt.loc also carries the
+      # home-manager.users.<name> prefix under NixOS).
+      setHere = lib.filter ({ opt, ... }: opt.highestPrio < (lib.mkOptionDefault null).priority) (
+        lib.collect (leaf: leaf ? opt) (
+          lib.mapAttrsRecursiveCond (attrs: !lib.isOption attrs) (path: opt: { inherit path opt; }) (
+            removeAttrs options.omarchy [ "enable" ]
+          )
+        )
+      );
+      ignoredWarning =
+        { path, opt }:
+        let
+          name = lib.showOption ([ "omarchy" ] ++ path);
+        in
+        if !lib.elem (lib.head path) readHere then
+          "${name} is set in Home Manager, where it has no effect: only the omarchy NixOS module reads it. Set it in the NixOS configuration."
+        else if osConfig ? omarchy && opt.value != lib.getAttrFromPath path osConfig.omarchy then
+          "${name} is set in Home Manager, but under NixOS the omarchy Home Manager module uses the NixOS configuration's value (osConfig.${name}) instead. Set it in the NixOS configuration."
+        else
+          null;
+    in
+    lib.mkMerge [
+      {
+        warnings = lib.filter (warning: warning != null) (map ignoredWarning setHere);
+        assertions = [
+          {
+            assertion = !cfg.enable || effPkg != null;
+            message = "omarchy.enable is set in Home Manager, but no omarchy package is available, so nothing would be seeded. Import omarchy-nix's homeModules.default (it provides the package), or set omarchy.package -- in the NixOS configuration when Home Manager runs as a NixOS module.";
+          }
+        ];
+      }
+
+      (lib.mkIf (cfg.enable && effPkg != null) {
         # --- Class 0: agent skill links + default shell plugin (managed on
         # every activation) ---
         # Upstream finalize-user creates these six links once (v4.0.1 added
@@ -141,30 +201,35 @@ in
         #
         # Real files/dirs at these paths are relocated before linkGeneration
         # (omarchySkillLinkSafety) so a user-owned skill clone is never deleted.
+        # The move is a write, so it runs after writeBoundary (nothing may be
+        # written before HM's checks have passed) and through `run` (a dry
+        # run only prints it).
         # Existing symlinks are left for HM to replace; force is still required
         # because linkGeneration cannot adopt unmanaged symlinks without it.
-        home.activation.omarchySkillLinkSafety = lib.hm.dag.entryBefore [ "linkGeneration" ] ''
-          # Relocate real skill targets so home.file cannot delete user data.
-          # Symlinks are left alone — force = true adopts/replaces them.
-          omarchy_skill_ts="$(date -u +%Y%m%dT%H%M%SZ)"
-          for omarchy_skill_rel in \
-            .agents/skills/omarchy \
-            .claude/skills/omarchy \
-            .codex/skills/omarchy \
-            .pi/agent/skills/omarchy \
-            .gemini/config/skills/omarchy \
-            .hermes/skills/omarchy
-          do
-            omarchy_skill_target="$HOME/$omarchy_skill_rel"
-            # -e is false for a dangling symlink; -L catches those too, but
-            # we only relocate real files/dirs — leave every symlink for force.
-            if [ -e "$omarchy_skill_target" ] && [ ! -L "$omarchy_skill_target" ]; then
-              omarchy_skill_backup="''${omarchy_skill_target}.hm-backup-''${omarchy_skill_ts}"
-              echo "warning: omarchy managed link target $omarchy_skill_target is a real file/directory; moving aside to $omarchy_skill_backup before linking" >&2
-              mv "$omarchy_skill_target" "$omarchy_skill_backup"
-            fi
-          done
-        '';
+        home.activation.omarchySkillLinkSafety =
+          lib.hm.dag.entryBetween [ "linkGeneration" ] [ "writeBoundary" ]
+            ''
+              # Relocate real skill targets so home.file cannot delete user data.
+              # Symlinks are left alone — force = true adopts/replaces them.
+              omarchy_skill_ts="$(date -u +%Y%m%dT%H%M%SZ)"
+              for omarchy_skill_rel in \
+                .agents/skills/omarchy \
+                .claude/skills/omarchy \
+                .codex/skills/omarchy \
+                .pi/agent/skills/omarchy \
+                .gemini/config/skills/omarchy \
+                .hermes/skills/omarchy
+              do
+                omarchy_skill_target="$HOME/$omarchy_skill_rel"
+                # -e is false for a dangling symlink; -L catches those too, but
+                # we only relocate real files/dirs — leave every symlink for force.
+                if [ -e "$omarchy_skill_target" ] && [ ! -L "$omarchy_skill_target" ]; then
+                  omarchy_skill_backup="''${omarchy_skill_target}.hm-backup-''${omarchy_skill_ts}"
+                  echo "warning: omarchy managed link target $omarchy_skill_target is a real file/directory; moving aside to $omarchy_skill_backup before linking" >&2
+                  run mv "$omarchy_skill_target" "$omarchy_skill_backup"
+                fi
+              done
+            '';
 
         home.file =
           lib.genAttrs
@@ -186,8 +251,11 @@ in
         # config/ tree the first time home-manager switches, and never
         # touched again — so user edits survive subsequent switches
         # (pattern from HM programs/t3code.nix + programs/gpg.nix).
-        # Legacy store symlinks (from older module versions that used
-        # xdg.configFile) are replaced on the next switch.
+        # Legacy symlinks into an omarchy tree (from older module versions
+        # that used xdg.configFile) are replaced on the next switch. Files
+        # the user's Home Manager configuration manages itself (e.g.
+        # git/config under programs.git, starship.toml under
+        # programs.starship) are skipped at evaluation time; see hmManages.
         #
         # hyprland.lua and .luarc.json are included here: upstream UX lets
         # users edit them (Setup menu → edit config) and
@@ -281,8 +349,8 @@ in
           # /usr/share env-bootstrap line is inert here) so upstream
           # migrations still recognize the default file.
           if [ ! -e "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ]; then
-            cp -a "${omarchyPathOf effPkg}/default/bashrc" "$HOME/.bashrc"
-            chmod u+w "$HOME/.bashrc"
+            run cp -a "${omarchyPathOf effPkg}/default/bashrc" "$HOME/.bashrc"
+            run chmod u+w "$HOME/.bashrc"
           fi
 
           # --- voxtype dictation config. Upstream copies this in
@@ -306,10 +374,46 @@ in
         # omarchy-nvim-setup script seeds ~/.config/nvim (writable copies,
         # plus the theme.lua symlink into ~/.local/state/omarchy/current/
         # theme). Seed-if-absent like the other stubs: user edits survive.
+        #
+        # The script runs against a staging $HOME, and its config (and data)
+        # dir is renamed into place only after it succeeded: a failed or
+        # interrupted seed leaves no half-written ~/.config/nvim behind, so
+        # the next activation retries it, and the failure is reported on
+        # stderr instead of swallowed. xdg-utils is on its PATH for the
+        # script's trailing `xdg-mime default` calls (absent from the
+        # activation PATH, they used to abort it). With XDG_CONFIG_HOME
+        # staged those write a mimeapps.list that is discarded, so the
+        # user's ~/.config/mimeapps.list (possibly HM's xdg.mimeApps link)
+        # is never touched; the nvim associations never reached it before
+        # either.
         home.activation.omarchyNvimSeed = lib.hm.dag.entryAfter [ "omarchySeedUserConfig" ] (
           lib.optionalString (effNvimPkg != null) ''
-            if [ ! -e "$HOME/.config/nvim" ]; then
-              "${effNvimPkg}/bin/omarchy-nvim-setup" >/dev/null 2>&1 || true
+            if [ ! -e "$HOME/.config/nvim" ] && [ ! -L "$HOME/.config/nvim" ]; then
+              if [[ -v DRY_RUN ]]; then
+                echo "${effNvimPkg}/bin/omarchy-nvim-setup (staged, then moved to $HOME/.config/nvim)"
+              else
+                omarchy_nvim_stage="$HOME/.local/state/omarchy/nvim-seed"
+                rm -rf "$omarchy_nvim_stage"
+                mkdir -p "$omarchy_nvim_stage"
+                if omarchy_nvim_log="$(
+                  HOME="$omarchy_nvim_stage" \
+                  XDG_CONFIG_HOME="$omarchy_nvim_stage/.config" \
+                  XDG_DATA_HOME="$omarchy_nvim_stage/.local/share" \
+                  PATH="${lib.makeBinPath [ pkgs.xdg-utils ]}:$PATH" \
+                    "${effNvimPkg}/bin/omarchy-nvim-setup" 2>&1
+                )" && [ -d "$omarchy_nvim_stage/.config/nvim" ] \
+                  && mkdir -p "$HOME/.config" \
+                  && mv -T "$omarchy_nvim_stage/.config/nvim" "$HOME/.config/nvim"; then
+                  if [ ! -e "$HOME/.local/share/nvim" ] && [ -d "$omarchy_nvim_stage/.local/share/nvim" ]; then
+                    mkdir -p "$HOME/.local/share"
+                    mv -T "$omarchy_nvim_stage/.local/share/nvim" "$HOME/.local/share/nvim" || true
+                  fi
+                else
+                  echo "warning: seeding ~/.config/nvim with omarchy-nvim-setup failed; retrying on the next activation. Output:" >&2
+                  printf '%s\n' "''${omarchy_nvim_log:-}" >&2
+                fi
+                rm -rf "$omarchy_nvim_stage"
+              fi
             fi
           ''
         );
@@ -362,7 +466,7 @@ in
                 }:$PATH" \
                 OMARCHY_PATH="$omarchy_pkg" \
                 OMARCHY_THEME_HEADLESS=1 \
-                  "$omarchy_pkg/bin/omarchy-theme-set" "${effTheme}" >/dev/null 2>&1 \
+                  run --silence "$omarchy_pkg/bin/omarchy-theme-set" "${effTheme}" \
                   || echo "warning: failed to render omarchy theme '${effTheme}'; apply later with: omarchy-theme-set ${effTheme}" >&2 || true
               fi
             '';
@@ -386,10 +490,10 @@ in
         # Arch mise steps have no markers — they are no-op'd in the package.
         home.activation.omarchyFirstRunSkipMarkers = lib.hm.dag.entryAfter [ "omarchyThemeRender" ] ''
           omarchy_done="$HOME/.local/state/omarchy/done"
-          mkdir -p "$omarchy_done"
+          run mkdir -p "$omarchy_done"
           for marker in voxtype-install-invitation fingerprint-setup-invitation; do
             if [ ! -e "$omarchy_done/$marker" ]; then
-              touch "$omarchy_done/$marker"
+              run touch "$omarchy_done/$marker"
             fi
           done
         '';
@@ -404,15 +508,26 @@ in
         # user's later browser choice must survive a home-manager switch. The
         # first-run session path still runs the upstream command once behind
         # its finalize-user marker.
-        home.activation.omarchyDefaultBrowser = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-          if command -v xdg-settings >/dev/null 2>&1; then
-            if omarchy_default_browser="$(env -u BROWSER xdg-settings get default-web-browser 2>/dev/null)"; then
-              if [ -z "$omarchy_default_browser" ]; then
-                env -u BROWSER xdg-settings set default-web-browser chromium.desktop >/dev/null 2>&1 || true
+        #
+        # The activation PATH is Home Manager's own tool set
+        # (emptyActivationPath), without xdg-utils: the tools are called by
+        # store path. Skipped when Home Manager manages mimeapps.list
+        # (xdg.mimeApps): xdg-settings would replace HM's link with a file
+        # and the next switch would abort on it.
+        home.activation.omarchyDefaultBrowser = lib.hm.dag.entryAfter [ "linkGeneration" ] (
+          lib.optionalString (!hmManages ".config/mimeapps.list") (
+            let
+              xdgSettings = "${pkgs.coreutils}/bin/env -u BROWSER ${pkgs.xdg-utils}/bin/xdg-settings";
+            in
+            ''
+              if omarchy_default_browser="$(${xdgSettings} get default-web-browser 2>/dev/null)"; then
+                if [ -z "$omarchy_default_browser" ]; then
+                  run --silence ${xdgSettings} set default-web-browser chromium.desktop || true
+                fi
               fi
-            fi
-          fi
-        '';
-      }
-    );
+            ''
+          )
+        );
+      })
+    ];
 }

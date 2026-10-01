@@ -13,20 +13,20 @@
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "ttfx";
-  version = "0.3.2";
+  version = "0.5.0";
 
   src = fetchFromGitHub {
-    owner = "omacom-io";
+    owner = "omacom";
     repo = "ttfx";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-bwFjC6ZkZibkgXjoYVH2VuqqeXklGR9kmRl2fTitWBU=";
+    hash = "sha256-ZeWRyo9zturjRcH23SDgFOKoPOSY6nGMFzGeJAoDapk=";
   };
 
-  cargoHash = "sha256-DNrg12MNqBcQi6yvoJObM1gtE90iGBCxeQ3RwueYCE4=";
+  cargoHash = "sha256-ntoj5bmAa9U2+3K1UX6HL0t6MjfCYQNe5LuiuNJ/CnY=";
 
   meta = {
     description = "Terminal text effects as a single static binary (Rust TTE port, Omarchy screensaver)";
-    homepage = "https://github.com/omacom-io/ttfx";
+    homepage = "https://github.com/omacom/ttfx";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
     mainProgram = "ttfx";

@@ -1,27 +1,39 @@
 # Machine-readable classification of upstream runtime commands that
 # touch NixOS-owned system state, and of the menu entries that reach them.
 #
-# Two-tier scheme, enforced by checks.omarchy-runtime (flake.nix):
+# Two-tier scheme, enforced by checks.omarchy-runtime
+# (tests/checks/omarchy-runtime.nix):
 #
-#   1. Every packaged bin/ script NOT listed here is verified user-safe by
+#   1. Every scanned file NOT listed here is verified user-safe by
 #      construction: the build-time scan finds no forbidden mutation pattern
-#      (pacman/ufw/systemctl enable///etc-writes/modprobe/...) in its body.
-#      A NEW upstream script that mutates system state matches a pattern, is
-#      missing from this manifest, and FAILS the check — classification is
-#      forced at bump time. This is the fail-closed half of the scheme.
+#      (pacman/ufw/systemctl enable//etc-writes/modprobe/... and, as the
+#      catch-all, any sudo/pkexec invocation) in its body. Scanned: every
+#      regular file in bin/ (whatever its mode), install/user/** (first-run
+#      and finalize-user), default/bash/fns/*, the user-safe vendored
+#      migrations and the NixOS migration adapters. A NEW upstream file that
+#      mutates system state matches a pattern, is missing from this
+#      manifest, and FAILS the check — classification is forced at bump
+#      time. This is the fail-closed half of the scheme.
 #
-#   2. Every script listed here carries an explicit class:
+#   2. Every entry listed here carries an explicit class (bin scripts by
+#      name under `scripts`, other files by path under `files`):
 #      - declarative-note: body fully replaced with a pointer to the NixOS
-#        option that owns the state (exit 0). Scan requires ZERO hits.
-#      - nixos-adapted: hand-rewritten for NixOS (system mutations removed,
-#        user-state flows kept). Scan requires ZERO hits.
-#      - user-safe: kept verbatim. Scan allows ONLY the declared `allow`
-#        pattern groups; each entry documents why the leftover is safe.
+#        option that owns the state (exit 0). Verified by output: the stub
+#        prints exactly its `note`.
+#      - nixos-adapted: hand-rewritten or patched for NixOS (system
+#        mutations removed, user-state flows kept).
+#      - user-safe: kept verbatim.
+#      - port-owned: written by this port (not in the upstream tree).
+#      For the last three the scan allows ONLY the declared `allow` pattern
+#      groups (each entry documents why the leftover is safe), and every
+#      declared group must still match (a stale allow fails too).
 #
-# `note` is the pointer text baked into generated declarative-note stubs by
-# pkgs/omarchy.nix. hiddenMenuIds are deleted from omarchy-menu.jsonc at
-# package time (the scripts behind them are stubbed, so a stale caller can
-# never reach a real Arch mutation).
+# Keys are checked against the UPSTREAM tree (port-owned: against the
+# packaged bin/, and must not exist upstream). `note` is the pointer text
+# baked into generated declarative-note stubs by pkgs/omarchy.nix.
+# hiddenMenuIds are deleted from omarchy-menu.jsonc at package time (the
+# scripts behind them are stubbed, so a stale caller can never reach a real
+# Arch mutation).
 {
   scripts = {
     # --- declarative-note: stubbed; menu entry hidden where one existed ----
@@ -184,13 +196,6 @@
       # keep-two-versions cache policy.
       note = "No pacman package cache to prune; old system generations are your rollbacks. To reclaim space while keeping recent ones, enable nix.gc.automatic with nix.gc.options set to --delete-older-than 14d in your flake, or run sudo nix-collect-garbage --delete-older-than 14d.";
     };
-    # v4.0.1: the browser-accent policy helper — its only caller
-    # (omarchy-theme-set-browser) is a no-op stub on NixOS, and the helper
-    # itself is stubbed in pkgs/omarchy.nix for the same reason.
-    omarchy-theme-set-browser-policy = {
-      class = "declarative-note";
-      note = "Browser policy directories under /etc are module-owned on NixOS (programs.chromium.policies / environment.etc); the browser accent color cannot follow the theme at runtime.";
-    };
     # v4.0.2 sudoless Docker toggle: `usermod -aG docker` / `gpasswd -d` are
     # account mutations; on NixOS group membership is part of the flake.
     omarchy-setup-security-sudoless-docker = {
@@ -201,9 +206,26 @@
       class = "declarative-note";
       note = "Group membership is declarative: remove \"docker\" from users.users.<name>.extraGroups in your flake config and rebuild.";
     };
+    # Lutris comes from the catalog (the menu routes to omarchy-nix-add);
+    # upstream's script ends with `sudo sed -i … /usr/bin/lutris` to pin
+    # the system Python, a path that does not exist on NixOS (the command
+    # failed there after asking for the password). Reached only directly.
+    omarchy-install-gaming-lutris = {
+      class = "declarative-note";
+      note = "Lutris comes from the nixpkgs catalog: use Menu -> Install -> Gaming -> Lutris (omarchy-nix-add install.gaming.lutris); the nixpkgs build already runs on its own Python.";
+    };
+    # `sudo rm -f /usr/share/chromium/extensions/<id>.json` (absent on NixOS:
+    # a password prompt for a no-op) + the pkg-drop stub, which leaves the
+    # catalog package installed. Reached only directly (`omarchy remove
+    # service 1password`); the catalog removal is the real path.
+    omarchy-remove-service-1password = {
+      class = "declarative-note";
+      note = "1Password is removed with omarchy-nix-remove install.service.1password (or from your flake config); there is no /usr/share browser extension file to delete on NixOS.";
+    };
 
     # --- nixos-adapted: hand-rewritten in pkgs/omarchy.nix postPatch --------
-    # (system mutations removed; user-state flows kept)
+    # (system mutations removed; user-state flows kept; `allow` lists the
+    # audited privileged leftovers)
     omarchy-setup-security-sshd = {
       class = "nixos-adapted";
     };
@@ -212,6 +234,10 @@
     };
     omarchy-remove-dev-env = {
       class = "nixos-adapted";
+      # upstream's command-scoped sudo probes (sudo -k / -N -V) and the
+      # `sudo -N rm -f /usr/local/bin/opam` cleanup, pointed at the setuid
+      # wrapper; nothing NixOS-owned is touched (/usr/local is not).
+      allow = [ "sudo" ];
     };
     omarchy-remove-launcher-entry = {
       class = "nixos-adapted";
@@ -224,15 +250,31 @@
     };
     omarchy-debug = {
       class = "nixos-adapted";
+      # read-only `sudo dmesg` for the report.
+      allow = [ "sudo" ];
     };
     omarchy-upload-log = {
       class = "nixos-adapted";
+      # prose only: the "install log not found (looked at /var/log ...)"
+      # warning; the log paths are read, never written.
+      allow = [ "var-write" ];
     };
     omarchy-theme-set-browser = {
       class = "nixos-adapted";
     };
+    # v4.0.1: the browser-accent policy helper — its only caller
+    # (omarchy-theme-set-browser) is a no-op on NixOS, so pkgs/omarchy.nix
+    # replaces it with the same silent no-op (it was classified
+    # declarative-note, but that generated stub was overwritten by the
+    # silent one and its note never shipped).
+    omarchy-theme-set-browser-policy = {
+      class = "nixos-adapted";
+    };
     omarchy-update-firmware = {
       class = "nixos-adapted";
+      # `sudo fwupdmgr update`: firmware updates run through the declarative
+      # services.fwupd daemon; the ESP staging copy is removed.
+      allow = [ "sudo" ];
     };
     # omarchy-install-ai-chatgpt: the pkg-add core already routes into the
     # declarative stub; only the /usr/bin/chatgpt launch path is adapted
@@ -250,6 +292,61 @@
     omarchy-install-dev-env = {
       class = "nixos-adapted";
     };
+    # Replaced or patched by the NixOS update/migration flow; the sudo
+    # leftovers are the update's own authorization:
+    # - the command-scoped sudo boundary of omarchy-update (349ecc0): `sudo
+    #   true` authorization + keepalive, sudo -k revocation, the sleep
+    #   inhibitor's sudo/pkexec hold — paths pointed at the setuid wrappers.
+    omarchy-update = {
+      class = "nixos-adapted";
+      allow = [ "sudo" ];
+    };
+    omarchy-security-functions = {
+      class = "nixos-adapted";
+      allow = [ "sudo" ];
+    };
+    omarchy-update-stay-awake = {
+      class = "nixos-adapted";
+      allow = [ "sudo" ];
+    };
+    # - the NixOS-native package refresh: sudo nix flake update (root-owned
+    #   flake) + sudo nixos-rebuild.
+    omarchy-update-system-pkgs = {
+      class = "nixos-adapted";
+      allow = [ "sudo" ];
+    };
+    # - prose only: "skipping snapper snapshot" / "sudo nixos-rebuild
+    #   list-generations" hints; nothing is run.
+    omarchy-snapshot = {
+      class = "nixos-adapted";
+      allow = [
+        "snapper"
+        "sudo"
+      ];
+    };
+
+    # --- port-owned: written by pkgs/omarchy.nix installPhase -------------
+    # Menu Install/Remove transactions: sudo only for a root-owned consumer
+    # flake (read/write of omarchy-packages.json and the options pair,
+    # intent-to-add in a repository the user does not own) and the
+    # nixos-rebuild itself.
+    omarchy-nix-add = {
+      class = "port-owned";
+      allow = [ "sudo" ];
+    };
+    omarchy-nix-remove = {
+      class = "port-owned";
+      allow = [ "sudo" ];
+    };
+    omarchy-nix-pkglib = {
+      class = "port-owned";
+      allow = [ "sudo" ];
+    };
+    # prose only: "Arch Omarchy installs packages with pacman/yay".
+    omarchy-nix-declarative-note = {
+      class = "port-owned";
+      allow = [ "pkg-helpers" ];
+    };
 
     # --- user-safe: kept verbatim; `allow` lists the audited leftovers ------
     # v4.0.3 AI wave. The Hermes DESKTOP pair is unreachable on NixOS
@@ -264,8 +361,8 @@
     omarchy-install-ai-hermes = {
       class = "user-safe";
       # 349ecc0 slimmed it to `omarchy-install-hermes-cli --now` + the
-      # desktop launch; the gateway-unit handling moved into install-hermes-cli.
-      allow = [ "systemctl-user" ];
+      # desktop launch; the gateway-unit handling moved into
+      # install-hermes-cli, so nothing is left to allow.
     };
     omarchy-install-hermes-cli = {
       class = "user-safe";
@@ -301,16 +398,24 @@
     };
     omarchy-restart-trackpad = {
       class = "user-safe";
-      # modprobe -r + modprobe of intel_quicki2c: transient kernel state, an
-      # upstream-designed hardware reset; no persistent config is touched.
-      allow = [ "modprobe" ];
+      # sudo modprobe -r + modprobe of intel_quicki2c and a sudo tee of the
+      # i2c_hid_acpi unbind/bind sysfs files: transient kernel/device state,
+      # an upstream-designed hardware reset; no persistent config is touched.
+      allow = [
+        "modprobe"
+        "sudo"
+      ];
     };
     omarchy-windows-vm = {
       class = "user-safe";
       # modprobe + "sudo systemctl start docker" strings are printed hints in
-      # an error dialog, never executed.
+      # an error dialog, never executed. Its privileged actions re-exec
+      # /usr/bin/omarchy-windows-vm through pkexec, a path that does not
+      # exist on NixOS: priv_target fails closed ("refusing to run a
+      # non-root-owned command as root"), so only the docker-group path runs.
       allow = [
         "modprobe"
+        "sudo"
         "systemctl-restart"
       ];
     };
@@ -327,8 +432,12 @@
     };
     omarchy-dev-status = {
       class = "user-safe";
-      # Read-only check of /etc/omarchy.conf (always absent on NixOS).
-      allow = [ "etc-sysconf" ];
+      # Read-only check of /etc/omarchy.conf (always absent on NixOS) and
+      # read-only sudo -n probes of how sudo resolves omarchy-* commands.
+      allow = [
+        "etc-sysconf"
+        "sudo"
+      ];
     };
     omarchy-reminder = {
       class = "user-safe";
@@ -339,8 +448,12 @@
     omarchy-restart-audio = {
       class = "user-safe";
       # systemctl --user restart/kill/start of pipewire+wireplumber USER
-      # services — upstream's audio-recovery action, user scope only.
-      allow = [ "systemctl-user" ];
+      # services — upstream's audio-recovery action — plus `sudo usbreset`
+      # of a stuck USB audio device (transient device state).
+      allow = [
+        "sudo"
+        "systemctl-user"
+      ];
     };
     omarchy-restart-xcompose = {
       class = "user-safe";
@@ -352,7 +465,10 @@
       # Transient `sudo systemctl restart systemd-timesyncd` to force a clock
       # sync (upstream intent of menu update.time). No persistent config is
       # touched; timesyncd itself runs declaratively on NixOS.
-      allow = [ "systemctl-restart" ];
+      allow = [
+        "sudo"
+        "systemctl-restart"
+      ];
     };
     # v4.0.0: persist the Bluetooth adapter power state via an rfkill soft
     # block (the state systemd-rfkill restores from /var/lib/systemd-rfkill
@@ -375,11 +491,90 @@
         "nmcli-radio"
       ];
     };
+    # Privileged, but on state NixOS does not own declaratively:
+    # - LUKS keyslots: `sudo cryptsetup luksChangeKey` (boot.initrd.luks only
+    #   unlocks with whatever passphrase the header holds).
+    omarchy-drive-password = {
+      class = "user-safe";
+      allow = [ "sudo" ];
+    };
+    # - transient device state: Apple Studio Display brightness through
+    #   asdcontrol (packaged here) on the hiddev node.
+    omarchy-brightness-display-apple = {
+      class = "user-safe";
+      allow = [ "sudo" ];
+    };
+    # - runtime container state: `sudo docker run` of dev databases on the
+    #   declaratively enabled docker daemon, and `pkexec lazydocker` (a TUI
+    #   on the docker socket).
+    omarchy-install-docker-dbs = {
+      class = "user-safe";
+      allow = [ "sudo" ];
+    };
+    omarchy-launch-docker-tui = {
+      class = "user-safe";
+      allow = [ "sudo" ];
+    };
+    # - read-only: the firmware's MSDM table (Windows product key).
+    omarchy-windows-key = {
+      class = "user-safe";
+      allow = [ "sudo" ];
+    };
+    # - the sudo timestamp itself (sudo -v + keepalive loop).
+    omarchy-sudo-keepalive = {
+      class = "user-safe";
+      allow = [ "sudo" ];
+    };
     # v4.0.0: crash-capture on/off — a user toggle file plus starting/stopping
     # the per-user omarchy-crash-watch unit (user scope only).
     omarchy-toggle-crash-capture = {
       class = "user-safe";
       allow = [ "systemctl-user" ];
+    };
+  };
+
+  # Non-bin files in the scan (install/user/**, default/bash/fns/*), by
+  # path relative to the omarchy root; same classes and `allow` rules.
+  files = {
+    # first-run: enables the per-user units; patched in pkgs/omarchy.nix so
+    # owed.service (owe can be excluded) is only enabled when it exists.
+    "install/user/first-run/enable-user-units.sh" = {
+      class = "nixos-adapted";
+      allow = [ "systemctl-user" ];
+    };
+    # Read-only probe of /etc/pam.d/omarchy-lock-fingerprint (the module
+    # writes it when omarchy.fingerprint.enable is set); "Enable sudo and
+    # unlocking" is notification prose. The invitation leads to the
+    # declarative-note stub of omarchy-setup-security-fingerprint.
+    "install/user/first-run/setup-fingerprint.hook" = {
+      class = "user-safe";
+      allow = [
+        "etc-sysconf"
+        "sudo"
+      ];
+    };
+    # ASUS ROG + ALC285 only: amixer levels and a best-effort
+    # `sudo alsactl store` (|| true) of the mixer state — runtime ALSA
+    # state, not NixOS-owned config.
+    "install/user/hardware/asus/fix-mic.sh" = {
+      class = "user-safe";
+      allow = [ "sudo" ];
+    };
+    # Read-only probe of /etc/modprobe.d/nvidia.conf (absent on NixOS: the
+    # lspci driver check decides); writes only ~/.config/hypr.
+    "install/user/hardware/fix-nouveau-cursor.sh" = {
+      class = "user-safe";
+      allow = [
+        "etc-sysconf"
+        "modprobe"
+      ];
+    };
+    # iso2sd / format-drive shell functions: sudo dd/wipefs/parted/mkfs on
+    # a removable drive the user names — explicit user actions on media,
+    # not system state.
+    "default/bash/fns/drives" = {
+      class = "user-safe";
+      allow = [ "sudo" ];
     };
   };
 

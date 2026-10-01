@@ -38,13 +38,13 @@
 }:
 
 let
-  version = "4.28.0";
+  version = "4.31.1";
 
   src = fetchFromGitHub {
-    owner = "bjarneo";
+    owner = "omacom";
     repo = "aether";
-    rev = "refs/tags/v${version}";
-    hash = "sha256-IQH2bbuhrsoe71AH+NfklfBIRWw12VovYtzIIad6WrU=";
+    tag = "v${version}";
+    hash = "sha256-ZOFHeAUJrohcTtqaBNXnuqA19Cx+i6+k6clM+Cpx9X0=";
   };
 
   # fetcherVersion 2 fetches packuments, which npm install needs to resolve
@@ -52,7 +52,7 @@ let
   npmDeps = fetchNpmDeps {
     inherit src;
     sourceRoot = "${src.name}/frontend";
-    hash = "sha256-ysGl5k1fEavHxxz0Of3Aekdk7A2AtklxLJ3TVxM1XJA=";
+    hash = "sha256-zj1BbI+8DxpaNDIfdXfK03XjtNoJS0Po1QEJ0ZHxoj8=";
     fetcherVersion = 2;
   };
 
@@ -93,7 +93,7 @@ buildGoModule (finalAttrs: {
   pname = "aether";
   inherit version src;
 
-  vendorHash = "sha256-iIqJCRVgs1kg2nymuRO1FWdwbb8OhSAaQTCqaIdOPec=";
+  vendorHash = "sha256-i8Tr4zKm+LaaZ/zKA8yoZC5mv2s4DUqaeT7Iq0uB+ME=";
 
   nativeBuildInputs = [
     pkg-config
@@ -126,19 +126,20 @@ buildGoModule (finalAttrs: {
   # GUI app — tests need a display/running instance; not meaningful sandboxed.
   doCheck = false;
 
-  # Desktop integration (matches AUR package(): build/linux/aether.desktop +
-  # icon.png). Source icon is 622x561; install under the closest standard
-  # hicolor size so Icon=aether resolves from the applications entry.
+  # Desktop integration (matches the omarchy-pkgs PKGBUILD package():
+  # build/linux/aether.desktop + the 512x512 assets/aether-icon-512.png as
+  # the hicolor icon, so Icon=aether resolves from the applications entry).
   postInstall = ''
     install -Dm644 build/linux/aether.desktop \
       "$out/share/applications/aether.desktop"
-    install -Dm644 icon.png \
+    install -Dm644 assets/aether-icon-512.png \
       "$out/share/icons/hicolor/512x512/apps/aether.png"
   '';
 
   meta = {
     description = "Native Omarchy theming app — extract wallpaper colors and apply cohesive desktop themes";
-    homepage = "https://github.com/bjarneo/aether";
+    homepage = "https://github.com/omacom/aether";
+    # The repo ships no LICENSE file; MIT is what the omarchy-pkgs PKGBUILD declares.
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
     mainProgram = "aether";

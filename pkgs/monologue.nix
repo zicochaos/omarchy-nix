@@ -21,13 +21,13 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "monologue";
-  version = "0.2.0";
+  version = "0.3.0";
 
   src = fetchFromGitHub {
     owner = "omacom";
     repo = "monologue";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-usIKaIc5lF29sUx+5zrzNGHs+xnfU3mVltFAMe1OXrc=";
+    hash = "sha256-juzlFfzZ9ZtCKwy8/ckJAOhgN+4NwZ3QyN4Fzr8Vvqs=";
   };
 
   nativeBuildInputs = [

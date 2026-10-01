@@ -56,8 +56,9 @@ headlessly than SDDM), and asserts the whole stack came up:
    Hyprland Lua config chain (bootstrap → `require default.hypr.omarchy` →
    user stubs) loaded without error and the compositor initialized.
 2. `quickshell list` returns a registered instance, proof `shell.qml`
-   loaded successfully against nixpkgs's quickshell (API mismatch would
-   leave the list empty).
+   loaded successfully against the pinned quickshell (`pkgs/quickshell.nix`,
+   injected as `omarchy.quickshellPackage`; an API mismatch would leave the
+   list empty).
 3. A screenshot is captured for diagnostics.
 
 Run just the test:
@@ -83,15 +84,16 @@ For interactive debugging, build the demo VM and run it with a GPU device:
 
 ```bash
 nix build .#nixosConfigurations.demo.config.system.build.vm --out-link result-vm
-QEMU_OPTS="-device virtio-vga" ./result-vm/bin/run-nixos-vm
+QEMU_OPTS="-device virtio-gpu-pci" ./result-vm/bin/run-nixos-vm
 ```
 
 This opens a QEMU window on the host's display. Log in as `demo` / `demo`
 at SDDM and the desktop should come up.
 
-If quickshell fails to load (API mismatch with nixpkgs's pinned version),
-add the `quickshell` flake input documented in `flake.nix` and switch to
-its `#quickshell` package, then rebuild.
+If quickshell fails to load (an API mismatch between the vendored shell and
+the quickshell build), point `omarchy.quickshellPackage` at another build
+(the flake's `packages.x86_64-linux.quickshell` is the pinned default; see
+`pkgs/quickshell.nix` for why it is pinned) and rebuild.
 
 ## Why not the minimal ISO
 

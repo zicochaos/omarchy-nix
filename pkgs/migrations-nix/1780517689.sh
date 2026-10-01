@@ -12,6 +12,13 @@ EXT_PATH="/run/current-system/sw/share/omarchy/default/chromium/extensions"
 for conf in chromium chrome google-chrome brave brave-beta brave-nightly brave-origin-beta microsoft-edge-stable; do
   flags="$HOME/.config/$conf-flags.conf"
   [[ -f $flags ]] || continue
+  # Symlinked flags files are edited through the link (as upstream does);
+  # a read-only target (a Home Manager store link) is left alone instead of
+  # failing this migration on every run.
+  if [[ -L $flags && ! -w $(readlink -f -- "$flags") ]]; then
+    echo "Preserving read-only symlinked $flags"
+    continue
+  fi
 
   sed -i --follow-symlinks "s|/usr/share/omarchy/default/chromium/extensions|$EXT_PATH|g" "$flags"
 

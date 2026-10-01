@@ -29,9 +29,6 @@
   name = "omarchy-sddm";
   meta.maintainers = [ ];
 
-  # testScriptWithTypes chokes on dynamic dispatch (same as tests/desktop.nix).
-  skipTypeCheck = true;
-
   nodes.machine =
     {
       config,
@@ -69,7 +66,7 @@
       };
 
       home-manager.users.demo = {
-        imports = [ omarchy.homeManagerModules.default ];
+        imports = [ omarchy.homeModules.default ];
         home.username = "demo";
         home.homeDirectory = "/home/demo";
         home.stateVersion = "26.05";
@@ -150,11 +147,18 @@
 
     # --- Greeter rendering of the vendored theme (autologin skips it). ----
     # Run SDDM's own greeter binary in test mode, on the running session,
-    # against the vendored theme. A theme that fails to load exits/faults or
-    # logs a QML error; a healthy one stays alive until killed. Resolve the
-    # greeter through the `sddm` on PATH (the display-manager module puts
-    # the package in systemPackages; the unit itself execs a generated
-    # script) so this follows the package the daemon actually runs.
+    # against the vendored theme. Resolve the greeter through the `sddm` on
+    # PATH (the display-manager module puts the package in systemPackages;
+    # the unit itself execs a generated script) so this follows the package
+    # the daemon actually runs.
+    #
+    # Where the evidence is: the greeter logs through SDDM's own message
+    # handler into the journal; its stderr only carries libEGL noise. A
+    # theme whose QML fails to load does NOT exit: SDDM logs the QML error,
+    # then "Fallback to embedded theme", and keeps running with its built-in
+    # theme, window mapped (measured with a theme importing a missing
+    # module). Liveness alone therefore proves nothing; the journal must
+    # show our Main.qml loading and no QML error or fallback.
     sddm_bin = machine.succeed("readlink -f $(command -v sddm)").strip()
     assert sddm_bin.endswith("/bin/sddm"), "unexpected sddm binary: %r" % sddm_bin
     greeter = sddm_bin[: -len("/bin/sddm")] + "/bin/sddm-greeter-qt6"
@@ -168,22 +172,62 @@
                 + " > /tmp/greeter.log 2>&1 & echo $! > /tmp/greeter.pid"
             )
         )
-        # Give the greeter time to load the QML and paint (or die trying).
-        machine.sleep(10)
         pid = machine.succeed("cat /tmp/greeter.pid").strip()
-        alive = machine.succeed(
-            "kill -0 " + pid + " 2>/dev/null && echo alive || echo dead"
-        ).strip()
-        log = machine.succeed("cat /tmp/greeter.log || true")
-        if alive != "alive":
+        greeter_journal = "journalctl -b --no-pager -o cat _PID=" + pid
+
+        def greeter_failure(reason):
             machine.screenshot("greeter-failed")
-            raise AssertionError(
-                "sddm-greeter exited before rendering the theme; log: %r" % log
+            return AssertionError(
+                "sddm-greeter %s; journal: %r; stderr: %r" % (
+                    reason,
+                    machine.execute(greeter_journal)[1],
+                    machine.execute("cat /tmp/greeter.log")[1],
+                )
             )
-        for marker in ("QQmlApplicationEngine failed", "is not a type", "Failed to load"):
-            assert marker not in log, \
-                "greeter logged %r while loading the theme: %r" % (marker, log)
-        machine.succeed("kill " + pid + " 2>/dev/null || true")
+
+        # Positive readiness: the greeter created its view for the output
+        # (logged after the theme QML was loaded or rejected) and its window
+        # is mapped on the session's compositor.
+        try:
+            machine.wait_until_succeeds(
+                greeter_journal + " | grep -q 'Adding view for'", timeout=60
+            )
+            machine.wait_until_succeeds(
+                as_demo(
+                    "hyprctl -j clients | jq -e \"any(.[]; .pid == "
+                    + pid + " and .mapped)\""
+                ),
+                timeout=30,
+            )
+        except Exception:
+            raise greeter_failure("never mapped a view")
+        if machine.execute("kill -0 " + pid)[0] != 0:
+            raise greeter_failure("exited after mapping its view")
+
+        journal = machine.succeed(greeter_journal).splitlines()
+        loading = "Loading file://" + theme_dir + "/Main.qml"
+        if not any(line.startswith(loading) for line in journal):
+            raise greeter_failure("did not load the vendored Main.qml")
+        error_markers = [
+            "Fallback to embedded theme",
+            "is not installed",
+            "is not a type",
+            "QQmlApplicationEngine failed",
+            "Failed to load",
+            "ReferenceError",
+            "TypeError",
+            "Cannot assign to non-existent property",
+            # any QML diagnostic located in the theme's own files
+            "file://" + theme_dir + "/",
+        ]
+        problems = [
+            line
+            for line in journal
+            if not line.startswith(loading) and any(m in line for m in error_markers)
+        ]
+        if problems:
+            raise greeter_failure("logged QML problems %r" % problems)
+        machine.succeed("kill " + pid)
 
     # Diagnostics for manual inspection (framebuffer painting under plain
     # QEMU is limited — see tests/desktop.nix; the assertions above are the

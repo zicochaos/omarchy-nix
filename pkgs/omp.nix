@@ -25,11 +25,11 @@
 }:
 stdenv.mkDerivation (finalAttrs: {
   pname = "omp";
-  version = "18.2.6";
+  version = "18.4.5";
 
   src = fetchurl {
     url = "https://github.com/can1357/oh-my-pi/releases/download/v${finalAttrs.version}/omp-linux-x64";
-    sha256 = "18j7jbpqxbzii5yy1hrczc9z4lcxk71iw5bzw36dh8z8j665jf0g";
+    hash = "sha256-QscQI5s/wwuXWUJPlzxsFDcJk11XUr5+7I17AR9A2GQ=";
   };
 
   nativeBuildInputs = [ makeBinaryWrapper ];

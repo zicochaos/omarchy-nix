@@ -1,6 +1,6 @@
 # omarchy-nvim — the Omarchy LazyVim starter Neovim configuration.
 #
-# Upstream packages this from github.com/omacom-io/omarchy-pkgs
+# Upstream packages this from github.com/omacom/omarchy-pkgs
 # (pkgbuilds/omarchy-nvim). The PKGBUILD composes the config from two sources:
 #   1. github.com/LazyVim/starter  — the LazyVim template (branch `main`; no
 #      release tags exist).
@@ -42,7 +42,7 @@ let
 
   # Omarchy's packaging repo; only pkgbuilds/omarchy-nvim/ is consumed.
   omarchyPkgs = fetchFromGitHub {
-    owner = "omacom-io";
+    owner = "omacom";
     repo = "omarchy-pkgs";
     rev = "e2bc7586e2bebfa09365fc5e32059969f0714ddc";
     hash = "sha256-yAN/F0nRr3XiMUFuI1TD+Ve43F3cNE/2fOaDEipwk2U=";
@@ -115,7 +115,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       reload). Unlike the Arch package, this Nix derivation does not pre-build
       the Lazy plugin cache; lazy.nvim installs plugins on first launch.
     '';
-    homepage = "https://github.com/omacom-io/omarchy-pkgs/tree/master/pkgbuilds/omarchy-nvim";
+    homepage = "https://github.com/omacom/omarchy-pkgs/tree/master/pkgbuilds/omarchy-nvim";
     # Starter is Apache-2.0; the Omarchy overlay is MIT.
     license = with lib.licenses; [
       mit
@@ -123,6 +123,5 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     ];
     platforms = lib.platforms.linux;
     mainProgram = "omarchy-nvim-setup";
-    outputsToInstall = [ "out" ];
   };
 })

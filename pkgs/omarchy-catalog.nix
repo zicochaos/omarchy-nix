@@ -86,9 +86,9 @@
       arch = "bitwarden";
       pkgs = [ "bitwarden-desktop" ];
       binaries = [ "bitwarden" ];
-      # bitwarden-desktop itself is free (GPL3) on this pin; its electron
-      # runtime is marked insecure — permit only when selected.
-      insecureNames = [ "electron-39.8.10" ];
+      # Free (GPL3), and on this pin (bitwarden-desktop 2026.8.0) it no
+      # longer pulls an insecure electron: the former electron-39.8.10
+      # permit was dropped once the entry evaluated without it (2026-10-01).
     };
     # --- Editors ---
     "install.editor.vscode" = {
@@ -172,7 +172,7 @@
     # v4.0.3: OpenClaw is both an Install > AI app and a default-agent
     # choice upstream (Arch installs it via its own pacman package + CLI
     # installer). The nixpkgs package is MIT but currently flagged insecure
-    # (2026.5.7) — the permit is entry-scoped, like bitwarden's electron.
+    # (2026.5.7) — the permit is entry-scoped (applied only when selected).
     "install.ai.openclaw" = {
       arch = "openclaw";
       pkgs = [ "openclaw" ];
@@ -200,9 +200,8 @@
     # T3 Code (t3.codes, MIT): nixpkgs carries it on the pin (t3code,
     # built from source — the upstream Arch package is an AppImage repack,
     # hence the arch name t3code-bin with the t3code-desktop binary here).
-    # The pin's 0.0.28 bundles electron 40.10.5, flagged insecure (EOL) —
-    # the bitwarden-electron pattern: entry-scoped permit, applied only
-    # when the entry is selected.
+    # The pin's 0.0.24 bundles electron 40.10.5, flagged insecure (EOL) —
+    # entry-scoped permit, applied only when the entry is selected.
     "install.ai.t3-code" = {
       arch = "t3code-bin";
       pkgs = [ "t3code" ];

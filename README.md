@@ -7,7 +7,7 @@ Omarchy is DHH's opinionated Linux desktop. As of Quattro, its "desktop" is a
 single [quickshell](https://quickshell.org) process: the bar, launcher,
 menus, notifications, OSDs, control panels, lock screen, and polkit agent are
 all plugins of one long-running shell. It is driven by a Lua-based Hyprland
-config (≥0.56) and ~456 `omarchy-*` bash scripts, themed by a TOML + template
+config (≥0.56) and ~470 `omarchy-*` bash scripts, themed by a TOML + template
 engine.
 
 This project ports that to NixOS **by vendoring upstream**, not by
@@ -22,7 +22,8 @@ reproduces the real Omarchy desktop: Hyprland session via uwsm,
 quickshell bar/menus, Super+Enter terminal, theme switching with live
 colors (not just wallpaper), editable user configs, first-run hooks, the
 full upstream package set (including the 16 upstream-owned packages
-absent from nixpkgs, packaged under `pkgs/`), and a NixOS-native
+that the pinned nixpkgs lacks or carries only as an unrelated or older
+build, packaged under `pkgs/`), and a NixOS-native
 `omarchy update` flow. Verified in a running session on real Intel GPU
 hardware (2026-07-28). The automated acceptance suite checks the subset
 described below on subsequent changes.
@@ -31,8 +32,8 @@ Automated NixOS tests run under `nix flake check`:
 `checks.omarchy-desktop` (stack comes up), `checks.omarchy-ux`
 (behavioral acceptance: Super+Enter opens foot, headless theme rendering,
 config editability, and command coverage of menu actions and `when:`/`disabled:` guards,
-autostart, and systemd command — `bash -c` interiors and QML exec sites
-are guarded by count tripwires), `checks.omarchy-fish` (vendor
+autostart, and systemd command — the shell's QML exec sites are pinned
+by a reviewed per-site list), `checks.omarchy-fish` (vendor
 profile parity), and `checks.omarchy-sddm` (the real login path: SDDM
 with its Wayland greeter and the omarchy theme, autologin into the uwsm
 session, and a greeter render of the vendored theme).
@@ -46,7 +47,7 @@ the greeter's theme render and the autologin handoff, not a real login),
 or a complete update followed by activation. Those paths
 still need separate desktop verification after relevant changes.
 
-> Upstream's Quattro line is at `v4.0.3` (2026-09); this port tracks the
+> Upstream's Quattro line is at `v4.0.4` (2026-09-15); this port tracks the
 > `quattro` branch (release + post-release fixes). The vendored `version`
 > file still reads `4.0.0.alpha` — upstream does not bump it at release time.
 
@@ -78,15 +79,22 @@ for manual desktop exploration.
 
 ## Changelog
 
-- **2026-09-30** — The upstream quattro bump (`8b4eae6`, 29 commits)
-  ships upstream's new default app **Hype** (Markdown presentations,
-  packaged here), the **no-animations mode** (on by default in VMs,
-  toggle from the menu), grouped notifications and a faster bash prompt.
-  Upstream's per-user **SSH Agent** entries are hidden: NixOS already
-  runs `gcr-ssh-agent` declaratively through
-  `services.gnome.gcr-ssh-agent`. Bash now gets the Omarchy shell setup
-  (aliases, functions, starship, zoxide, fzf key bindings) through a
-  seeded `~/.bashrc`, which is only created when absent.
+- **2026-10-01** — A full project audit and its fixes. **Security:** the
+  module no longer grants wheel users NOPASSWD `sudo tzupdate` (a root
+  write primitive through its path flags) or Nix `trusted-users` (root
+  equivalent). **Fixes:** `omarchy update` offers the reboot again after
+  its default `boot`-mode rebuild; the bar's keyboard-layout widget works
+  (`xkbcli` on PATH); Home Manager no longer overwrites files your own
+  Home Manager configuration manages; migrations that ask a question no
+  longer swallow the rest of the queue; `exclude_packages` accepts
+  attribute names; a consumer's own `allowUnfreePredicate` no longer
+  breaks evaluation; Hyprland is pinned to the 0.56.2 release with
+  matching 64/32-bit Mesa; herdr evaluates without
+  import-from-derivation. **New options:** `omarchy.systemTuning.enable`
+  and `omarchy.hyprlandCache.enable`; the Home-Manager module is exported
+  as `homeModules.default`. **Tests:** every PR now evaluates the whole
+  flake, several checks that could never fail now can, and the nightly
+  run updates all inputs as an early-warning canary.
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md). Upstream adaptation
 details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
@@ -97,8 +105,8 @@ details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
 The running desktop is produced by the same code that produces it on Arch
 Omarchy: the same quickshell process (`$OMARCHY_PATH/shell/shell.qml`), the
-same Hyprland Lua config chain, the same ~456 `omarchy-*` bash scripts, the
-same TOML + sed theme engine. The NixOS layer is glue (a vendoring
+same Hyprland Lua config chain, the same ~470 `omarchy-*` bash scripts, the
+same TOML + template theme engine. The NixOS layer is glue (a vendoring
 derivation, two modules, options, activation), not a reimplementation.
 
 When a change is proposed, ask: does the running desktop stay the real
@@ -139,7 +147,7 @@ modules. One `omarchy.enable = true` wires the whole desktop:
         home-manager.nixosModules.home-manager
         # The omarchy HM module is shared with all home-manager.users, so
         # per-user blocks only carry user settings (see example/).
-        { home-manager.sharedModules = [ omarchy-nix.homeManagerModules.default ]; }
+        { home-manager.sharedModules = [ omarchy-nix.homeModules.default ]; }
       ];
     };
   };
@@ -158,12 +166,15 @@ modules. One `omarchy.enable = true` wires the whole desktop:
 > supported combination is a `nixos-26.05` nixpkgs, the one
 > `nix flake check` tests), and the vendored tree, the theme packages and
 > the upstream-owned apps rebuild once per nixpkgs revision (the rest of
-> the desktop is substitutable from cache.nixos.org /
-> hyprland.cachix.org).
+> the desktop is substitutable from cache.nixos.org, except Hyprland and
+> its hypr* libraries: hyprland.cachix.org only keeps recent builds of
+> Hyprland's main branch, not the release this flake pins, so those
+> compile locally once per Hyprland bump).
 >
-> Two duplicates remain by design: the Hyprland stack and
-> `hardware.graphics.package` (mesa) come from the `hyprland` input's own
-> nixpkgs, because stable nixpkgs lags Hyprland's requirements. Installing
+> Two duplicates remain by design: the Hyprland stack and Mesa
+> (`hardware.graphics.package` and `package32`) come from the `hyprland`
+> input's own nixpkgs, because Hyprland is built against it and the
+> drivers have to match the compositor. Installing
 > the Hermes agent from the menu pulls that project's own flake and
 > nixpkgs as well. To track exactly the tested combination instead, omit
 > the follow — the desktop is then built from this flake's pinned nixpkgs
@@ -229,10 +240,14 @@ SSH-able over the LAN. Both are plain `mkDefault`s: set
 want password logins.
 
 Other security-relevant defaults mirror upstream on purpose:
-`nix.settings.trusted-users` includes `@wheel` (every wheel user is a
-trusted Nix user, as on Arch Omarchy); `omarchy-tzupdate` gets NOPASSWD
-sudo (runtime timezone changes fight the declarative `time.timeZone` —
-the rebuild wins); the lock-screen PAM stack keeps upstream's `nullok`
+NOPASSWD sudo covers only upstream's `timedatectl set-timezone <zone>`
+rule (runtime timezone changes fight the declarative `time.timeZone` —
+the rebuild wins); there is no NOPASSWD `tzupdate` and no
+`nix.settings.trusted-users` grant for `@wheel`, since both would let any
+process running as a wheel user reach root without the password (the
+Hyprland Cachix works from the system-level substituter settings
+alone, and `omarchy.hyprlandCache.enable = false` drops that
+third-party cache and its key); the lock-screen PAM stack keeps upstream's `nullok`
 (accounts without a password unlock with an empty one); and SDDM
 autologin uses `relogin = true` (see `omarchy.autologin.user` in
 [`docs/options.md`](docs/options.md)).
@@ -333,7 +348,7 @@ libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 16
 upstream-owned packages packaged by this flake (aether, omacut, omawrite,
 omacalc, omasnap, monologue, hype, owe, try, asdcontrol, yaru-theme,
 hyprland-guiutils, hyprland-preview-share-picker, omarchy-nvim, herdr, ttfx),
-the parity services (avahi, printing, docker, gnome-keyring, fwupd, udiskie,
+the parity services (avahi, printing, docker, gnome-keyring, fwupd, upower,
 …, all `mkDefault`), a uwsm-managed Hyprland session (≥0.56 for the
 Lua config), default SDDM, PipeWire/NetworkManager/Bluetooth daemons, the
 Omarchy Plymouth boot splash, and the Omarchy SDDM login theme + Hyprland
@@ -359,14 +374,14 @@ activation moves them aside to `<path>.hm-backup-<timestamp>` first
 (existing symlinks are simply adopted).
 
 See [`docs/options.md`](docs/options.md) for the full `omarchy.*` option
-reference, and [`docs/install.md`](docs/install.md) for the "fresh NixOS
-minimal install" walkthrough (partition, wire the flake, `nixos-install`,
-reboot into the desktop).
+reference, and [`docs/install.md`](docs/install.md) for the fresh-install
+walkthrough (graphical ISO with the Calamares installer and "No Desktop",
+then wire the flake, `nixos-rebuild switch`, reboot into the desktop).
 
 ### Fish shell (opt-in)
 
 The default shell stays Bash, exactly like upstream. To opt a user into the
-vendored [omarchy-fish](https://github.com/omacom-io/omarchy-fish) profile
+vendored [omarchy-fish](https://github.com/omacom/omarchy-fish) profile
 (+ fzf.fish v10.3):
 
 ```nix
@@ -380,7 +395,7 @@ in `~/.config/fish/functions/` override the vendor ones. The profile carries
 the Quattro bash-parity helpers (`cy`, `mup`, `rsw`, `lsw`, `dsw`, `tds`),
 the current `omarchy` completion contract and a lazy `try` integration. It
 is pinned to the fork rev carrying
-[omacom-io/omarchy-fish#7](https://github.com/omacom-io/omarchy-fish/pull/7)
+[omacom/omarchy-fish#7](https://github.com/omacom/omarchy-fish/pull/7)
 until an upstream release includes that PR.
 
 ## Testing
@@ -389,7 +404,8 @@ The desktop is verified by an automated NixOS test that runs under
 `nix flake check`:
 
 ```bash
-nix flake check                # runs checks.omarchy-desktop + -ux + -fish + -sddm
+nix flake check                # every check: the 4 VM tests (desktop, ux, fish,
+                               # sddm) plus the eval/build checks in tests/checks/
 nix build .#checks.x86_64-linux.omarchy-desktop.driver   # just the test driver
 ```
 
@@ -414,15 +430,23 @@ pkgs/                  # vendoring + themes + 16 upstream-owned packages:
   aether.nix asdcontrol.nix omacalc.nix omacut.nix omawrite.nix omasnap.nix
   monologue.nix hype.nix owe.nix
   try.nix hyprland-guiutils.nix hyprland-preview-share-picker.nix
-  omarchy-nvim.nix omarchy-fish.nix ttfx.nix herdr.nix
+  omarchy-nvim.nix omarchy-fish.nix ttfx.nix herdr.nix herdr-zig-deps.nix
+  quickshell.nix       #   quickshell 0.3.1 pin (stable nixpkgs has 0.3.0)
+  claude-desktop.nix claude-desktop-launcher.sh zcode-desktop.nix omp.nix
+                       #   flake-owned Install-menu apps (omarchy.ownedPackages)
+  omarchy-icons/       #   icon-font glyph injection for app launchers
   omarchy-catalog.nix  #   Install/Remove menu catalog (nix-catalog.json)
   omarchy-migrations.nix + migrations-nix/  # migration classes + NixOS adapters
   omarchy-etc-manifest.nix omarchy-runtime-manifest.nix  # fail-closed manifests
 modules/nixos/         # NixOS module: env, runtime deps, services, Hyprland, themes
 modules/home-manager/  # HM module: per-user config seeds (mutable)
 skills/omarchy/        # NixOS-native end-user agent skill (packaged + linked by HM)
-tests/                 # desktop.nix (stack) + ux.nix (behavioral) + fish.nix
-example/               # demo consumer flake
+tests/                 # VM tests: desktop.nix (stack), ux.nix (behavioral),
+                       # fish.nix, sddm.nix (login path); probe-quickshell-
+                       # reload.nix (manual probe, evaluated by a check);
+                       # fixtures/ (consumer-state JSON, QML exec-site list)
+tests/checks/          # flake checks: one file per check, wired by default.nix
+example/               # demo consumer configuration.nix
 docs/                  # install.md, options.md, UPSTREAM.md, vm.md,
                        # nix-best-practices.md
 ```

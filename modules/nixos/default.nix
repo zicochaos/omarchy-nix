@@ -23,40 +23,60 @@
 
 let
   cfg = config.omarchy;
+  # Block F wires the SDDM theme only while SDDM is the display manager.
+  sddmEnabled = config.services.displayManager.sddm.enable;
 
   # Validators/serializers for user-controlled option values:
   # Lua string escaping for monitors.lua and environment.d(5) escaping for
   # the identity variables below.
   fmt = import ../lib/omarchy-formats.nix { inherit lib; };
 
-  # Map an omarchy.exclude_packages entry (a package *attribute name* string,
-  # e.g. "obsidian") to the same form a derivation exposes. We match on both
-  # `pname` (preferred, e.g. "obsidian") and `name` (fallback, may carry a
-  # version suffix like "obsidian-1.5.0"). This keeps exclude_packages working
-  # for any package regardless of how its derivation names itself.
-  pkgAttrName =
-    p:
+  # omarchy.exclude_packages entry -> predicate over the module's package
+  # list entries. An entry n matches package p when
+  #   - n is a nixpkgs attribute path that resolves to p itself
+  #     ("libreoffice-fresh", "tesseract5", "qt6.qtwayland"): the form the
+  #     docs ask for, and the only one that tells attrs apart whose pname
+  #     differs from the attr name (libreoffice-fresh -> libreoffice) or is
+  #     shared (qt5/qt6 qtwayland are both "qtwayland"), or
+  #   - n is p's package name (lib.getName: pname, else name minus its
+  #     version): the original matching, kept for compatibility and for
+  #     the flake-injected appPackages, which are not in pkgs.
+  # The attr lookup is tryEval-guarded: a throw-alias or a non-package
+  # name simply does not match. Nothing is forced while the list is empty.
+  excludeMatcher =
+    n:
     let
-      # pname is the clean attribute name when the derivation sets it;
-      # otherwise strip a trailing -<version> from name.
-      base = p.pname or (builtins.head (lib.splitString "-" (p.name or "")));
+      byAttr = builtins.tryEval (
+        let
+          v = lib.attrByPath (lib.splitString "." n) null pkgs;
+        in
+        if lib.isDerivation v then v.outPath else null
+      );
+      attrOutPath = if byAttr.success then byAttr.value else null;
     in
-    base;
-
-  excluded = builtins.map (n: n) cfg.exclude_packages;
+    p: lib.getName p == n || (attrOutPath != null && p.outPath == attrOutPath);
+  excludeMatchers = lib.genAttrs cfg.exclude_packages excludeMatcher;
+  isExcluded = p: builtins.any (m: m p) (builtins.attrValues excludeMatchers);
 
   # The shell package the desktop runs. The flake wrapper injects this repo's
   # 0.3.1 pin (pkgs/quickshell.nix); without a wrapper (pure-module use) fall
   # back to the consumer's pkgs.quickshell.
   quickshellPkg = if cfg.quickshellPackage != null then cfg.quickshellPackage else pkgs.quickshell;
 
-  # Drop packages whose attribute name appears in omarchy.exclude_packages.
-  filterExcluded = lib.filter (p: !builtins.elem (pkgAttrName p) excluded);
+  # Drop packages named in omarchy.exclude_packages.
+  filterExcluded = lib.filter (p: !isExcluded p);
+
+  # Exclude entries that match nothing in the module's own lists (a typo,
+  # or the name of a transitive dependency: exclusion is not closure
+  # subtraction). Surfaced as evaluation warnings instead of a silent no-op.
+  unmatchedExcludes = builtins.filter (
+    n: !builtins.any excludeMatchers.${n} (runtimeDepsAll ++ cfg.appPackages)
+  ) cfg.exclude_packages;
 
   # OWE (video backgrounds + lock feed, 349ecc0) arrives through appPackages;
   # its owed user unit and theme-set hook follow it, so excluding "owe"
   # drops all three together.
-  owePkg = lib.findFirst (p: pkgAttrName p == "owe") null (filterExcluded cfg.appPackages);
+  owePkg = lib.findFirst (p: lib.getName p == "owe") null (filterExcluded cfg.appPackages);
 
   # Menu-managed packages (omarchy-packages.json), read once and shared by
   # the (B0) unfree whitelist and the (B0b) managed-packages block.
@@ -85,7 +105,7 @@ let
   # Menu Install/Remove catalog — imported statically (same repo as the
   # package's share/omarchy/nix-catalog.json, which the runtime scripts
   # read). MUST NOT be read from cfg.package: the (B0)/(B0b) computations
-  # below feed nixpkgs.config.* (allowUnfreePredicate, permittedInsecure-
+  # below feed nixpkgs.config.* (allowUnfreePackages, permittedInsecure-
   # Packages, problems.handlers), and reading the catalog via cfg.package
   # closes a recursion loop — nixpkgs.config → catalogJson → omarchy.package
   # → the flake wrapper's pkgs.system → config.nixpkgs.pkgs → nixpkgs.config.
@@ -174,10 +194,12 @@ let
   # upstream reference box). Full upstream package parity is now the policy —
   # including the heavier apps (libreoffice, obs, dev toolchains) that upstream
   # ships by default. Grouped by role so the rationale for each inclusion is
-  # local to its line.
-  runtimeDeps =
+  # local to its line. runtimeDeps is the set after omarchy.exclude_packages;
+  # runtimeDepsAll also feeds the unmatched-exclude warning.
+  runtimeDeps = filterExcluded runtimeDepsAll;
+  runtimeDepsAll =
     with pkgs;
-    filterExcluded (
+    (
       [
         # --- Terminal / shell session ---
         foot
@@ -340,6 +362,11 @@ let
         ddcutil
         plocate
         libnotify
+        # xkbcli (nixpkgs ships it in libxkbcommon's out/bin): the bar's
+        # keyboard-layout widget lists layouts with `xkbcli list` and
+        # omarchy-menu-keybindings resolves key names with
+        # `xkbcli compile-keymap` (upstream 2026-08-09).
+        libxkbcommon
         # libvips (nixpkgs attr `vips`): omarchy-image-picker thumbnails
         # (v4.0.0; upstream package name libvips).
         vips
@@ -563,6 +590,11 @@ in
           "/share/owe"
           # fzf's key-bindings.bash, sourced by default/bash/init.
           "/share/fzf"
+          # The omarchy-nvim tree, the first place the nvim migration
+          # adapters (pkgs/migrations-nix/1781587663.sh, 1788996284.sh)
+          # look for their source; they fall back to the package behind
+          # omarchy-nvim-setup on PATH.
+          "/share/omarchy-nvim"
         ];
 
         # OMARCHY_PATH + the omarchy-* bin scripts. Upstream expects the bin
@@ -697,10 +729,18 @@ in
         environment.systemPackages =
           runtimeDeps
           ++ (filterExcluded cfg.appPackages)
-          ++ [
-            xcursorDefaultAdwaita
-            chromiumDesktopAlias
-          ];
+          ++ [ xcursorDefaultAdwaita ]
+          # The alias is built from chromium's own desktop file; excluding
+          # chromium must not still fetch chromium to build it.
+          ++ lib.optional (!isExcluded pkgs.chromium) chromiumDesktopAlias;
+
+        warnings = map (
+          n:
+          "omarchy.exclude_packages: \"${n}\" matches no package in the module's default set "
+          + "(runtime packages + omarchy.appPackages), so it has no effect. Use the nixpkgs "
+          + "attribute name (e.g. \"libreoffice-fresh\", \"qt6.qtwayland\"); dependencies of "
+          + "other packages cannot be excluded."
+        ) unmatchedExcludes;
 
         # Font discovery for the runtime fonts above. (Mirrors the names in
         # runtimeDeps; kept explicit here because environment.systemPackages
@@ -726,10 +766,12 @@ in
       # installs extend the whitelist with catalog `unfreeNames` (literal
       # getName strings, including hidden deps like steam-unwrapped) and
       # `insecureNames` (e.g. openssl-1.1.1w for Sublime, electron for
-      # Bitwarden) only when selected. nixpkgs combines allowUnfree /
-      # allowUnfreePackages / allowUnfreePredicate with OR, and a consumer's
-      # own plain assignment wins over this mkDefault — so this never narrows
-      # what the consumer themselves allowed.
+      # T3 Code) only when selected. The names go into allowUnfreePackages,
+      # a list option that merges with every other module's entries, and
+      # nixpkgs ORs it with allowUnfree and any allowUnfreePredicate — so a
+      # consumer's own predicate (a plain function, which would replace a
+      # module default rather than merge) neither drops these names nor is
+      # narrowed by them.
       #
       # Only when NixOS owns the nixpkgs instance: with an externally created
       # pkgs (nixpkgs.pkgs set, e.g. this flake's demo configs via pkgsFor)
@@ -741,9 +783,7 @@ in
       # own constructed instance back into config.nixpkgs.pkgs, so that value
       # is non-null even when NixOS built it.
       (lib.mkIf (!options.nixpkgs.pkgs.isDefined) {
-        nixpkgs.config.allowUnfreePredicate = lib.mkDefault (
-          pkg: builtins.elem (lib.getName pkg) ([ "obsidian" ] ++ managedUnfreeNames)
-        );
+        nixpkgs.config.allowUnfreePackages = [ "obsidian" ] ++ managedUnfreeNames;
         # Scoped opt-in: only the insecure deps of packages the consumer
         # actually selected (Sublime → openssl-1.1.1w, Bitwarden → electron).
         # List option merges with any consumer-supplied entries.
@@ -901,16 +941,12 @@ in
         # same gap). Arch enables upower transitively on a desktop install.
         services.upower.enable = lib.mkDefault true;
 
-        # udiskie automount user service (upstream parity). Package is in
-        # runtimeDeps; this starts it under the graphical session.
-        systemd.user.services.udiskie = {
-          description = "udiskie automounter";
-          wantedBy = [ "graphical-session.target" ];
-          serviceConfig = {
-            ExecStart = "${pkgs.udiskie}/bin/udiskie";
-            Restart = "on-failure";
-          };
-        };
+        # udiskie automount: no module unit. Upstream's
+        # default/hypr/autostart.lua already launches
+        # `udiskie --automount --no-notify --no-tray` at session start; a
+        # second instance (a user service with udiskie's default flags)
+        # doubled mounts and notifications. The package stays in
+        # runtimeDeps so the autostart line resolves on PATH.
 
         # zram swap (upstream parity): default/systemd/zram-generator.conf.d/
         # 90-omarchy.conf — full-RAM zram device, zstd (~3:1, so ~1/3 RAM in
@@ -928,7 +964,9 @@ in
         # accounting. w! = boot-only, so a manual flip sticks until reboot.
         # Upstream's zram migration (drop archinstall's leftover
         # /etc/systemd/zram-generator.conf) is a no-op on NixOS — no such file.
-        systemd.tmpfiles.rules = [
+        # omarchy.systemTuning; zram-only like its rationale, so a host
+        # with zramSwap off keeps the kernel's zswap setting.
+        systemd.tmpfiles.rules = lib.mkIf (cfg.systemTuning.enable && config.zramSwap.enable) [
           "w! /sys/module/zswap/parameters/enabled - - - - N"
         ];
 
@@ -982,19 +1020,29 @@ in
         # estimates bottleneck bandwidth and minimum RTT and paces to them,
         # cutting queueing latency on fast links; fq is the qdisc BBR is
         # built to pace through. Setting the sysctl autoloads tcp_bbr/sch_fq.
-        boot.kernel.sysctl = lib.mapAttrs (_: lib.mkDefault) {
-          "net.ipv4.tcp_congestion_control" = "bbr";
-          "net.core.default_qdisc" = "fq";
-          "net.ipv4.tcp_mtu_probing" = 1;
-          "vm.swappiness" = 150;
-          "vm.vfs_cache_pressure" = 50;
-          "vm.page-cluster" = 0;
-          "vm.watermark_boost_factor" = 0;
-          "vm.watermark_scale_factor" = 125;
-          "vm.dirty_background_bytes" = 67108864;
-          "vm.dirty_bytes" = 268435456;
-          "vm.dirty_writeback_centisecs" = 1500;
-        };
+        # All under omarchy.systemTuning. The reclaim group (upstream's
+        # "Tune reclaim for swap on zram" block) only while zramSwap is on:
+        # swappiness 150 and page-cluster 0 assume a swap device that is
+        # cheaper than re-reading page cache, which a disk swapfile is not.
+        boot.kernel.sysctl = lib.mkIf cfg.systemTuning.enable (
+          lib.mapAttrs (_: lib.mkDefault) (
+            {
+              "net.ipv4.tcp_congestion_control" = "bbr";
+              "net.core.default_qdisc" = "fq";
+              "net.ipv4.tcp_mtu_probing" = 1;
+              "vm.dirty_background_bytes" = 67108864;
+              "vm.dirty_bytes" = 268435456;
+              "vm.dirty_writeback_centisecs" = 1500;
+            }
+            // lib.optionalAttrs config.zramSwap.enable {
+              "vm.swappiness" = 150;
+              "vm.vfs_cache_pressure" = 50;
+              "vm.page-cluster" = 0;
+              "vm.watermark_boost_factor" = 0;
+              "vm.watermark_scale_factor" = 125;
+            }
+          )
+        );
 
         # NOT adapted: etc/systemd/resolved.conf.d/{10-disable-multicast,
         # 20-docker-dns}.conf — systemd-resolved is NOT enabled on NixOS
@@ -1048,8 +1096,9 @@ in
         # omarchy-usb-autosuspend.conf): autosuspend drops flaky receivers
         # and devices; -1 disables it. Plain assignment, not mkDefault:
         # nixpkgs defines extraModprobeConfig at normal priority elsewhere,
-        # which would silently drop an mkDefault; lines concatenate.
-        boot.extraModprobeConfig = ''
+        # which would silently drop an mkDefault; lines concatenate. Opt out
+        # with omarchy.systemTuning.enable = false.
+        boot.extraModprobeConfig = lib.mkIf cfg.systemTuning.enable ''
           options usbcore autosuspend=-1
         '';
 
@@ -1061,8 +1110,9 @@ in
         # 64-btrfs-zoned.rules. Plain assignment, not mkDefault:
         # nixpkgs assigns services.udev.extraRules at normal priority in
         # hardware/udev.nix (nixosRules), which would silently drop an
-        # mkDefault; lines concatenate.
-        services.udev.extraRules = ''
+        # mkDefault; lines concatenate. Opt out with
+        # omarchy.systemTuning.enable = false.
+        services.udev.extraRules = lib.mkIf cfg.systemTuning.enable ''
           ACTION=="add|change", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="nvme*|sd*|mmcblk*|vd*", ATTR{queue/scheduler}="kyber"
         '';
 
@@ -1090,14 +1140,17 @@ in
         };
 
         # sudo parity (upstream etc/sudoers.d/omarchy-passwd-tries and
-        # omarchy-tzupdate): 10 password tries; NOPASSWD for tzupdate (port
-        # addition) and timedatectl set-timezone. v4.0.1 removed upstream's
-        # omarchy-asdcontrol grant (passwordless path to root): the Apple
-        # Studio Display brightness script now uses plain `sudo asdcontrol`
-        # and takes the prompt, same here. The timedatectl rule is
-        # upstream's v4.0.2 tightening: a ^-anchored regex accepting exactly
-        # one well-formed timezone argument. Profile paths (not store paths)
-        # so exclude_packages filtering still works — an uninstalled command
+        # omarchy-tzupdate): 10 password tries; NOPASSWD for timedatectl
+        # set-timezone only. The timedatectl rule is upstream's v4.0.2
+        # tightening: a ^-anchored regex accepting exactly one well-formed
+        # timezone argument. No NOPASSWD tzupdate: its -l/-d/-z flags write
+        # to arbitrary paths, so an unrestricted root grant is a passwordless
+        # path to root, and nothing runs `sudo tzupdate` (upstream's only
+        # caller is the unprivileged `tzupdate -p`). v4.0.1 likewise removed
+        # upstream's omarchy-asdcontrol grant: the Apple Studio Display
+        # brightness script uses plain `sudo asdcontrol` and takes the
+        # prompt, same here. Profile paths (not store paths) so
+        # exclude_packages filtering still works — an uninstalled command
         # makes the rule inert instead of a closure reference. Plain
         # assignment, not mkDefault: nixpkgs defines its own default
         # extraRules/extraConfig at normal priority, which would silently
@@ -1109,10 +1162,6 @@ in
           {
             groups = [ "wheel" ];
             commands = [
-              {
-                command = "/run/current-system/sw/bin/tzupdate";
-                options = [ "NOPASSWD" ];
-              }
               {
                 command = "/run/current-system/sw/bin/timedatectl ^set-timezone [A-Za-z0-9_+][A-Za-z0-9_+.-]*(/[A-Za-z0-9_+][A-Za-z0-9_+.-]*)*$";
                 options = [ "NOPASSWD" ];
@@ -1167,14 +1216,6 @@ in
       # The flake wrapper injects the Hyprland package from the hyprland
       # input as the default; here we just enable the NixOS machinery.
       {
-        # Hyprland Cachix — the flake package is NOT built by Hydra, so
-        # without this every consumer rebuilds Hyprland + its deps (mesa,
-        # ffmpeg, aquamarine, ...) from source. That is a multi-hour build
-        # on a fresh machine and can OOM a small VM. Register the upstream
-        # Cachix automatically so the binary cache is used. Per Hyprland
-        # docs this must be in place BEFORE the first build that pulls the
-        # flake package; since the flake wrapper injects the package and we
-        # enable it here, both land in the same evaluation.
         # <nixpkgs> resolves to THIS system's nixpkgs source — the tree the
         # machine was built from — so `nix-instantiate` one-liners and the
         # NixOS-options half of omarchy-nix-search evaluate against the
@@ -1182,18 +1223,28 @@ in
         # mkDefault: a consumer with its own nixPath wins untouched.
         nix.nixPath = lib.mkDefault [ "nixpkgs=${toString pkgs.path}" ];
 
-        nix.settings = {
+        # Hyprland Cachix — the flake package is NOT built by Hydra, so
+        # without this every consumer rebuilds Hyprland + its deps (mesa,
+        # ffmpeg, aquamarine, ...) from source. That is a multi-hour build
+        # on a fresh machine and can OOM a small VM. Register the upstream
+        # Cachix automatically so the binary cache is used. Per Hyprland
+        # docs this must be in place BEFORE the first build that pulls the
+        # flake package; since the flake wrapper injects the package and we
+        # enable it here, both land in the same evaluation. Gated on
+        # omarchy.hyprlandCache.enable for hosts that must not trust a
+        # third-party cache: the key then signs nothing on this machine.
+        nix.settings = lib.mkIf cfg.hyprlandCache.enable {
           substituters = lib.mkBefore [ "https://hyprland.cachix.org" ];
           trusted-substituters = [ "https://hyprland.cachix.org" ];
           trusted-public-keys = [
             "hyprland.cachix.org-1:a7pgxzMz7+chwVL3/pzj6jIBMioiJM7ypFP8PwtkuGc="
           ];
-          # Required so non-root users (the one running nixos-rebuild) can
-          # use the substituter. @wheel covers sudoers.
-          trusted-users = [
-            "root"
-            "@wheel"
-          ];
+          # No trusted-users: system-level substituters and keys are used by
+          # the daemon for every user, so the cache needs no trust grant.
+          # A trusted Nix user is root-equivalent (it can import unsigned
+          # store paths and pass arbitrary daemon settings), so @wheel here
+          # would give any process running as a wheel user root without
+          # the sudo password.
         };
 
         programs.hyprland = {
@@ -1219,6 +1270,22 @@ in
         environment.systemPackages = [ hyprlandUwsmDesktop ];
         services.displayManager.sessionPackages = [ hyprlandUwsmDesktop ];
 
+        # Preselect the uwsm session at the greeter, with or without
+        # autologin. The vendored SDDM theme means to (Main.qml picks the
+        # first session whose name contains "uwsm"), but SDDM's
+        # SessionModel answers no Qt.DisplayRole, so that match never fires
+        # and the greeter falls back to the last-used session, else
+        # DefaultSession (nixpkgs' SDDM patch), else index 0. With this
+        # unset, index 0 was hyprland-uwsm.desktop only because "-" sorts
+        # before "." in the file list: one extra session (a consumer's
+        # gnome/cosmic/...) took the default, and the bare hyprland.desktop
+        # (no uwsm env.d, no OMARCHY_PATH) is the next entry. Priority 1100,
+        # just below mkDefault: desktop modules that set their own default
+        # with mkDefault (plasma6, pantheon, lomiri) win instead of
+        # conflicting; omarchy.autologin.user still forces this session
+        # (block G).
+        services.displayManager.defaultSession = lib.mkOverride 1100 "hyprland-uwsm";
+
         # Default SDDM (omarchy applies its login theme + Hyprland greeter
         # in the (D) block below; this just enables the display manager).
         # mkDefault so a consumer can swap in another display manager.
@@ -1226,12 +1293,14 @@ in
 
         # PipeWire needs the daemon enabled to actually run; the package alone
         # is not enough. Keep this here so audio works out of the box.
-        security.rtkit.enable = true;
+        # mkDefault so a consumer's own `false` (e.g. PulseAudio, or no
+        # 32-bit ALSA) replaces these instead of conflicting with them.
+        security.rtkit.enable = lib.mkDefault true;
         services.pipewire = {
-          enable = true;
-          alsa.enable = true;
-          alsa.support32Bit = true;
-          pulse.enable = true;
+          enable = lib.mkDefault true;
+          alsa.enable = lib.mkDefault true;
+          alsa.support32Bit = lib.mkDefault true;
+          pulse.enable = lib.mkDefault true;
         };
 
         # NetworkManager + Bluetooth daemons. nmcli/bluez-utils are useless
@@ -1292,8 +1361,10 @@ in
       # config at $out/share/sddm/hyprland.lua. We set the theme name and
       # point the Wayland greeter CompositorCommand at Hyprland with that
       # config, matching the live reference box (start-hyprland -- --config
-      # /usr/share/sddm/hyprland.lua).
-      (lib.mkIf (cfg.sddm.theme && cfg.sddmPackage != null) {
+      # /usr/share/sddm/hyprland.lua). Only while SDDM is the display
+      # manager: a consumer who swaps it out (block D enables it with
+      # mkDefault) gets no SDDM theme package or /share/sddm link.
+      (lib.mkIf (cfg.sddm.theme && cfg.sddmPackage != null && sddmEnabled) {
         services.displayManager.sddm.theme = "omarchy";
         environment.systemPackages = [ cfg.sddmPackage ];
 
@@ -1301,12 +1372,15 @@ in
         environment.pathsToLink = [ "/share/sddm" ];
 
         # Run the Wayland greeter under Hyprland using the vendored minimal
-        # config. CompositorCommand is otherwise internal-only (defaults to
-        # weston/kwin), so we set it explicitly via sddm.settings. The greeter
-        # config disables the Hyprland logo/splash and animations.
+        # config. nixpkgs renders sddm.conf's Wayland.CompositorCommand from
+        # the internal sddm.wayland.compositorCommand (its default is the
+        # weston/kwin command picked by sddm.wayland.compositor); mkDefault
+        # there, so a consumer's own compositorCommand or
+        # sddm.settings.Wayland.CompositorCommand wins. The greeter config
+        # disables the Hyprland logo/splash and animations.
         services.displayManager.sddm.wayland.enable = lib.mkDefault true;
-        services.displayManager.sddm.settings.Wayland.CompositorCommand =
-          lib.mkForce "Hyprland --config ${cfg.sddmPackage}/share/sddm/hyprland.lua";
+        services.displayManager.sddm.wayland.compositorCommand =
+          lib.mkDefault "Hyprland --config ${cfg.sddmPackage}/share/sddm/hyprland.lua";
       })
 
       # (G) Optional SDDM autologin (LUKS-aware single-password UX).
@@ -1315,7 +1389,9 @@ in
       # ignores; the [AutoLogin] section is emitted only from
       # services.displayManager.autoLogin.{enable,user}). Land autologin in the
       # uwsm-managed Hyprland session via defaultSession so it does not fall
-      # through to the bare hyprland.desktop entry. Typical use: an encrypted
+      # through to the bare hyprland.desktop entry (mkDefault here, above
+      # block D's lower-priority default: autologin into omarchy must not
+      # silently follow another desktop's default). Typical use: an encrypted
       # (LUKS) install where the user already unlocked the disk at boot, so a
       # second SDDM prompt is redundant.
       (lib.mkIf (cfg.autologin.user != null) {
@@ -1324,7 +1400,8 @@ in
           user = cfg.autologin.user;
         };
         services.displayManager.defaultSession = lib.mkDefault "hyprland-uwsm";
-        services.displayManager.sddm.autoLogin.relogin = true;
+        # mkDefault: a consumer's relogin = false must not conflict.
+        services.displayManager.sddm.autoLogin.relogin = lib.mkDefault true;
       })
 
       # (H) Enable the path-adapted systemd user units declaratively.
@@ -1350,15 +1427,24 @@ in
           # the fail-closed runner at every graphical login instead: markers
           # make it a cheap no-op when nothing is pending, a fresh user still
           # baselines, and a rebuild + relogin picks up new migrations
-          # automatically. wantedBy + before graphical-session.target makes
-          # this oneshot finish before the session target activates (and thus
-          # before quickshell reads bar-layout/config), mirroring upstream's
-          # pre-session migrate from omarchy-update. Also before the notifier
-          # so a clean run never leaves a stale "migrations pending" alert.
-          # No After=/Requires= on anything ordered after graphical-session
-          # (avoids a dependency cycle). OMARCHY_PATH is pinned to the
-          # configured package (not the session env) so migrations always
-          # apply against the new tree.
+          # automatically. wantedBy + before graphical-session.target holds
+          # that target (and every unit ordered after it) until the runner
+          # exits. It does NOT gate the shell: Hyprland's hyprland.start hook
+          # (default/hypr/autostart.lua) launches quickshell straight from
+          # the compositor, in parallel with this unit. That matches
+          # upstream, where omarchy-update runs migrations under a live
+          # shell: migrations that touch shell config ask the running shell
+          # over IPC (omarchy-shell) or take effect at its next restart.
+          # Also before the notifier so a clean run never leaves a stale
+          # "migrations pending" alert. No After=/Requires= on anything
+          # ordered after graphical-session (avoids a dependency cycle).
+          # OMARCHY_PATH is pinned to the configured package (not the
+          # session env) so migrations always apply against the new tree.
+          # TimeoutStartSec: oneshot units have no start timeout by default,
+          # and this one holds graphical-session.target, so a hung migration
+          # would stall the target indefinitely. A timed-out run is killed;
+          # its migration stays unmarked (the runner is fail-closed) and
+          # retries at the next login.
           omarchy-migrate = {
             description = "Run pending Omarchy migrations (omarchy-nix)";
             wantedBy = [ "graphical-session.target" ];
@@ -1390,6 +1476,7 @@ in
             serviceConfig = {
               Type = "oneshot";
               ExecStart = "${cfg.package}/share/omarchy/bin/omarchy-migrate";
+              TimeoutStartSec = "2min";
             };
           };
           # sleep-lock monitor execs bare `bash`, `systemd-inhibit`, and

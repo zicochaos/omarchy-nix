@@ -238,11 +238,23 @@ stdenv.mkDerivation (finalAttrs: {
         # omarchy-refresh-applications with no per-step skip marker; under
         # finalize-user's set -e a missing `mise` aborts before default-keyring.
         # Keep the files so orchestration paths stay intact; make the bodies no-ops.
-        cat > install/user/mise.sh <<'EOF'
+        #
+        # overwrite_upstream <path> <<'EOF' — replace an upstream file with the
+        # heredoc on stdin, failing the build when the target vanished: an
+        # upstream rename or removal must surface here instead of shipping an
+        # orphan replacement (the rule stub_declarative/stub_handled follow).
+        overwrite_upstream() {
+          if [[ ! -e "$1" ]]; then
+            echo "omarchy-nix: overwrite target missing (upstream rename?): $1" >&2
+            exit 1
+          fi
+          cat >"$1"
+        }
+        overwrite_upstream install/user/mise.sh <<'EOF'
     # omarchy-nix: mise is Arch packaging; intentionally no-op on NixOS.
     exit 0
     EOF
-        cat > install/user/mise-work.sh <<'EOF'
+        overwrite_upstream install/user/mise-work.sh <<'EOF'
     # omarchy-nix: mise-work is Arch packaging; intentionally no-op on NixOS.
     exit 0
     EOF
@@ -491,7 +503,7 @@ stdenv.mkDerivation (finalAttrs: {
 
         # AUR reachability check: report unavailable so any remaining caller
         # that gates on it skips AUR work cleanly.
-        cat > bin/omarchy-pkg-aur-accessible <<'EOF'
+        overwrite_upstream bin/omarchy-pkg-aur-accessible <<'EOF'
     #!/bin/bash
     # omarchy-nix: no AUR on NixOS.
     exit 1
@@ -508,7 +520,7 @@ stdenv.mkDerivation (finalAttrs: {
           bin/omarchy-remove-security-fingerprint
         do
           name=$(basename "$s")
-          cat >"$s" <<EOF
+          overwrite_upstream "$s" <<EOF
     #!/bin/bash
     # omarchy-nix: $name writes /etc/pam.d/* on Arch; PAM services are
     # declarative on NixOS (security.pam.services, omarchy module blocks K/L).
@@ -532,14 +544,16 @@ stdenv.mkDerivation (finalAttrs: {
         # adds a new unclassified mutator.
 
         # declarative-note stubs — generated from the manifest (single source
-        # of truth; the runtime check re-verifies the result).
+        # of truth; the runtime check re-verifies the result). The note is
+        # shell-quoted: notes carry double quotes ("docker") and must never
+        # be able to expand $(...) or backticks.
         ${lib.concatStringsSep "\n" (
           lib.mapAttrsToList (name: m: ''
-                        cat >bin/${name} <<'OMARCHY_NIX_STUB'
+                        overwrite_upstream bin/${name} <<'OMARCHY_NIX_STUB'
             #!/bin/bash
             # omarchy-nix: upstream ${name} mutates Arch system state; on NixOS that
             # state is owned declaratively.
-            echo "NixOS: ${m.note}"
+            echo ${lib.escapeShellArg "NixOS: ${m.note}"}
             echo "(via ${name} — neutralized; nothing was changed)"
             exit 0
             OMARCHY_NIX_STUB
@@ -585,7 +599,7 @@ stdenv.mkDerivation (finalAttrs: {
         # omarchy-setup-security-sshd: the daemon + firewall are declarative
         # (services.openssh.enable opens port 22 on NixOS); the useful
         # user-state subset — authorizing SSH keys — is kept.
-        cat >bin/omarchy-setup-security-sshd <<'EOF'
+        overwrite_upstream bin/omarchy-setup-security-sshd <<'EOF'
     #!/bin/bash
     # omarchy:summary=Authorize an SSH public key (the sshd daemon is declarative on NixOS)
     # omarchy:args=[--key=<public-key>]
@@ -706,7 +720,7 @@ stdenv.mkDerivation (finalAttrs: {
 
         # omarchy-remove-security-sshd: keep the authorized_keys cleanup
         # prompt; disabling the daemon is a flake edit + rebuild.
-        cat >bin/omarchy-remove-security-sshd <<'EOF'
+        overwrite_upstream bin/omarchy-remove-security-sshd <<'EOF'
     #!/bin/bash
     # omarchy:summary=Remove authorized SSH keys (the sshd daemon is declarative on NixOS)
     # omarchy:requires-sudo=true
@@ -764,7 +778,7 @@ stdenv.mkDerivation (finalAttrs: {
 
         # omarchy-version: print the package version from the store path; the
         # pacman -Q fallback is gone (no Arch package database on NixOS).
-        cat >bin/omarchy-version <<'EOF'
+        overwrite_upstream bin/omarchy-version <<'EOF'
     #!/bin/bash
     # omarchy:summary=Print the installed Omarchy version
 
@@ -805,13 +819,16 @@ stdenv.mkDerivation (finalAttrs: {
     EOF
         chmod +x bin/omarchy-version
 
-        # omarchy-update-restart: a NixOS kernel update is a new
-        # /run/current-system generation — compare it against the booted
-        # one (upstream probes kernel files with pacman -Qo, which on
-        # NixOS would report "kernel updated" after EVERY update). Keeps
+        # omarchy-update-restart: generation-based reboot decision
+        # (upstream probes kernel files with pacman -Qo, which on NixOS
+        # would report "kernel updated" after EVERY update). omarchy update
+        # rebuilds with `boot` by default, which moves only the system
+        # profile, so a profile that differs from /run/current-system means
+        # the update is installed but not active yet; after a `switch` only
+        # a kernel change (booted vs current) needs the reboot. Keeps
         # upstream's phase split: omarchy-update restarts services while it
         # still holds sudo, then offers the reboot after releasing it.
-        cat >bin/omarchy-update-restart <<'EOF'
+        overwrite_upstream bin/omarchy-update-restart <<'EOF'
     #!/bin/bash
     # omarchy:summary=Prompt for required reboot or service restarts after updates
 
@@ -834,25 +851,46 @@ stdenv.mkDerivation (finalAttrs: {
     }
 
     if [[ $mode != "--services-only" ]]; then
-      # omarchy-nix: generation-based kernel check (no pacman).
+      # omarchy-nix: generation-based checks (no pacman). The OMARCHY_NIX_*
+      # path overrides exist for checks.omarchy-update-flow only.
+      booted="''${OMARCHY_NIX_BOOTED_SYSTEM:-/run/booted-system}"
+      current="''${OMARCHY_NIX_CURRENT_SYSTEM:-/run/current-system}"
+      profile="''${OMARCHY_NIX_SYSTEM_PROFILE:-/nix/var/nix/profiles/system}"
+
+      # `nixos-rebuild boot` (omarchy update's default) only moves the
+      # system profile; /run/current-system, and with it OMARCHY_PATH, stays
+      # on the running generation until the reboot — so the migrations this
+      # update just ran were the running generation's, and the new
+      # generation's run at the first login after the reboot (the
+      # omarchy-migrate user unit). `switch` moves both; then only a kernel
+      # change still needs the reboot.
+      generation_pending=false
       kernel_updated=false
 
-      if [[ -e /run/booted-system/kernel && -e /run/current-system/kernel ]]; then
-        if [[ $(readlink -f /run/booted-system/kernel) != $(readlink -f /run/current-system/kernel) ]]; then
-          kernel_updated=true
-        fi
+      if [[ -e $profile && -e $current ]] &&
+        [[ $(readlink -f "$profile") != "$(readlink -f "$current")" ]]; then
+        generation_pending=true
+      elif [[ -e $booted/kernel && -e $current/kernel ]] &&
+        [[ $(readlink -f "$booted/kernel") != "$(readlink -f "$current/kernel")" ]]; then
+        kernel_updated=true
       fi
 
-      if [[ $kernel_updated == "true" ]]; then
+      if [[ $generation_pending == "true" ]]; then
+        echo "The update installed a new system generation; it is not active until you reboot."
+        echo "Until then this session, including the migrations that just ran, uses the previous generation; the new generation's migrations run at the first login after the reboot."
+        confirm_reboot "Reboot now to activate the new system generation?"
+      elif [[ $kernel_updated == "true" ]]; then
         confirm_reboot "Linux kernel has been updated. Reboot?"
       elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
         confirm_reboot "Updates require reboot. Ready?"
       fi
 
-      running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
-      if [[ $running_hyprland == *"(deleted)"* ]]; then
-        confirm_reboot "Hyprland has been updated. Reboot?"
-      fi
+      # Upstream also offers a reboot when the running Hyprland's binary
+      # shows up as "(deleted)" (pacman replaced it). That cannot happen on
+      # NixOS: an update lands Hyprland in a new store path and the running
+      # binary's path stays valid (the garbage collector treats running
+      # executables as roots), so the probe is dropped; a boot-mode update
+      # is covered by the generation prompt above.
     fi
 
     if [[ $mode != "--reboot-only" ]]; then
@@ -886,7 +924,7 @@ stdenv.mkDerivation (finalAttrs: {
         # omarchy-theme-set-browser: browser accent-color policy files live
         # under /etc (module-owned on NixOS). Silent no-op — omarchy-theme-set
         # calls it on every theme change, so it must not print a stub note.
-        cat >bin/omarchy-theme-set-browser <<'EOF'
+        overwrite_upstream bin/omarchy-theme-set-browser <<'EOF'
     #!/bin/bash
     # omarchy:summary=Apply the current theme color to Chromium, Chrome, Edge, and Brave
     # omarchy:hidden=true
@@ -907,7 +945,7 @@ stdenv.mkDerivation (finalAttrs: {
         # no-op (policy dirs are module-owned on NixOS), so the helper is
         # unreachable; stub it the same way rather than shipping a sudo
         # helper that writes paths the module owns.
-        cat >bin/omarchy-theme-set-browser-policy <<'EOF'
+        overwrite_upstream bin/omarchy-theme-set-browser-policy <<'EOF'
     #!/bin/bash
     # omarchy:summary=Write the theme accent color into browser managed-policy files
     # omarchy:hidden=true
@@ -951,7 +989,7 @@ stdenv.mkDerivation (finalAttrs: {
         # fall back to a plain command -v probe. Conditional pacman install
         # paths in upstream scripts still route into the declarative stubs: the
         # scripts call omarchy-pkg-missing (kept: always exit 0) to proceed.
-        cat > bin/omarchy-pkg-present <<'EOF'
+        overwrite_upstream bin/omarchy-pkg-present <<'EOF'
     #!/bin/bash
     # omarchy-nix: presence probe for menu `when:` guards.
     # Exit 0 when the entry is managed (in omarchy-packages.json) or its binary
@@ -982,12 +1020,12 @@ stdenv.mkDerivation (finalAttrs: {
     if [[ $name == "--resolve-flake" ]]; then
       # Internal: emit the resolved consumer flake dir so a guard-batch
       # prelude (MenuModel.js) can export OMARCHY_NIX_FLAKE once for the
-      # whole batch instead of every probe call re-running discovery.
-      if json_path=$(resolve_json); then
-        printf '%s\n' "''${json_path%/*}"
-        exit 0
-      fi
-      exit 1
+      # whole batch instead of every probe call re-running discovery (a
+      # nix eval per candidate). Whether omarchy-packages.json exists yet
+      # does not matter: before the first install every catalog probe
+      # would otherwise resolve again.
+      resolve_flake_dir
+      exit
     fi
 
     entry=$(jq -c --arg a "$name" '[.entries | to_entries[] | select(.value.arch == $a) | .value] | first // empty' "$catalog" 2>/dev/null || true)
@@ -1024,7 +1062,7 @@ stdenv.mkDerivation (finalAttrs: {
     EOF
         chmod +x bin/omarchy-pkg-present
 
-        cat > bin/omarchy-pkg-missing <<'EOF'
+        overwrite_upstream bin/omarchy-pkg-missing <<'EOF'
     #!/bin/bash
     # omarchy-nix: always report "missing" so pkg-add stubs run (and print).
     exit 0
@@ -1032,7 +1070,7 @@ stdenv.mkDerivation (finalAttrs: {
         chmod +x bin/omarchy-pkg-missing
 
         # Channel query used by the Update → Channel menu checkmarks.
-        cat > bin/omarchy-channel-current <<'EOF'
+        overwrite_upstream bin/omarchy-channel-current <<'EOF'
     #!/bin/bash
     # omarchy-nix: no pacman channel; report a stable label for the UI.
     echo nixos
@@ -1043,7 +1081,7 @@ stdenv.mkDerivation (finalAttrs: {
         # Update-available drives the shell status indicator. On NixOS there is
         # no pacman checkupdates path; exit non-zero so the bar clears the
         # indicator instead of showing a stale "updates available".
-        cat > bin/omarchy-update-available <<'EOF'
+        overwrite_upstream bin/omarchy-update-available <<'EOF'
     #!/bin/bash
     # omarchy-nix: no pacman update probe. Exit non-zero so the shell clears
     # the update indicator. Verbose when stdout is a TTY or -v is passed.
@@ -1076,24 +1114,37 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace bin/omarchy-update \
           --replace-fail 'PATH="$OMARCHY_PATH/bin:/usr/bin:/usr/sbin:/bin:/sbin"' \
                          'PATH="$OMARCHY_PATH/bin:/run/wrappers/bin:/run/current-system/sw/bin"'
-        # OMARCHY_PATH is /run/current-system/sw/share/omarchy (a symlinked
-        # buildEnv path, never canonical): accept the command when it is the
-        # file OMARCHY_PATH's bin resolves to, which keeps the check's point
-        # (the selected root supplies the code that runs).
+        # Upstream requires a canonical OMARCHY_PATH that literally contains
+        # the entrypoint. The module's value is the stable system-profile
+        # path /run/current-system/sw/share/omarchy (a root-owned symlink
+        # chain into the store, never canonical), so canonicalise instead:
+        # the root must resolve into /nix/store, the command must be the
+        # entrypoint inside that resolved root, and the value itself must be
+        # canonical or exactly the system-profile path. That keeps the
+        # check's point (the selected root supplies the code that runs) and
+        # refuses a directory of symlinks to the real scripts as well as a
+        # user-owned link to the store that could be re-pointed afterwards.
         substituteInPlace bin/omarchy-security-functions \
           --replace-fail 'PATH="$wrapper_dir:$OMARCHY_PATH/bin:/usr/bin:/usr/sbin:/bin:/sbin"' \
                          'PATH="$wrapper_dir:$OMARCHY_PATH/bin:/run/wrappers/bin:/run/current-system/sw/bin"' \
           --replace-fail \
             $'  if [[ ''${OMARCHY_PATH:-} != /* || $(/usr/bin/realpath -e -- "$OMARCHY_PATH") != "$OMARCHY_PATH" ]] ||\n    ! { [[ $command_source == "$OMARCHY_PATH/bin/$command_name" ]] ||' \
-            $'  if [[ ''${OMARCHY_PATH:-} != /* ]] ||\n    ! { [[ $command_source == "$(/usr/bin/readlink -e -- "$OMARCHY_PATH/bin/$command_name")" ]] ||'
+            $'  local omarchy_root\n  if [[ ''${OMARCHY_PATH:-} != /* ]] ||\n    ! omarchy_root=$(/usr/bin/realpath -e -- "$OMARCHY_PATH") ||\n    [[ $omarchy_root != /nix/store/* ]] ||\n    [[ $OMARCHY_PATH != "$omarchy_root" && $OMARCHY_PATH != /run/current-system/sw/share/omarchy ]] ||\n    ! { [[ $command_source == "$omarchy_root/bin/$command_name" ]] ||'
         for f in \
           bin/omarchy-update \
           bin/omarchy-security-functions \
           bin/omarchy-update-stay-awake \
           default/omarchy/sudo-no-update/sudo
         do
-          # Pin the interpreter the startup check compares against.
+          # Pin the interpreter the startup check compares against. sed
+          # matches nothing silently, so verify: an unpinned entrypoint would
+          # get patchShebangs' bash and refuse to start at runtime. (The
+          # sourced library keeps its plain #!/bin/bash.)
           sed -i '1s|^#!/bin/bash -p$|#!${bash}/bin/bash -p|' "$f"
+          if [[ $f != bin/omarchy-security-functions && $(head -n1 "$f") != "#!${bash}/bin/bash -p" ]]; then
+            echo "omarchy-nix: interpreter pin did not apply (upstream shebang changed?): $f" >&2
+            exit 1
+          fi
           for tool in $(grep -o '/usr/bin/[a-z][a-z-]*' "$f" | sort -u); do
             name=''${tool#/usr/bin/}
             case "$name" in
@@ -1116,7 +1167,7 @@ stdenv.mkDerivation (finalAttrs: {
         # Snapshot: snapper/limine are Arch. Exit 0 with a note so
         # `omarchy-snapshot create || (($? == 127))` in omarchy-update
         # continues (exit 0 also satisfies the || chain).
-        cat > bin/omarchy-snapshot <<'EOF'
+        overwrite_upstream bin/omarchy-snapshot <<'EOF'
     #!/bin/bash
     # omarchy-nix: snapper/limine snapshots are Arch-only.
 
@@ -1151,7 +1202,7 @@ stdenv.mkDerivation (finalAttrs: {
         # Package-refresh core of omarchy-update: NixOS-native flake update +
         # nixos-rebuild. Resolve the consumer flake, then refresh inputs and
         # switch. DRY-RUN and rebuild-cmd env vars support tests.
-        cat > bin/omarchy-update-system-pkgs <<'EOF'
+        overwrite_upstream bin/omarchy-update-system-pkgs <<'EOF'
     #!/bin/bash
     # omarchy-nix: NixOS-native system package refresh.
 
@@ -1186,6 +1237,11 @@ stdenv.mkDerivation (finalAttrs: {
     fi
 
     echo "Using flake: $flake_dir"
+
+    # The same per-flake lock omarchy-nix-add/remove hold through their
+    # rebuild: a menu install must not interleave with this flake update +
+    # rebuild (each would rebuild the other's half-written state).
+    flake_lock "$flake_dir"
 
     run_or_print() {
       if [[ ''${OMARCHY_NIX_UPDATE_DRY_RUN:-} == 1 ]]; then
@@ -1223,7 +1279,7 @@ stdenv.mkDerivation (finalAttrs: {
     fi
     run_or_print sudo nixos-rebuild "$rebuild_cmd" --flake "$flake_dir"
     if [[ $rebuild_cmd == boot && ''${OMARCHY_NIX_UPDATE_DRY_RUN:-} != 1 ]]; then
-      echo "Boot default set — the new generation activates on reboot (offered at the end of omarchy update when the kernel changed)."
+      echo "Boot default set — the new generation is installed but not active until the reboot offered at the end of omarchy update; the rest of this update (migrations, hooks) still runs on the current generation."
     fi
     echo
     EOF
@@ -1250,7 +1306,7 @@ stdenv.mkDerivation (finalAttrs: {
         # "adapter" runs a NixOS replacement from $OMARCHY_PATH/migrations-nix/
         # (installed from pkgs/migrations-nix/ below) instead of the vendored
         # script.
-        cat > bin/omarchy-migrate <<'EOF'
+        overwrite_upstream bin/omarchy-migrate <<'EOF'
     #!/bin/bash
     # omarchy-nix: NixOS-aware, fail-closed migration runner.
     #
@@ -1379,7 +1435,11 @@ stdenv.mkDerivation (finalAttrs: {
         return 0
       fi
 
-      if OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$script"; then
+      # Upstream's pattern: the pending list arrives on fd 3 (see the loop
+      # below) and is closed for the migration, which keeps this script's
+      # stdin (the terminal) — a migration that reads stdin (gum confirm,
+      # read) gets the user, never the rest of the queue.
+      if OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$script" 3<&-; then
         touch "$marker"
       else
         echo -e "\e[31mMigration ''${name%.sh} failed — NOT marked as applied; it will be retried on the next run.\e[0m" >&2
@@ -1387,7 +1447,7 @@ stdenv.mkDerivation (finalAttrs: {
       fi
     }
 
-    while IFS=$'\t' read -r name file marker; do
+    while IFS=$'\t' read -r name file marker <&3; do
       [[ -n $name ]] || continue
       [[ -f $marker ]] && continue
 
@@ -1420,7 +1480,7 @@ stdenv.mkDerivation (finalAttrs: {
           failed=1
           ;;
       esac
-    done < <(migration_entries)
+    done 3< <(migration_entries)
 
     # Clear a login-time notification the user left sitting there and then
     # resolved by running migrations some other way. The substring matches
@@ -1880,13 +1940,14 @@ stdenv.mkDerivation (finalAttrs: {
     # fetch, no nixosConfigurations output at all) means "unknown" and the
     # candidate STAYS: a consumer flake whose eval is temporarily broken
     # must never be skipped past.
+    # The host name is compared in jq, never spliced into the Nix
+    # expression (a name with a quote would change what is evaluated).
     flake_is_foreign_library() {
-      local verdict rc=0
-      verdict=$(nix --extra-experimental-features 'nix-command flakes' \
-        eval --raw "$1#nixosConfigurations" \
-        --apply 'attrs: if attrs ? "'"$2"'" then "host" else "foreign"' 2>/dev/null) || rc=$?
+      local hosts rc=0
+      hosts=$(nix --extra-experimental-features 'nix-command flakes' \
+        eval --json "$1#nixosConfigurations" --apply builtins.attrNames 2>/dev/null) || rc=$?
       ((rc == 0)) || return 1
-      [[ $verdict == foreign ]]
+      jq -e --arg h "$2" 'type == "array" and (any(.[]; . == $h) | not)' <<<"$hosts" >/dev/null 2>&1
     }
 
     resolve_flake_dir() {
@@ -1943,13 +2004,27 @@ stdenv.mkDerivation (finalAttrs: {
       printf '%s\n' "$d"
     }
 
+    # flake_lock <dir> — flock on the canonical flake directory (fd 9), the
+    # one lock that serializes every omarchy-nix mutation of that flake:
+    # add/remove transactions and omarchy update's flake update + rebuild.
+    # Opening the directory read-only is intentional: it works for
+    # root-owned 0555 /etc/nixos-style directories without creating a lock
+    # file or asking sudo for the lock itself. The descriptor stays open
+    # until this process exits.
+    flake_lock() {
+      exec 9<"$1" ||
+        die "Cannot open the consumer flake directory for a read-only lock: $1. The directory must be readable and searchable. Nothing was changed."
+      if ! flock -n 9; then
+        log "Waiting for another install/remove/update of $1 to finish..."
+        flock -w 600 9 ||
+          die "Another install/remove/update operation has held the consumer flake lock for 10 minutes. Check for a stuck omarchy-nix-add/remove or omarchy update process. Nothing was changed."
+      fi
+    }
+
     # txn_begin <command-name> <ids...> — resolve the flake, open the
-    # per-operation audit log, and take a flock on the canonical flake
-    # directory. Opening the directory read-only is intentional: it works for
-    # root-owned 0555 /etc/nixos-style directories without creating a lock file
-    # or asking sudo for the lock itself. The descriptor stays open until this
-    # process exits, which serializes ALL add/remove operations — including
-    # their rebuilds and rollback.
+    # per-operation audit log, and take the flake lock (above). The lock is
+    # held until this process exits, which serializes ALL add/remove
+    # operations — including their rebuilds and rollback.
     txn_begin() {
       local cmd="$1"; shift
       flake_dir=$(resolve_flake_dir_or_die)
@@ -1963,10 +2038,7 @@ stdenv.mkDerivation (finalAttrs: {
       opt_nix="$flake_dir/omarchy-options.nix"
       mkdir -p "$STATE_DIR"
       op_log="$STATE_DIR/$(date +%Y%m%d-%H%M%S)-$$.log"
-      exec 9<"$flake_dir" ||
-        die "Cannot open the consumer flake directory for a read-only transaction lock: $flake_dir. The directory must be readable and searchable. Nothing was changed."
-      flock -w 600 9 ||
-        die "Another install/remove operation has held the consumer flake lock for 10 minutes. Check for a stuck omarchy-nix-add/remove process. Nothing was changed."
+      flake_lock "$flake_dir"
       {
         echo "command: $cmd"
         echo "ids: $*"
@@ -2004,14 +2076,20 @@ stdenv.mkDerivation (finalAttrs: {
       TXN_PRE_HASH=$(txn_hash)
     }
 
-    # txn_write_file <path> <content> — unique temp + atomic rename inside
-    # the same directory (sudo variants when the flake dir is root-owned).
+    # txn_write_file <path> <content> — unique temp (mktemp, never a
+    # guessable name something could pre-plant as a symlink) + atomic
+    # rename inside the same directory (sudo variants when the flake dir is
+    # root-owned). The file keeps its mode, or gets the umask default when
+    # new: mktemp's 0600 would hide a root-owned JSON from the menu probes.
     txn_write_file() {
-      local f="$1" tmp="$1.tmp.$$"
+      local f="$1" tmp mode
+      mode=$(stat -c %a "$f" 2>/dev/null) || mode=$(printf '%o' $((0666 & ~0$(umask))))
       if [[ -w $flake_dir ]]; then
-        printf '%s\n' "$2" >"$tmp" && mv "$tmp" "$f"
+        tmp=$(mktemp "$f.tmp.XXXXXX") &&
+          printf '%s\n' "$2" >"$tmp" && chmod "$mode" "$tmp" && mv -f "$tmp" "$f"
       else
-        printf '%s\n' "$2" | sudo tee "$tmp" >/dev/null && sudo mv "$tmp" "$f"
+        tmp=$(sudo mktemp "$f.tmp.XXXXXX") &&
+          printf '%s\n' "$2" | sudo tee "$tmp" >/dev/null && sudo chmod "$mode" "$tmp" && sudo mv -f "$tmp" "$f"
       fi
     }
 
@@ -2022,14 +2100,20 @@ stdenv.mkDerivation (finalAttrs: {
 
     # Git-based consumer flakes only snapshot tracked files — register the
     # JSON (and the options pair, when present) with intent-to-add so
-    # `nixos-rebuild --flake` can see them.
+    # `nixos-rebuild --flake` can see them. Root git only for a repository
+    # this user does not own (the root-owned /etc/nixos case) and never
+    # with the repository's command-running config (fsmonitor, hooks):
+    # in a user-owned repository sudo git would run those as root and
+    # leave a root-owned index behind.
     txn_git_register() {
       [[ -e $flake_dir/.git ]] || return 0
       local f
       for f in omarchy-packages.json omarchy-options.json omarchy-options.nix; do
         [[ -e $flake_dir/$f ]] || continue
-        git -C "$flake_dir" add -N "$f" >/dev/null 2>&1 ||
-          sudo git -C "$flake_dir" add -N "$f" >/dev/null 2>&1 || true
+        if ! git -C "$flake_dir" add -N "$f" >/dev/null 2>&1 && [[ ! -O $flake_dir/.git ]]; then
+          sudo git -c core.fsmonitor=false -c core.hooksPath=/dev/null \
+            -C "$flake_dir" add -N "$f" >/dev/null 2>&1 || true
+        fi
       done
     }
 
@@ -2085,11 +2169,7 @@ stdenv.mkDerivation (finalAttrs: {
     }
     OPTLOADER
     )
-        if [[ -w $flake_dir ]]; then
-          printf '%s\n' "$loader" >"$opt_nix"
-        else
-          printf '%s\n' "$loader" | sudo tee "$opt_nix" >/dev/null
-        fi
+        txn_write_file "$opt_nix" "$loader"
       fi
       txn_git_register
       if [[ -r $opt_json ]]; then OPT_JSON_POST_HASH=$(sha256sum "$opt_json" | cut -d' ' -f1); else OPT_JSON_POST_HASH=$(sudo sha256sum "$opt_json" | cut -d' ' -f1); fi
@@ -2144,19 +2224,32 @@ stdenv.mkDerivation (finalAttrs: {
       warn "Rebuild failed — your previous package list was restored."
     }
 
-    # txn_rebuild — one rebuild per operation; failure rolls back (above).
-    # OMARCHY_NIX_UPDATE_DRY_RUN=1 exercises the whole transaction minus the
-    # rebuild (unchanged interface).
+    # txn_rebuild — one rebuild per operation; failure rolls back (above),
+    # unless the system profile already moved: nixos-rebuild can fail
+    # AFTER installing the new generation (exit 4: activation finished with
+    # failed units; a bootloader install error). The system then has the
+    # change, so the JSON keeps it — a rollback would make the flake
+    # disagree with the running system and the next rebuild would silently
+    # undo it. OMARCHY_NIX_SYSTEM_PROFILE overrides the profile path for
+    # checks only. OMARCHY_NIX_UPDATE_DRY_RUN=1 exercises the whole
+    # transaction minus the rebuild (unchanged interface).
     txn_rebuild() {
       if [[ ''${OMARCHY_NIX_UPDATE_DRY_RUN:-} == 1 ]]; then
         echo "DRY-RUN: sudo nixos-rebuild ''${OMARCHY_NIX_REBUILD_CMD:-switch} --flake $flake_dir" | tee -a "$op_log"
         echo "result: dry-run" >>"$op_log"
         return 0
       fi
+      local profile="''${OMARCHY_NIX_SYSTEM_PROFILE:-/nix/var/nix/profiles/system}" before rc=0
+      before=$(readlink -e "$profile" 2>/dev/null) || before=""
       log "Rebuilding the system (this can take a minute or two)...  (full log: $op_log)"
-      if sudo nixos-rebuild "''${OMARCHY_NIX_REBUILD_CMD:-switch}" --flake "$flake_dir" 2>&1 | tee -a "$op_log"; then
+      sudo nixos-rebuild "''${OMARCHY_NIX_REBUILD_CMD:-switch}" --flake "$flake_dir" 2>&1 | tee -a "$op_log" || rc=$?
+      if ((rc == 0)); then
         echo "result: rebuild ok" >>"$op_log"
         return 0
+      fi
+      if [[ -n $before && $(readlink -e "$profile" 2>/dev/null) != "$before" ]]; then
+        echo "result: rebuild failed (exit $rc) after the system profile switched — package list kept" >>"$op_log"
+        die "Installed, but activation reported failures (nixos-rebuild exit $rc): the new system generation already contains this change, so the package list was kept to match it. See the full log: $op_log"
       fi
       echo "result: rebuild failed" >>"$op_log"
       txn_rollback || true
@@ -2198,8 +2291,11 @@ stdenv.mkDerivation (finalAttrs: {
         if [[ -z $path || $path == "$spec" || $path != *.* ]]; then
           die "Usage: omarchy-nix-add opt:<option.path>=<json-value> — '$id' is not a dotted option path with a value. Nothing was changed."
         fi
-        if ! canonical=$(jq -c '.' <<<"$value" 2>/dev/null); then
-          die "Sorry — the value for '$path' is not valid JSON: $value. Use e.g. true, 3, \"text\" or [\"a\",\"b\"]. Nothing was changed."
+        # Exactly one JSON value: plain `jq .` also accepts an empty value
+        # and a stream like `1 2`, which only failed later, at --argjson
+        # after the lock, with a raw jq error.
+        if ! canonical=$(jq -cs 'if length == 1 then .[0] else error("not one value") end' <<<"$value" 2>/dev/null); then
+          die "Sorry — the value for '$path' is not a single JSON value: '$value'. Use e.g. true, 3, \"text\" or [\"a\",\"b\"]. Nothing was changed."
         fi
         opt_paths+=("$path")
         opt_values+=("$canonical")
@@ -2287,10 +2383,11 @@ stdenv.mkDerivation (finalAttrs: {
     # Refresh the package-search index in the background for omarchy-nix-search.
     # Close the inherited lock fd before starting it — otherwise the
     # (minutes-long) index build would keep the transaction lock held after
-    # this script exits.
+    # this script exits. setsid -f: its own session, so closing the floating
+    # terminal (SIGHUP to its session) does not kill the refresh.
     (
       exec 9>&-
-      omarchy-nix-search --refresh >/dev/null 2>&1 &
+      setsid -f omarchy-nix-search --refresh </dev/null >/dev/null 2>&1 || true
     )
 
     log "Done — $* installed."
@@ -2436,15 +2533,23 @@ stdenv.mkDerivation (finalAttrs: {
     # _2bwm) sort LAST — upstream's pacman -Slq has no such artifacts.
     # Filename carries a version tag (v2) so a stale 2-column index from an
     # older script build is never picked up by the freshness check.
+    # Both index builders write a unique temp next to the index and rename
+    # it: a fixed "$INDEX.tmp" clashed with the background refresh an add
+    # starts while a search was building the same index.
     build_index() {
-      mkdir -p "$INDEX_DIR"
+      local tmp
+      mkdir -p "$(dirname "$INDEX")"
       echo "Building the package index (first run only — this takes a minute)..." >&2
-      nix search nixpkgs "" --json 2>/dev/null |
+      tmp=$(mktemp "$INDEX.XXXXXX")
+      if ! nix search nixpkgs "" --json 2>/dev/null |
         jq -r 'to_entries[] | [(.key | sub("^legacyPackages\\.[^.]+\\."; "")), (.value.description // ""), (.value.version // "")] | @tsv' |
         awk -F'\t' '{ print (($1 ~ /^_/) ? 1 : 0) "\t" $0 }' |
         LC_ALL=C sort -u |
-        cut -f2- >"$INDEX.tmp"
-      mv "$INDEX.tmp" "$INDEX"
+        cut -f2- >"$tmp"; then
+        rm -f -- "$tmp"
+        return 1
+      fi
+      mv -f -- "$tmp" "$INDEX"
     }
 
     # Options index columns: path, type, default, example, description.
@@ -2454,9 +2559,11 @@ stdenv.mkDerivation (finalAttrs: {
     # Every field is tryEval'd per option — one poisoned option must not
     # cost the whole index.
     build_opts_index() {
-      mkdir -p "$INDEX_DIR"
+      local tmp
+      mkdir -p "$INDEX_DIR" "$(dirname "$OPTS_INDEX")"
       echo "Building the NixOS options index (first run only — this takes a minute)..." >&2
-      nix-instantiate --eval --strict --json -E '
+      tmp=$(mktemp "$OPTS_INDEX.XXXXXX")
+      if ! nix-instantiate --eval --strict --json -E '
         let
           ev = import <nixpkgs/nixos> { configuration = { }; };
           field = f: let r = builtins.tryEval f; in if r.success then r.value else null;
@@ -2482,8 +2589,11 @@ stdenv.mkDerivation (finalAttrs: {
               (if .value.example == null then "" else .value.example end),
               ((.value.description // "") | gsub("[\\t\\n\\r]"; " ")) ]
           | @tsv' |
-        LC_ALL=C sort >"$OPTS_INDEX.tmp"
-      mv "$OPTS_INDEX.tmp" "$OPTS_INDEX"
+        LC_ALL=C sort >"$tmp"; then
+        rm -f -- "$tmp"
+        return 1
+      fi
+      mv -f -- "$tmp" "$OPTS_INDEX"
       current_nixpkgs_version >"$OPTS_VER"
     }
 
@@ -2533,15 +2643,19 @@ stdenv.mkDerivation (finalAttrs: {
     # (type description "one of \"a\", \"b\""), everything else a validated
     # free-form JSON prompt — options are only written where they can be
     # written honestly; a skipped pick prints nothing and writes nothing.
+    # The caller captures stdout, so the prompt's text goes to stderr
+    # (where read -p and select already print): stdout is the value only.
     prompt_option_value() {
       local path=$1 type=$2 default=$3 example=$4 desc=$5 v choices=()
-      echo
-      echo "NixOS option: $path"
-      if [[ -n $type ]]; then echo "Type:     $type"; fi
-      if [[ -n $default ]]; then echo "Default:  $default"; fi
-      if [[ -n $example ]]; then echo "Example:  $example"; fi
-      echo
-      if [[ -n $desc ]]; then echo "$desc"; echo; fi
+      {
+        echo
+        echo "NixOS option: $path"
+        if [[ -n $type ]]; then echo "Type:     $type"; fi
+        if [[ -n $default ]]; then echo "Default:  $default"; fi
+        if [[ -n $example ]]; then echo "Example:  $example"; fi
+        echo
+        if [[ -n $desc ]]; then echo "$desc"; echo; fi
+      } >&2
       if [[ $type == *boolean* ]]; then
         PS3="Value for $path: "
         select v in true false; do
@@ -2563,15 +2677,17 @@ stdenv.mkDerivation (finalAttrs: {
           return 0
         fi
       fi
-      echo "JSON value for $path — e.g. true, 3, \"text\", [\"a\",\"b\"];"
-      echo "empty skips (set values too complex for JSON in your flake):"
+      echo "JSON value for $path — e.g. true, 3, \"text\", [\"a\",\"b\"];" >&2
+      echo "empty skips (set values too complex for JSON in your flake):" >&2
       read -e -r -p "> " v
-      [[ -n $v ]] || return 1
-      if ! jq '.' <<<"$v" >/dev/null 2>&1; then
-        if jq '.' <<<"\"$v\"" >/dev/null 2>&1; then
+      [[ -n ''${v//[[:space:]]/} ]] || return 1
+      # Exactly one JSON value (plain `jq .` also accepts a stream like
+      # `1 2`); anything else is tried as a string, like bare words.
+      if ! jq -es 'length == 1' <<<"$v" >/dev/null 2>&1; then
+        if jq -es 'length == 1' <<<"\"$v\"" >/dev/null 2>&1; then
           v="\"$v\""
         else
-          echo "Not valid JSON: $v — skipping $path." >&2
+          echo "Not a single JSON value: $v — skipping $path." >&2
           return 1
         fi
       fi

@@ -36,14 +36,23 @@ let
   # A complete Lua double-quoted string literal for s.
   luaStr = s: ''"${luaEscape s}"'';
 
-  isNumericScale = s: builtins.match "[0-9]+(\\.[0-9]+)?" s != null;
+  # A plain decimal; Hyprland rejects scales below 0.25
+  # (CMonitorRuleParser::parseScale), so 0, 0.1, 0.2499 are refused here
+  # (string test: no float parsing of user input).
+  isNumericScale =
+    s:
+    builtins.match "[0-9]+(\\.[0-9]+)?" s != null
+    && builtins.match "0+(\\.([01][0-9]*|2([0-4][0-9]*)?))?" s == null;
 
   # Parse one Hyprland monitor directive ("output, mode, position, scale,
-  # [transform]") into validated fields. Empty fields become null (Hyprland
-  # then applies its defaults). Throws on anything outside the supported
-  # grammar — better a clear eval error than a broken monitors.lua.
+  # [transform]", or "output, disable") into validated fields. Empty fields
+  # become null (Hyprland then applies its defaults). Throws on anything
+  # outside the grammar Hyprland 0.56's CMonitorRuleParser accepts — better
+  # a clear eval error than a broken monitors.lua.
   #
-  # Returns: { output, mode, position, scale, transform } where scale is
+  # Returns: { output, disabled, mode, position, scale, transform } where
+  # disabled is a bool (the legacy `NAME, disable` form; Lua takes
+  # `disabled = true` and no other fields), scale is
   #   null | { type = "number"; value = "1.5"; } | { type = "string"; value = "auto"; }
   # and transform is null | "0".."7" (emitted unquoted — Hyprland expects a
   # number from the 0-7 rotation domain).
@@ -59,8 +68,8 @@ let
       scaleStr = f 3;
       transform = f 4;
       # WIDTHxHEIGHT or WIDTHxHEIGHT@RATE (RATE may be fractional, e.g.
-      # 59.94), or a Hyprland mode keyword (preferred/highres/highrr — the
-      # same set the catch-all and upstream tooling use).
+      # 59.94), or a Hyprland mode keyword (preferred/highres/highrr/
+      # maxwidth).
       isMode =
         s:
         builtins.match "[0-9]+x[0-9]+(@[0-9]+(\\.[0-9]+)?)?" s != null
@@ -68,11 +77,30 @@ let
           "preferred"
           "highres"
           "highrr"
+          "maxwidth"
         ];
-      # Absolute XxY (optional leading - for multi-monitor layouts) or the
-      # auto / auto-* keywords Hyprland accepts (and that the catch-all uses).
+      # Absolute XxY (optional leading - for multi-monitor layouts) or one
+      # of the auto directions Hyprland accepts (any other auto-* is a
+      # Hyprland config error).
       isPosition =
-        s: builtins.match "-?[0-9]+x-?[0-9]+" s != null || builtins.match "auto(-[A-Za-z]+)?" s != null;
+        s:
+        builtins.match "-?[0-9]+x-?[0-9]+" s != null
+        || builtins.elem s [
+          "auto"
+          "auto-right"
+          "auto-left"
+          "auto-up"
+          "auto-down"
+          "auto-center-right"
+          "auto-center-left"
+          "auto-center-up"
+          "auto-center-down"
+        ];
+      # Legacy `NAME, disable` (Hyprland also reads "disabled").
+      disabled = builtins.elem mode [
+        "disable"
+        "disabled"
+      ];
       scale =
         if scaleStr == null then
           null
@@ -87,7 +115,7 @@ let
             value = "auto";
           }
         else
-          throw "omarchy.monitors: unsupported scale '${scaleStr}' in '${entry}' (want a number or 'auto')";
+          throw "omarchy.monitors: unsupported scale '${scaleStr}' in '${entry}' (want a number >= 0.25 or 'auto')";
       checkedTransform =
         if transform == null then
           null
@@ -101,22 +129,33 @@ let
         else if isMode mode then
           mode
         else
-          throw "omarchy.monitors: unsupported mode '${mode}' in '${entry}' (want WIDTHxHEIGHT or WIDTHxHEIGHT@RATE, e.g. 2560x1440@144, or preferred/highres/highrr)";
+          throw "omarchy.monitors: unsupported mode '${mode}' in '${entry}' (want WIDTHxHEIGHT or WIDTHxHEIGHT@RATE, e.g. 2560x1440@144, preferred/highres/highrr/maxwidth, or disable)";
       checkedPosition =
         if position == null then
           null
         else if isPosition position then
           position
         else
-          throw "omarchy.monitors: unsupported position '${position}' in '${entry}' (want XxY integers, e.g. 0x0, or 'auto'/'auto-right'/...)";
+          throw "omarchy.monitors: unsupported position '${position}' in '${entry}' (want XxY integers, e.g. 0x0, or auto, auto-{right,left,up,down}, auto-center-{right,left,up,down})";
     in
     if n > 5 then
       throw "omarchy.monitors: entry has ${toString n} comma-separated fields (max 5: output, mode, position, scale, transform): '${entry}'"
     else if output == null then
       throw "omarchy.monitors: empty output name (first field) in '${entry}'"
+    else if disabled then
+      if n > 2 then
+        throw "omarchy.monitors: a disabled output takes no further fields: '${entry}'"
+      else
+        {
+          inherit output disabled;
+          mode = null;
+          position = null;
+          scale = null;
+          transform = null;
+        }
     else
       {
-        inherit output scale;
+        inherit output disabled scale;
         mode = checkedMode;
         position = checkedPosition;
         transform = checkedTransform;
@@ -137,6 +176,7 @@ let
       parts = [
         "output = ${luaStr m.output}"
       ]
+      ++ (lib.optional m.disabled "disabled = true")
       ++ (lib.optional (m.mode != null) "mode = ${luaStr m.mode}")
       ++ (lib.optional (m.position != null) "position = ${luaStr m.position}")
       ++ (lib.optional (scaleLua != null) "scale = ${scaleLua}")

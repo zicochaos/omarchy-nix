@@ -4,9 +4,10 @@
 # spinning up dated experiment/worktree directories with fuzzy search. Omarchy
 # ships it as `try`. Stdlib-only Ruby (io/console, time, fileutils, set); the
 # gem is published as `try-cli` but the repo install is just try.rb + lib/.
-# We vendor the source tree and install try.rb as `try` next to its lib/, so
-# `require_relative 'lib/...'` resolves — matching upstream's own flake.nix
-# and Homebrew Formula layout.
+# We vendor the source tree and install try.rb next to its lib/ under
+# share/try, so `require_relative 'lib/...'` resolves, with bin/try a wrapper
+# exec'ing it. (Upstream's own flake.nix and Homebrew Formula put lib/ in
+# bin/, which lands a stray bin/lib/ directory in every profile's bin.)
 #
 # Pinned to the latest release tag v1.10.1.
 {
@@ -46,15 +47,17 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   # No build step: try.rb is a Ruby script with `require_relative 'lib/...'`.
-  # Install it as `try` in $out/bin with lib/ beside it so the relative
-  # requires resolve (require_relative is relative to the calling file).
+  # Install it with lib/ beside it so the relative requires resolve
+  # (require_relative is relative to the calling file). The wrapper execs
+  # the script by its store path, so $0 (which `try init` embeds in the
+  # shell function it emits) is $out/share/try/try.rb.
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/bin
-    cp try.rb $out/bin/try
-    cp -r lib $out/bin/lib
-    chmod +x $out/bin/try
-    wrapProgram $out/bin/try --prefix PATH : ${lib.makeBinPath [ ruby ]}
+    mkdir -p $out/share/try
+    install -Dm755 try.rb $out/share/try/try.rb
+    cp -r lib $out/share/try/lib
+    makeWrapper $out/share/try/try.rb $out/bin/try \
+      --prefix PATH : ${lib.makeBinPath [ ruby ]}
     runHook postInstall
   '';
 

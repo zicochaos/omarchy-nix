@@ -17,13 +17,16 @@ omarchy provides it.
   systems fail evaluation with a clear message.
 - Network access (the install fetches omarchy-nix + nixpkgs from GitHub/cache).
 
-> **Hyprland Cachix is configured automatically.** The omarchy NixOS module
+> **Expect Hyprland to compile on the first install.** Hyprland ≥0.56 (needed
+> for the Lua config) is not in stable nixpkgs, so it comes from the
+> Hyprland flake, which Hydra does not build. The omarchy NixOS module
 > registers the upstream Hyprland Cachix (`hyprland.cachix.org`) on every
-> consumer. The flake Hyprland package is NOT built by Hydra, so without it
-> the first install rebuilds Hyprland + mesa + ffmpeg + aquamarine from
-> source (a multi-hour build that can OOM a small VM). You don't need to do
-> anything; this note is just so you know why the install pulls from a
-> non-default cache.
+> consumer, but that cache only keeps recent builds of Hyprland's main
+> branch, not the release this flake pins, so Hyprland and its hypr*
+> libraries build locally once (minutes, not hours; Mesa, ffmpeg and the
+> rest of its dependencies are Hydra-built and come from cache.nixos.org).
+> Set `omarchy.hyprlandCache.enable = false;` if the host must not trust a
+> third-party cache.
 
 ## 1. Install NixOS with the graphical ISO
 
@@ -45,8 +48,13 @@ Finish the install and reboot into the new system, then continue below.
 
 ## 2. Write configuration.nix
 
-This is the user-facing config. Replace the installer's
-`/etc/nixos/configuration.nix` with:
+This is the user-facing config. Edit the installer's
+`/etc/nixos/configuration.nix` rather than replacing it wholesale: on an
+encrypted install Calamares writes the LUKS lines there
+(`boot.initrd.luks.devices."luks-…"`, and `boot.initrd.secrets` for the
+swap keyfile), and dropping them leaves a system that cannot unlock its
+disks. Keep those lines, plus the installer's `time.timeZone` and
+`i18n.*` choices, and make the rest of the file match:
 
 ```nix
 { config, pkgs, ... }:
@@ -62,6 +70,14 @@ This is the user-facing config. Replace the installer's
   # Bootloader + console.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+
+  # Keep the installer's boot.initrd.luks.devices / boot.initrd.secrets
+  # lines here if you encrypted the disk.
+
+  # Must match the nixosConfigurations name in flake.nix (§ 3): the menu
+  # Install/Remove actions and `omarchy update` look the config up by
+  # hostname.
+  networking.hostName = "my-host";
 
   # Flakes, permanently (needed for the flake workflow below).
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
@@ -118,8 +134,10 @@ This is the user-facing config. Replace the installer's
 ```
 
 The omarchy NixOS module also whitelists the one unfree default app
-(obsidian) via `allowUnfreePredicate`, so you do NOT need
-`nixpkgs.config.allowUnfree = true` in your config.
+(obsidian) through `nixpkgs.config.allowUnfreePackages`, a list that merges
+with your own unfree settings (including an `allowUnfreePredicate` of your
+own), so you do NOT need `nixpkgs.config.allowUnfree = true` in your
+config.
 
 ## 3. Wire omarchy-nix as a flake input (recommended)
 
@@ -148,7 +166,7 @@ Create `/etc/nixos/flake.nix`:
         home-manager.nixosModules.home-manager
         # Share the omarchy HM module with all home-manager.users so their
         # blocks only carry per-user settings (see configuration.nix).
-        { home-manager.sharedModules = [ omarchy-nix.homeManagerModules.default ]; }
+        { home-manager.sharedModules = [ omarchy-nix.homeModules.default ]; }
       ];
     };
   };
@@ -162,9 +180,11 @@ Create `/etc/nixos/flake.nix`:
 > and the upstream-owned apps build from this flake's pin while your
 > system runs its own nixpkgs — two copies of their dependencies in the
 > store (a real consumer measured 1.7 GiB of duplicated closure) and desktop
-> packages lagging behind your channel. The Hyprland stack and the mesa
-> override still come from the `hyprland` input's own nixpkgs by design;
-> the README "Quick start" note has the full tradeoff.
+> packages lagging behind your channel. The Hyprland stack and Mesa
+> (`hardware.graphics.package` and `package32`) still come from the
+> `hyprland` input's own nixpkgs by design, so the graphics driver matches
+> what Hyprland is built against; the README "Quick start" note has the
+> full tradeoff.
 
 > **Name the configuration after your hostname.** The menu Install/Remove
 > actions and `omarchy update` resolve
@@ -215,7 +235,7 @@ Two adjustments you can make in your own config:
   lags Arch's (6.18 vs 7.2 at the time of writing). If you want a newer
   one — e.g. for very recent hardware — set
   `boot.kernelPackages = pkgs.linuxPackages_latest;`
-  (7.1 on the same pin). This trades away some of the stable channel's
+  (7.2 on the same pin). This trades away some of the stable channel's
   predictability, which is why it is not the port's default.
 - **Model-specific kernels.** The Panther Lake and T2 kernels are not
   packaged here. On a T2 Mac, use the

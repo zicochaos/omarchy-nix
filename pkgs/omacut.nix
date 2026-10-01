@@ -14,7 +14,7 @@ stdenv.mkDerivation (finalAttrs: {
   version = "0.4.0";
 
   src = fetchFromGitHub {
-    owner = "omacom-io";
+    owner = "omacom";
     repo = "omacut";
     rev = "v${finalAttrs.version}";
     hash = "sha256-g6xtaj6XSkP4B49H6McLQXV2pK9y0i2MwSF8R341mxw=";
@@ -47,7 +47,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   meta = {
     description = "Dead-simple video length trimmer (Omarchy app)";
-    homepage = "https://github.com/omacom-io/omacut";
+    homepage = "https://github.com/omacom/omacut";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
     mainProgram = "omacut";

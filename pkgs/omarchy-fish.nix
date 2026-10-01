@@ -1,18 +1,18 @@
-# Omarchy shell configuration for Fish (upstream: omacom-io/omarchy-fish),
+# Omarchy shell configuration for Fish (upstream: omacom/omarchy-fish),
 # vendored as an opt-in profile.
 #
 # Pin: temporarily the zicochaos/omarchy-fish fork rev carrying PR
-# omacom-io/omarchy-fish#7 (Quattro bash parity: cy/mup/rsw/lsw/dsw/tds
+# omacom/omarchy-fish#7 (Quattro bash parity: cy/mup/rsw/lsw/dsw/tds
 # helpers, agent-shortcut alignment — a/c/cx/cy — the herdr family
 # h/hdl/hds/hdlm/hsl, the ssh reconnect wrappers, ff Kitty branch,
 # ~/.local/bin in PATH, lazy `try init`, the `# omarchy:args=` completion
 # contract, zoxide cd history fix). Upstream merge latency is high (their
 # PR #6 has waited since 2026-05), so the pin tracks the fork until an
-# upstream release contains PR #7 — see
-# docs/decisions/2026-07-31-fish-parity-fork-pin.md.
+# upstream release contains PR #7 (the README "Fish shell (opt-in)"
+# section tracks the status).
 #
 # Layout mirrors the canonical PKGBUILD
-# (omacom-io/omarchy-pkgs/pkgbuilds/omarchy-fish): conf.d/functions/
+# (omacom/omarchy-pkgs/pkgbuilds/omarchy-fish): conf.d/functions/
 # completions land in fish's vendor_* dirs, and fzf.fish v10.3 is bundled
 # into the same dirs (never nixpkgs' newer fishPlugins.fzf-fish). Copy
 # order matters: fzf.fish first, omarchy-fish second — both ship
@@ -49,7 +49,7 @@ let
   fzfSrc = fetchFromGitHub {
     owner = "PatrickF1";
     repo = "fzf.fish";
-    rev = "refs/tags/v10.3";
+    tag = "v10.3";
     hash = "sha256-T8KYLA/r/gOKvAivKRoeqIwE2pINlxFQtZJHpOy9GMM=";
   };
 
@@ -115,7 +115,7 @@ stdenvNoCC.mkDerivation {
 
   meta = {
     description = "Omarchy shell configuration for Fish (opt-in vendored profile)";
-    homepage = "https://github.com/omacom-io/omarchy-fish";
+    homepage = "https://github.com/omacom/omarchy-fish";
     license = lib.licenses.mit;
     mainProgram = "omarchy-setup-fish";
     platforms = lib.platforms.linux;

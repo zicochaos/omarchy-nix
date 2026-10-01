@@ -31,9 +31,6 @@
   name = "omarchy-fish";
   meta.maintainers = [ ];
 
-  # testScriptWithTypes chokes on dynamic dispatch (same as tests/desktop.nix).
-  skipTypeCheck = true;
-
   nodes.machine =
     {
       config,
@@ -63,7 +60,7 @@
       };
 
       home-manager.users.demo = {
-        imports = [ omarchy.homeManagerModules.default ];
+        imports = [ omarchy.homeModules.default ];
         home.username = "demo";
         home.homeDirectory = "/home/demo";
         home.stateVersion = "26.05";

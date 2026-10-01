@@ -3,7 +3,7 @@
 # compositor directly through the ext-image-copy-capture / wlr virtual
 # pointer protocols, whose client bindings are generated at build time with
 # wayland-scanner, and places its overlays via LayerShellQt. Pinned to
-# release tag v1.21.0, the version omacom-io/omarchy-pkgs packages.
+# release tag v1.21.0, the version omacom/omarchy-pkgs packages.
 #
 # Differs from the Arch PKGBUILD:
 #   - CMakeLists hardcodes /usr/share/wayland-protocols for the ext-*

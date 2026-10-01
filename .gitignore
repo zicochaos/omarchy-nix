@@ -28,5 +28,7 @@ result-*
 # always a stray artifact (e.g. omarchy-nix-add run with cwd here).
 /omarchy-packages.json
 
-# Pi agent working state
+# Agent working state (Pi, Claude Code, superpowers SDD scratch)
 .pi/
+.claude/
+.superpowers/

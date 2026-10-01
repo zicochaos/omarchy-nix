@@ -29,6 +29,8 @@
 # — the current version is the one on https://zcode.z.ai/en#all-downloads
 # (the AUR z-code-bin PKGBUILD pins the same artifacts but lags releases;
 # 3.14.0 shipped on the downloads page while the AUR was still at 3.12.3).
+# The same directory's latest.yml carries the vendor's sha512 of the deb to
+# cross-check the prefetched file against.
 # Upstream also ships linux-arm64 for when the port gains aarch64.
 {
   lib,
@@ -80,12 +82,12 @@
 }:
 stdenv.mkDerivation (finalAttrs: {
   pname = "zcode-desktop";
-  version = "3.14.0";
+  version = "3.14.4";
 
   src = fetchurl {
     # Upstream moved the deb under <version>/linux-x64/ as of 3.3.x.
     url = "https://cdn-zcode.z.ai/zcode/electron/releases/${finalAttrs.version}/linux-x64/ZCode-${finalAttrs.version}-linux-x64.deb";
-    sha256 = "0al428hr9jgiryp9scy4g05kbva1m6vqnwx8srsdwrq9siv7y75d";
+    hash = "sha256-11NhiEXl4FfCnMvDkXwIpMjZk1Xe731qD00pFrpp5L4=";
   };
 
   nativeBuildInputs = [
