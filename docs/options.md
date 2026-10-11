@@ -56,12 +56,21 @@ manager (`services.displayManager.sddm.enable`).
 ### `omarchy.appPackages` *(listOf package, default `[]`, injected by the flake)*
 
 Upstream-owned Omarchy packages packaged by this flake because they are
-absent from nixpkgs (16): aether, asdcontrol, omacalc, omacut, omawrite,
-monologue, hype, omasnap, owe, try, hyprland-guiutils,
-hyprland-preview-share-picker, omarchy-nvim, yaru-theme, herdr, ttfx. Set
-automatically by the flake's `nixosModules.default`; override to trim or
+absent from nixpkgs or need a different pinned build (19): aether,
+asdcontrol, omacalc, omacut, omawrite, monologue, hype, omasnap, owe, try,
+hyprland-guiutils,
+hyprland-preview-share-picker, omarchy-nvim, yaru-theme, herdr, ttfx,
+disktree, gliff, superwhisper. Set automatically by the flake's
+`nixosModules.default`; override to trim or
 extend the set. Entries are still subject to `omarchy.exclude_packages`
 filtering (by package name, e.g. `"owe"`).
+
+Superwhisper is the default dictation backend for fresh users and its
+per-user setup runs during first-run. The module permits its unfree
+package alongside Obsidian. Existing Voxtype users keep their backend via
+migration `1791479273`; Setup → Defaults → Dictation selects and
+initializes either backend. Superwhisper's launcher and plugin links use
+the active system profile, so they follow upgrades.
 
 ### `omarchy.nvimPackage` *(nullOr package, default `null`, injected by the flake)*
 
@@ -76,11 +85,12 @@ flake; `null` skips nvim config seeding.
 
 ### `omarchy.ownedPackages` *(attrsOf package, default `{}`, injected by the flake)*
 
-Flake-owned derivations the Install-menu catalog can address by attribute
-name when nixpkgs does not carry them (currently `claude-desktop`, `omp`,
-`zcode-desktop`, `hermes-agent`). The managed-packages block resolves a
-catalog attr through nixpkgs first and through this set second. Set
-automatically by the flake's
+Explicit packages the Install-menu catalog addresses by attribute name
+(currently `claude-desktop`, `omp`, `zcode-desktop`, `grok-cli`,
+`hermes-agent`). The managed-packages block resolves this set first, then
+consumer nixpkgs for other names, including nested paths. This keeps the
+first-party xAI Grok CLI selected even though nixpkgs carries an unrelated
+third-party client under `grok-cli`. Set automatically by the flake's
 `nixosModules.default`; override to trim or extend the set.
 
 ### `omarchy.quickshellPackage` *(nullOr package, default `null`, injected by the flake)*
@@ -143,11 +153,12 @@ System timezone (IANA name). Example: `"Europe/Warsaw"`.
 ### `omarchy.theme` *(strMatching `[A-Za-z0-9._-]*[A-Za-z0-9_-][A-Za-z0-9._-]*`, default `"ethereal"`)*
 
 Default Omarchy theme name. Must match a directory under upstream `themes/`
-(or a user theme under `~/.config/omarchy/themes/<name>/`). The 22 stock
+(or a user theme under `~/.config/omarchy/themes/<name>/`). The 23 stock
 themes: `catppuccin`, `catppuccin-latte`, `ethereal`, `everforest`,
 `flexoki-light`, `gruvbox`, `hackerman`, `kanagawa`, `last-horizon`, `lumon`,
 `lupine`, `matte-black`, `miasma`, `nord`, `osaka-jade`, `retro-82`,
-`ristretto`, `rose-pine`, `solitude`, `tokyo-night`, `vantablack`, `white`.
+`ristretto`, `rose-pine`, `solitude`, `starship`, `tokyo-night`,
+`vantablack`, `white`.
 
 Left as a free-form string (not an enum) so users can drop their own theme
 under `~/.config/omarchy/themes/<name>/`. The character whitelist permits
@@ -465,7 +476,9 @@ Override the policy with `lib.mkForce` on
 Enable fingerprint authentication for the lock screen: turns on
 `services.fprintd` and declares the `omarchy-lock-fingerprint` PAM service
 (`auth required pam_fprintd.so`). Mirrors upstream, where the fingerprint
-service exists only after the user enrolls a finger.
+service exists only after the user enrolls a finger. While enabled, the
+module defaults fprintd's stop timeout to 3 seconds and tries to restart
+it after resume; the first-run fingerprint invitation remains muted.
 
 ```nix
 omarchy.fingerprint.enable = true;

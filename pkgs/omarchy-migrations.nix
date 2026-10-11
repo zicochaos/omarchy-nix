@@ -31,6 +31,9 @@
   # yt-dlp); the flags rewrite + native messaging host registration are the
   # user-scope remainder.
   "1780517689.sh" = "adapter";
+  # Docker launcher refresh: keep the mutable per-user desktop entry, while
+  # leaving docker group membership to users.users.<name>.extraGroups.
+  "1787580187.sh" = "adapter";
 
   # -------------------------------------------------------------- user-safe
   "1780057136.sh" = "user-safe"; # Shift+Enter CSI-u bindings in terminal configs
@@ -161,9 +164,6 @@
   #                           # authfile declaratively on NixOS)
   "1787515927.sh" = "skip"; # browser policy dir hardening under /etc (module-owned on NixOS)
   "1787573629.sh" = "skip"; # regenerate mise wrappers with --quiet (mise model rejected)
-  "1787580187.sh" = "skip"; # docker group opt-out: gpasswd + Docker.desktop refresh (group
-  #                           # membership is users.users.<name>.extraGroups on NixOS; the port
-  #                           # never put anyone in docker by default)
   "1787589206.sh" = "skip"; # pacman SigLevel for the [omarchy] repo (pacman)
   "1787666837.sh" = "skip"; # Dell XPS 13 sidecar amps: pkg-add + sudo apply (Arch firmware
   #                           # tooling, dell-xps13-sidecar-amps not in nixpkgs)
@@ -284,4 +284,42 @@
   #                           # never installed here)
   "1790542069.sh" = "skip"; # Hype via omarchy-pkg-add (package swap is a
   #                           # module concern: hype ships in appPackages)
+
+  # --- bump f2a39c4 (2026-10-10) ---
+  "1788256455.sh" = "skip"; # repair an Arch polkit PAM stack written by old hardware-auth
+  #                           # installers; NixOS generates PAM and never wrote that stack
+  "1788261467.sh" = "user-safe"; # seed the Secret portal backend only when no user portal
+  #                                # config exists, then restart the per-user portal
+  "1788281348.sh" = "user-safe"; # refresh theme intro assets and the session marker ($HOME)
+  "1789433473.sh" = "skip"; # imperative USBGuard policy setup; USB authorization is
+  #                           # consumer-declared and the Omarchy workflow is not ported
+  "1790114905.sh" = "user-safe"; # replace only Omarchy's stale PipeWire host config ($HOME)
+  #                                # and try-restart the per-user speaker-tuning service
+  "1790344599.sh" = "skip"; # imperative Bolt policy/service setup; services.hardware.bolt
+  #                           # is declarative and the Omarchy approval workflow is not ported
+  "1790397381.sh" = "skip"; # move Arch's OpenClaw seed into a self-updating user runtime;
+  #                           # NixOS keeps the catalog-installed CLI instead
+  "1790608617.sh" = "skip"; # repair the unsupported imperative USBGuard approval workflow
+  "1790702362.sh" = "skip"; # Arch base-devel/Qt compiler packages; development tools come
+  #                           # from the Nix catalog or a consumer development shell
+  "1790702606.sh" = "skip"; # omarchy-app's makepkg/PKGBUILD templates need Nix adaptation
+  "1790863209.sh" = "skip"; # replace mise's npm Grok wrapper; that wrapper was never
+  #                           # installed here and the Nix catalog owns agent packages
+  "1791112479.sh" = "skip"; # mise reshim for account dispatch; NixOS supplies its own
+  #                           # account wrappers on the session PATH
+  "1791123731.sh" = "user-safe"; # append commented transparency examples to looknfeel.lua
+  "1791125650.sh" = "skip"; # install privileged fprintd resume hook/service drop-in;
+  #                           # fprintd and suspend behavior are declared by the NixOS module
+  "1791265613.sh" = "skip"; # Dell Panther Lake speaker firmware through an Arch hardware
+  #                           # installer; firmware is consumer-owned NixOS configuration
+  "1791345484.sh" = "user-safe"; # Disktree package swap routes into the package stubs
+  #                                # (appPackages owns it); remove stale $HOME launcher only
+  "1791376887.sh" = "user-safe"; # add OverlayScrollbar to the user's existing browser flags
+  "1791403252.sh" = "skip"; # reorder /etc/pacman.conf and upgrade Arch packages
+  "1791470456.sh" = "user-safe"; # repair bundled background WebP selections ($HOME);
+  #                                # the package patch prevents copied store modes leaking
+  "1791479273.sh" = "user-safe"; # preserve Voxtype as the configured dictation backend ($HOME)
+  "1791542175.sh" = "skip"; # Gliff via omarchy-pkg-add; appPackages owns the package
+  "1791581004.sh" = "skip"; # Limine rebuild/boot-menu verification for console kernel param;
+  #                           # NixOS builds its kernel command line and boot generations
 }

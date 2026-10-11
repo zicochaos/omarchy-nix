@@ -77,6 +77,9 @@ let
   # its owed user unit and theme-set hook follow it, so excluding "owe"
   # drops all three together.
   owePkg = lib.findFirst (p: lib.getName p == "owe") null (filterExcluded cfg.appPackages);
+  superwhisperPkg = lib.findFirst (p: lib.getName p == "superwhisper") null (
+    filterExcluded cfg.appPackages
+  );
 
   # Menu-managed packages (omarchy-packages.json), read once and shared by
   # the (B0) unfree whitelist and the (B0b) managed-packages block.
@@ -269,13 +272,11 @@ let
         # app silently never starts.
         gtk3
 
-        # --- Dictation (voxtype). Upstream ships voxtype via an opt-in
-        # invitation / Install → AI → Dictation (omarchy-voxtype-install);
-        # we ship the package declaratively so it is present by default.
-        # default/hypr/bindings/voxtype.lua binds F9 + Super+Ctrl+X when the
-        # binary is on PATH. [output] mode = "type" types via ydotool (daemon
-        # enabled above); the whisper model (~150MB) downloads on first
-        # `voxtype setup --download` (still run via omarchy-voxtype-install). ---
+        # --- Dictation (voxtype). Keep the declarative alternative to the
+        # Superwhisper default. Setup → Defaults → Dictation invokes
+        # omarchy-install-dictation-voxtype and downloads its model.
+        # The backend-independent dictation binding uses that selection;
+        # [output] mode = "type" types via the ydotool daemon enabled above. ---
         voxtype
         # Arch voxtype-bin installs packaging/voxtype-configure.desktop so
         # Super+Space → Apps shows "Voxtype Configuration" (TUI via
@@ -411,10 +412,10 @@ let
         neovim
         btop
         lazygit
+        # Docker.desktop still uses omarchy-launch-docker-tui even though
+        # upstream removed lazydocker from its base package list.
         lazydocker
         yt-dlp
-        # dua is the upstream disk-usage tool (dua-cli was renamed to dua).
-        dua
         inxi
         man-db
         unzip
@@ -588,6 +589,8 @@ in
           # OWE's theme-set hook, copied in by first-run and migration
           # 1789764927 from /run/current-system/sw/share/owe.
           "/share/owe"
+          "/share/superwhisper"
+          "/share/fcitx5"
           # fzf's key-bindings.bash, sourced by default/bash/init.
           "/share/fzf"
           # The omarchy-nvim tree, the first place the nvim migration
@@ -636,7 +639,10 @@ in
           # keep reading the old, already-applied migration set and old
           # scripts until re-login (mirror issue #6 follow-up).
           OMARCHY_PATH = "/run/current-system/sw/share/omarchy";
-          PATH = [ "/run/current-system/sw/share/omarchy/bin" ];
+          PATH = [
+            "/run/current-system/sw/share/omarchy/agent-wrappers"
+            "/run/current-system/sw/share/omarchy/bin"
+          ];
           TERMINAL = lib.mkDefault "xdg-terminal-exec";
           # EDITOR/SUDO_EDITOR mirror default/bash/envs
           # (EDITOR="${EDITOR:-omarchy-launch-editor --inline}",
@@ -705,7 +711,7 @@ in
           # above): re-resolve the active generation at every use, so a
           # mid-session switch is immediately visible to omarchy-* scripts.
           export OMARCHY_PATH="/run/current-system/sw/share/omarchy"
-          export PATH="/run/current-system/sw/share/omarchy/bin:$PATH"
+          export PATH="/run/current-system/sw/share/omarchy/agent-wrappers:/run/current-system/sw/share/omarchy/bin:$PATH"
           export TERMINAL=xdg-terminal-exec
           export EDITOR="''${EDITOR:-omarchy-launch-editor --inline}"
           export SUDO_EDITOR="$EDITOR"
@@ -721,7 +727,11 @@ in
         # generateUnits (type=user) symlinks systemd.packages' lib/systemd/user
         # into /etc/systemd/user. Enabling is separate — see block (H).
         # owe contributes owed.service the same way.
-        systemd.packages = [ cfg.package ] ++ lib.optional (owePkg != null) owePkg;
+        systemd.packages = [
+          cfg.package
+        ]
+        ++ lib.optional (owePkg != null) owePkg
+        ++ lib.optional (superwhisperPkg != null) superwhisperPkg;
       })
 
       # (B) Runtime dependencies (filtered by omarchy.exclude_packages).
@@ -783,7 +793,11 @@ in
       # own constructed instance back into config.nixpkgs.pkgs, so that value
       # is non-null even when NixOS built it.
       (lib.mkIf (!options.nixpkgs.pkgs.isDefined) {
-        nixpkgs.config.allowUnfreePackages = [ "obsidian" ] ++ managedUnfreeNames;
+        nixpkgs.config.allowUnfreePackages = [
+          "obsidian"
+          "superwhisper"
+        ]
+        ++ managedUnfreeNames;
         # Scoped opt-in: only the insecure deps of packages the consumer
         # actually selected (Sublime → openssl-1.1.1w, Bitwarden → electron).
         # List option merges with any consumer-supplied entries.
@@ -844,14 +858,14 @@ in
                     let
                       path = lib.splitString "." n;
                     in
-                    # Catalog attrs resolve against the consumer's nixpkgs
-                    # first; omarchy.ownedPackages (flake-injected) is the
-                    # fallback for derivations packaged in this repo that
-                    # nixpkgs does not carry (e.g. claude-desktop).
-                    if lib.hasAttrByPath path pkgs then
-                      lib.getAttrFromPath path pkgs
-                    else if cfg.ownedPackages ? ${n} then
+                    # Explicit owned packages take precedence over a
+                    # same-named nixpkgs attr (e.g. the first-party Grok CLI).
+                    # All other attrs resolve against consumer nixpkgs,
+                    # including nested paths selected by the package picker.
+                    if cfg.ownedPackages ? ${n} then
                       cfg.ownedPackages.${n}
+                    else if lib.hasAttrByPath path pkgs then
+                      lib.getAttrFromPath path pkgs
                     else
                       throw "${toString cfg.managedPackagesFile}: unknown nixpkgs attribute '${n}'"
                   ) managedPkgs;
@@ -978,6 +992,10 @@ in
         boot.binfmt.emulatedSystems = cfg.binfmtEmulatedSystems;
 
         # --- Upstream /etc defaults (shipped under upstream's Arch etc/ tree) ---
+
+        # Quattro avoids the boot console black-screen issue by disabling
+        # terminal styling on the kernel console (upstream 1791581004).
+        boot.kernelParams = lib.mkAfter [ "systemd.tty.term.console=dumb" ];
 
         # Mask NetworkManager-wait-online (upstream migration 1784568652):
         # graphical.target was gated on network-online.target because
@@ -1406,7 +1424,7 @@ in
 
       # (H) Enable the path-adapted systemd user units declaratively.
       # Upstream's install/user/first-run/enable-user-units.sh runs
-      # `systemctl --user enable --now` for six of the eight units; NixOS
+      # `systemctl --user enable --now` for six of the ten units; NixOS
       # ignores package-unit [Install] sections, so wantedBy here creates the
       # .wants/ links. Unit bodies come from cfg.package via systemd.packages
       # (block A) — setting wantedBy alone becomes a drop-in, not a rewrite.
@@ -1414,8 +1432,17 @@ in
       # a hardware match exists). Taildrop is enabled only when the effective
       # NixOS Tailscale service is enabled; otherwise its long-running receiver
       # must not start merely because the vendored unit is present.
+      # USB/Thunderbolt watchers remain disabled: their imperative approval
+      # policy is replaced by consumer-owned declarative configuration.
       (lib.mkIf (cfg.package != null) {
         systemd.user.services = {
+          # Keep UWSM's template and session environment when overriding
+          # this instance; a separate unit loses env_session.conf and PATH.
+          "wayland-wm@hyprland.desktop" = {
+            overrideStrategy = "asDropin";
+            enableDefaultPath = false;
+            serviceConfig.KillMode = "mixed";
+          };
           bt-agent.wantedBy = [ "graphical-session.target" ];
           omarchy-fcitx5.wantedBy = [ "graphical-session.target" ];
           omarchy-migrate-notify.wantedBy = [ "graphical-session.target" ];
@@ -1578,6 +1605,10 @@ in
       # mirroring upstream where the service exists only after enrollment.
       (lib.mkIf cfg.fingerprint.enable {
         services.fprintd.enable = true;
+        systemd.services.fprintd.serviceConfig.TimeoutStopSec = lib.mkDefault "3s";
+        powerManagement.resumeCommands = ''
+          ${pkgs.systemd}/bin/systemctl --no-block try-restart fprintd.service
+        '';
         security.pam.services.omarchy-lock-fingerprint.text = ''
           #%PAM-1.0
           auth       required                    pam_fprintd.so

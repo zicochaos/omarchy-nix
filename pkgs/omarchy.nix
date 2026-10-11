@@ -16,7 +16,7 @@
 # which is explicitly out of scope (AGENTS.md: "vendor, don't rewrite").
 #
 # Path adaptation also covers:
-#   - the 8 systemd user units under default/systemd/user/ (/usr/bin/* and
+#   - the 10 systemd user units under default/systemd/user/ (/usr/bin/* and
 #     /usr/share/omarchy → store paths). Unit semantics, [Install] targets,
 #     and ordering are left untouched.
 #   - install/user/xcompose.sh (hardcoded include path for default/xcompose).
@@ -114,7 +114,9 @@ stdenv.mkDerivation (finalAttrs: {
   # Units are later installed to $out/lib/systemd/user/ for systemd.packages.
   postPatch = ''
         substituteInPlace default/bash/env-bootstrap \
-          --replace-fail "/usr/share/omarchy" "$out/share/omarchy"
+          --replace-fail "/usr/share/omarchy" "$out/share/omarchy" \
+          --replace-fail 'omarchy_wrapper_dir="''${MISE_DATA_DIR:-''${XDG_DATA_HOME:-$HOME/.local/share}/mise}/command-wrappers/bin"' \
+            'omarchy_wrapper_dir="''${OMARCHY_PATH%/}/agent-wrappers"'
 
         # fzf key bindings (Ctrl-R/Ctrl-T/Alt-C) live in the fzf package's
         # share/fzf; the module links it into the system profile
@@ -142,6 +144,8 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace bin/omarchy-agent-usage-codex \
           --replace-fail '#!/usr/bin/python3' '#!${python3}/bin/python3'
         substituteInPlace bin/omarchy-agent-usage-fireworks \
+          --replace-fail '#!/usr/bin/python3' '#!${python3}/bin/python3'
+        substituteInPlace bin/omarchy-agent-usage-grok bin/omarchy-agent-account-state \
           --replace-fail '#!/usr/bin/python3' '#!${python3}/bin/python3'
         substituteInPlace bin/omarchy-dev-font \
           --replace-fail '#!/usr/bin/python3' '#!${python3}/bin/python3'
@@ -188,6 +192,12 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "/usr/bin/omarchy-tailscale-receive" \
             "$out/share/omarchy/bin/omarchy-tailscale-receive"
 
+        substituteInPlace default/systemd/user/omarchy-usb-authorization.service \
+          --replace-fail "/usr/bin/bash" "${bash}/bin/bash"
+        substituteInPlace default/systemd/user/omarchy-thunderbolt-authorization.service \
+          --replace-fail "/usr/bin/omarchy-thunderbolt-authorization-watch" \
+            "$out/share/omarchy/bin/omarchy-thunderbolt-authorization-watch"
+
         # omarchy-launch-browser and omarchy-launch-webapp resolve the .desktop
         # via a fixed brace list of data dirs. Arch has /usr/share/applications;
         # NixOS puts system apps in /run/current-system/sw/share/applications.
@@ -229,6 +239,9 @@ stdenv.mkDerivation (finalAttrs: {
         # without owe; the hook source moves off /usr/share.
         substituteInPlace install/user/first-run/enable-user-units.sh \
           --replace-fail $'  bt-agent.service \\\n  owed.service \\\n' $'  bt-agent.service \\\n' \
+          --replace-fail \
+            $'  omarchy-crash-watch.service \\\n  omarchy-usb-authorization.service \\\n  omarchy-thunderbolt-authorization.service; do' \
+            '  omarchy-crash-watch.service; do' \
           --replace-fail \
             'omarchy-hook-install theme-set /usr/share/owe/10-owe-sync' \
             $'if systemctl --user cat owed.service >/dev/null 2>&1; then\n  systemctl --user enable --now owed.service\n  omarchy-hook-install theme-set /run/current-system/sw/share/owe/10-owe-sync\nfi'
@@ -311,51 +324,8 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail 'pkill -x ttfx' \
                          'pkill -x "\.?ttfx.*"'
 
-        # Same wrapper class of bug as tte above: nixpkgs wraps
-        # gpu-screen-recorder, so the recorded process cmdline is the full
-        # store path (/nix/store/...gpu-screen-recorder-*/bin/.wrapped/
-        # gpu-screen-recorder ...) and `pgrep/pkill -f "^gpu-screen-recorder"`
-        # never matches — recording starts but the bar indicator stays dark
-        # and --stop-recording silently does nothing (verified on real
-        # hardware: recorder kept capturing after "stop"). Match the path
-        # segment with
-        # a trailing space instead: it hits the wrapped cmdline ("...
-        # /gpu-screen-recorder -w ...") but NOT gsr-kms-server (whose path
-        # continues "-5.x.y/bin/gsr-kms-server", no space after the name).
-        #
-        # The pattern is bracketed (`[/]`) for a second reason — indicator
-        # self-latching (root-caused on real hardware via an instrumented
-        # shell):
-        # Indicators.qml always instantiates BOTH its horizontal and vertical
-        # blocks (visibility-gated, not loader-gated), so every indicator
-        # exists twice and each instance runs its own statusProc pgrep at
-        # startup. pgrep excludes only its own PID, and each pgrep's cmdline
-        # contains the pattern text — so with a plain pattern the two
-        # concurrent pgreps match EACH OTHER and both exit 0. On a cold boot
-        # pgrep takes ~130ms, so the event-loop-synchronized starts always
-        # overlap and recording latches true at every login (the QML's
-        # activeStateObserved guard then pins it forever). The bracket keeps
-        # matching the real recorder while the pgreps' own cmdlines (literal
-        # "[/]gpu…") no longer match. Same trick as the menu `when:` guard.
-        substituteInPlace bin/omarchy-capture-screenrecording \
-          --replace-fail '"^gpu-screen-recorder"' \
-                         '"[/]gpu-screen-recorder "'
-        substituteInPlace shell/plugins/bar/indicators/ScreenRecording.qml \
-          --replace-fail '"^gpu-screen-recorder"' \
-                         '"[/]gpu-screen-recorder "'
-
-        # Same fix for the menu's `when:` guard, but with a self-match-safe
-        # pattern: the menu batches all guards into ONE `bash -lc` process
-        # whose cmdline contains the pattern text, so a plain substring
-        # pattern would match the evaluator itself and "Stop Screenrecording"
-        # would be visible ALWAYS. `[/]gpu-screen-recorder ` keeps matching
-        # the wrapped recorder (/…/bin/.wrapped/gpu-screen-recorder -w …)
-        # while matching neither the evaluator (literal "[/]gpu…" in its
-        # cmdline) nor gsr-kms-server (path continues "-5.x.y/bin/…", no
-        # space after the name).
-        substituteInPlace default/omarchy/omarchy-menu.jsonc \
-          --replace-fail "pgrep -f '^gpu-screen-recorder'" \
-                         "pgrep -f '[/]gpu-screen-recorder '"
+        # Upstream's recorder helper now resolves each candidate's /proc exe,
+        # so the old command-line matching patches are no longer needed.
 
         substituteInPlace bin/omarchy-refresh-applications \
           --replace-fail 'cp "$OMARCHY_PATH"/applications/*.desktop' \
@@ -375,9 +345,32 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail 'cp -f "$OMARCHY_PATH/config/chromium-flags.conf" "$1"' \
                          'cp -f --no-preserve=mode "$OMARCHY_PATH/config/chromium-flags.conf" "$1"'
 
-        substituteInPlace bin/omarchy-voxtype-install \
+        substituteInPlace bin/omarchy-install-dictation-voxtype \
           --replace-fail 'cp "$OMARCHY_PATH/default/voxtype/config.toml"' \
                          'cp --no-preserve=mode "$OMARCHY_PATH/default/voxtype/config.toml"'
+
+        substituteInPlace migrations/1791470456.sh \
+          --replace-fail 'cp "$source" "$replacement"' \
+            'cp --no-preserve=mode "$source" "$replacement"'
+
+        # Selecting the declarative dictation package initializes only user
+        # state; a missing package needs a rebuild rather than an Arch install.
+        substituteInPlace bin/omarchy-install-dictation-superwhisper \
+          --replace-fail 'omarchy-pkg-add superwhisper-bin' \
+            'omarchy-pkg-present superwhisper-bin || { echo "Superwhisper is absent. Restore it in omarchy.appPackages and rebuild." >&2; exit 1; }' \
+          --replace-fail 'bash /usr/share/superwhisper/setup-user' \
+            '/run/current-system/sw/share/superwhisper/setup-user'
+        substituteInPlace bin/omarchy-remove-dictation-superwhisper \
+          --replace-fail '/usr/bin/superwhisper' '/run/current-system/sw/bin/superwhisper' \
+          --replace-fail '/opt/superwhisper' '/run/current-system/sw/share/superwhisper/app'
+
+        # The Docker desktop still needs its TUI. Keep the polkit prompt,
+        # with NixOS executables that also resolve in pkexec's clean PATH.
+        substituteInPlace bin/omarchy-launch-docker-tui \
+          --replace-fail '/usr/bin/env' '${coreutils}/bin/env' \
+          --replace-fail 'TERM="''${TERM:-xterm-256color}" lazydocker' \
+            'TERM="''${TERM:-xterm-256color}" /run/current-system/sw/bin/lazydocker' \
+          --replace-fail 'exec lazydocker' 'exec /run/current-system/sw/bin/lazydocker'
 
         substituteInPlace install/user/hardware/asus/fix-audio-mixer.sh \
           --replace-fail 'cp "$OMARCHY_PATH/default/wireplumber/wireplumber.conf.d/alsa-soft-mixer.conf"' \
@@ -1062,6 +1055,121 @@ stdenv.mkDerivation (finalAttrs: {
     EOF
         chmod +x bin/omarchy-pkg-present
 
+        # Nix CLI packages take mise's place. Keep account dispatch in its
+        # own PATH directory so presence probes can ignore dispatchers and
+        # provider resolution cannot recurse into the same wrapper.
+        cat > bin/omarchy-nix-provider-path <<'EOF'
+    #!/bin/bash
+    omarchy_nix_provider_path() {
+      local wrapper_real dir remaining="$PATH" result="" separator="" count=0
+      wrapper_real=$(realpath -m -- "''${OMARCHY_PATH:-/run/current-system/sw/share/omarchy}/agent-wrappers")
+      while :; do
+        dir="''${remaining%%:*}"
+        if [[ $(realpath -m -- "''${dir:-.}") != "$wrapper_real" ]]; then
+          result+="$separator$dir"
+          separator=:
+          count=$((count + 1))
+        fi
+        [[ $remaining == *:* ]] || break
+        remaining="''${remaining#*:}"
+      done
+      # An empty PATH searches the current directory. Preserve that only
+      # when it was an actual entry, never when all wrappers were removed.
+      ((count > 0)) || result=/nonexistent/omarchy-provider-path
+      printf '%s\n' "$result"
+    }
+    EOF
+        chmod +x bin/omarchy-nix-provider-path
+        for target in bin/omarchy-pkg-present bin/omarchy-cmd-missing bin/omarchy-cmd-present; do
+          sed -i '/^#!/a source "$(dirname "''${BASH_SOURCE[0]}")/omarchy-nix-provider-path"\nexport PATH="$(omarchy_nix_provider_path)"' "$target"
+        done
+        substituteInPlace bin/omarchy-agent-account-exec \
+          --replace-fail '# mise removes its wrapper dispatch directories before calling us, so exec' \
+            $'source "$(dirname "''${BASH_SOURCE[0]}")/omarchy-nix-provider-path"\nexport PATH="$(omarchy_nix_provider_path)"\n\n# Remove the Nix dispatch directory before resolving the actual CLI, so exec' \
+          --replace-fail $'  # A mise dispatcher can exist before its CLI or first-run installer does.\n  export MISE_MINIMUM_RELEASE_AGE=0\n  mise use -g --quiet "$provider"\n  agent_binary=$(mise which "$provider")' \
+            $'  echo "$provider is not installed. Use omarchy-nix-add install.ai.$provider and rebuild." >&2\n  exit 127' \
+          --replace-fail 'export PATH="''${MISE_DATA_DIR:-''${XDG_DATA_HOME:-$HOME/.local/share}/mise}/command-wrappers/bin:$PATH"' \
+            'export PATH="''${OMARCHY_PATH:-/run/current-system/sw/share/omarchy}/agent-wrappers:$PATH"'
+        mkdir -p agent-wrappers
+        for provider in claude codex grok; do
+          cat > "agent-wrappers/$provider" <<EOF
+    #!/bin/bash
+    exec "\''${OMARCHY_PATH:-/run/current-system/sw/share/omarchy}/bin/omarchy-agent-account-exec" $provider "\$@"
+    EOF
+          chmod +x "agent-wrappers/$provider"
+        done
+
+        substituteInPlace bin/omarchy-agent-account-add \
+          --replace-fail $'mise use -g "$package" >/dev/null 2>&1 || fail "Installing the $name CLI didn\x27t finish."' \
+            'fail "$name is not installed. Install it from Install > AI, then add the account again."' \
+          --replace-fail 'mise use -g "$package" || exit 1' \
+            'omarchy-nix-add "install.ai.$provider" || exit 1' \
+          --replace-fail '#!/bin/bash\nexec omarchy-launch-browser' \
+            '#!${bash}/bin/bash\nexec omarchy-launch-browser'
+
+        # OpenClaw's new private, self-updating Node copy is an Arch
+        # packaging path. The catalog already owns its Nix CLI package.
+        overwrite_upstream bin/omarchy-install-openclaw-cli <<'EOF'
+    #!/bin/bash
+    # omarchy:summary=Ensure the Nix-managed OpenClaw CLI is installed
+    # omarchy:args=<--check|--now>
+    set -euo pipefail
+    installed() {
+      omarchy-cmd-present openclaw && timeout 30 openclaw --version >/dev/null 2>&1
+    }
+    case "''${1:-}" in
+      --check) installed ;;
+      --now)
+        installed || omarchy-nix-add install.ai.openclaw
+        installed
+        ;;
+      *) echo "Usage: omarchy-install-openclaw-cli <--check|--now>" >&2; exit 1 ;;
+    esac
+    EOF
+        chmod +x bin/omarchy-install-openclaw-cli
+
+        overwrite_upstream bin/omarchy-sudo-passwordless <<'EOF'
+    #!/bin/bash
+    # Omarchy's temporary sudo grant is replaced by declarative NixOS policy.
+    # The bar probes that temporary grant, not cached sudo access.
+    [[ ''${1:-} == --active ]] && exit 3
+    echo "Sudo policy is declarative: set security.sudo.wheelNeedsPassword = false (or security.sudo.extraRules) in your flake config and rebuild."
+    [[ ''${1:-} != --disable ]]
+    EOF
+        chmod +x bin/omarchy-sudo-passwordless
+
+        # Fresh users get the upstream default dictation backend. Existing
+        # users keep their choice and can initialize it from Setup -> Defaults.
+        mkdir -p install/user/first-run
+        cat > install/user/first-run/dictation-superwhisper.sh <<'EOF'
+    set -e
+    if omarchy-pkg-present superwhisper-bin; then
+      backend_config="''${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/defaults/dictation"
+      if [[ ! -e $backend_config && ! -L $backend_config ]]; then
+        mkdir -p "''${backend_config%/*}"
+        temporary=$(mktemp "$backend_config.XXXXXX")
+        printf '%s\n' superwhisper > "$temporary"
+        mv -n "$temporary" "$backend_config"
+        rm -f "$temporary"
+      fi
+      if [[ $(omarchy-default-dictation) == superwhisper ]]; then
+        /run/current-system/sw/share/superwhisper/setup-user
+      fi
+    fi
+    EOF
+        substituteInPlace bin/omarchy-provision-first-run \
+          --replace-fail 'run_first_run_step "set GNOME theme" \' \
+            $'run_first_run_step "initialize default dictation" \\\n  bash "$OMARCHY_PATH/install/user/first-run/dictation-superwhisper.sh"\nrun_first_run_step "set GNOME theme" \\'
+
+        # Keep the new app-scaffolding guide vendored, but do not install its
+        # Arch-only makepkg/PKGBUILD instructions into the user's agents.
+        substituteInPlace bin/omarchy-provision-user \
+          --replace-fail '  name=''${skill##*/}' \
+            $'  name=''${skill##*/}\n  [[ $name == omarchy-app ]] && continue'
+        substituteInPlace migrations/1787843905.sh \
+          --replace-fail '  name=''${name##*/}' \
+            $'  name=''${name##*/}\n  [[ $name == omarchy-app ]] && continue'
+
         overwrite_upstream bin/omarchy-pkg-missing <<'EOF'
     #!/bin/bash
     # omarchy-nix: always report "missing" so pkg-add stubs run (and print).
@@ -1542,6 +1650,8 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-service-dropbox" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.service.dropbox'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-service-spotify" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.service.spotify'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-service-signal" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.service.signal'" \
+          --replace-fail 'omarchy-install-and-launch Slack slack-desktop slack' \
+            "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.service.slack'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-install-service-tailscale" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.service.tailscale'" \
           --replace-fail '  "install.service.nordvpn": {"icon":"󱇱","label":"NordVPN","disabled":"omarchy-pkg-present nordvpn-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-nordvpn"},' "" \
           --replace-fail '  "install.service.once": {"icon":"󰏖","label":"ONCE","disabled":"omarchy-pkg-present once-bin","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-service-once"},' "" \
@@ -1786,7 +1896,7 @@ stdenv.mkDerivation (finalAttrs: {
     # a clean native option plus the fastfetch seed take .source straight
     # from here, verbatim upstream, refreshed with every omarchy-src bump.
     # See pkgs/omarchy-etc-manifest.nix for the per-file classification.
-    cp -a default bin shell themes config migrations install applications etc "$dest/"
+    cp -a default bin agent-wrappers shell themes config migrations install applications etc "$dest/"
 
     # B21: the upstream skill is Arch-specific (/usr/share/omarchy,
     # pacman/AUR, Arch package lifecycle). Replace it with the omarchy-nix

@@ -35,7 +35,7 @@ pkgs.runCommand "omarchy-migration-adapters-check" { } ''
   NVIM_SOURCE=${nvimPkg}/share/omarchy-nvim/config/lua/config/remote_clipboard.lua
   EXT=/run/current-system/sw/share/omarchy/default/chromium/extensions
 
-  tested="1780517689.sh 1781587663.sh 1784401744.sh 1788996284.sh 1789764927.sh"
+  tested="1780517689.sh 1781587663.sh 1784401744.sh 1787580187.sh 1788996284.sh 1789764927.sh"
   [[ $(ls "$A" | sort | xargs) == "$tested" ]] ||
     fail "adapters changed ($(ls "$A" | xargs)); add their cases to this check"
 
@@ -175,6 +175,69 @@ pkgs.runCommand "omarchy-migration-adapters-check" { } ''
   [[ $(cat "$H/.config/tmux/tmux.conf") == "$old_tmux" ]] || fail "1784401744 changed a read-only target"
   grep -q 'Preserving read-only symlinked tmux config' "$TMPDIR/run.log" || fail "1784401744 skipped silently"
   echo "1784401744 OK"
+
+  # --- 1787580187: Docker launcher refresh, no account mutation -------
+  DOCKER_ROOT=${omarchyPkg}/share/omarchy
+  DOCKER_SOURCE=$DOCKER_ROOT/default/applications/Docker.desktop
+  NO_DOCKER_ROOT=$TMPDIR/no-docker-source
+  mkdir -p "$NO_DOCKER_ROOT"
+  old_docker=$(printf '%s\n' '[Desktop Entry]' 'Name=Docker' 'Exec=lazydocker' 'Type=Application')
+  setup_docker() {
+    docker_dest=$H/.local/share/applications/Docker.desktop
+    mkdir -p "$(dirname "$docker_dest")"
+    printf '%s\n' "$old_docker" >"$docker_dest"
+    chmod 644 "$docker_dest"
+  }
+  fresh docker-absent
+  run 1787580187.sh "$NO_NVIM" OMARCHY_PATH="$DOCKER_ROOT"
+  [[ ! -e $H/.local/share/applications/Docker.desktop ]] || fail "1787580187 created an absent launcher"
+
+  fresh docker-present
+  setup_docker
+  run 1787580187.sh "$NO_NVIM" OMARCHY_PATH="$DOCKER_ROOT"
+  cmp -s "$DOCKER_SOURCE" "$docker_dest" || fail "1787580187 did not refresh the launcher"
+  [[ -f $docker_dest && ! -L $docker_dest && -w $docker_dest && $(stat -c %a "$docker_dest") == 644 ]] ||
+    fail "1787580187 did not leave a writable user copy"
+  run 1787580187.sh "$NO_NVIM" OMARCHY_PATH="$DOCKER_ROOT"
+  cmp -s "$DOCKER_SOURCE" "$docker_dest" || fail "1787580187 is not idempotent"
+  [[ $(stat -c %a "$docker_dest") == 644 ]] || fail "1787580187 changed permissions on repeat"
+
+  fresh docker-source-absent
+  setup_docker
+  run 1787580187.sh "$NO_NVIM" OMARCHY_PATH="$NO_DOCKER_ROOT"
+  [[ $(cat "$docker_dest") == "$old_docker" ]] || fail "1787580187 changed a launcher without a source"
+  [[ $(stat -c %a "$docker_dest") == 644 ]] || fail "1787580187 changed permissions without a source"
+  grep -q 'source not found' "$TMPDIR/run.log" || fail "1787580187 without a source said nothing"
+
+  fresh docker-readonly
+  setup_docker
+  chmod 444 "$docker_dest"
+  run 1787580187.sh "$NO_NVIM" OMARCHY_PATH="$DOCKER_ROOT"
+  [[ $(cat "$docker_dest") == "$old_docker" && $(stat -c %a "$docker_dest") == 444 ]] ||
+    fail "1787580187 changed a read-only launcher"
+
+  fresh docker-link
+  docker_dest=$H/.local/share/applications/Docker.desktop
+  dotlink "$docker_dest" "$old_docker"
+  docker_target=$(readlink "$docker_dest")
+  docker_mode=$(stat -c %a "$docker_target")
+  run 1787580187.sh "$NO_NVIM" OMARCHY_PATH="$DOCKER_ROOT"
+  is_link "$docker_dest"
+  [[ $(readlink "$docker_dest") == "$docker_target" ]] || fail "1787580187 retargeted a user symlink"
+  cmp -s "$DOCKER_SOURCE" "$docker_target" || fail "1787580187 did not edit through a writable launcher link"
+  [[ $(stat -c %a "$docker_target") == "$docker_mode" ]] || fail "1787580187 reset a linked launcher's permissions"
+
+  fresh docker-ro-link
+  docker_dest=$H/.local/share/applications/Docker.desktop
+  dotlink "$docker_dest" "$old_docker" ro
+  docker_target=$(readlink "$docker_dest")
+  run 1787580187.sh "$NO_NVIM" OMARCHY_PATH="$DOCKER_ROOT"
+  is_link "$docker_dest"
+  [[ $(readlink "$docker_dest") == "$docker_target" && $(cat "$docker_dest") == "$old_docker" ]] ||
+    fail "1787580187 changed a read-only managed launcher link"
+  [[ $(stat -c %a "$docker_target") == 444 ]] || fail "1787580187 changed a read-only target's permissions"
+  grep -q 'Preserving read-only' "$TMPDIR/run.log" || fail "1787580187 skipped a read-only launcher silently"
+  echo "1787580187 OK"
 
   # --- 1788996284: remote clipboard provider repair ------------------
   # the pinned omarchy-nvim must not ship a provider this migration

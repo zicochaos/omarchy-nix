@@ -18,7 +18,7 @@
 # In this repo the same wiring is exposed as the `example` flake output, so
 # `nix flake check` evaluates this config exactly the way an external
 # consumer's default nixpkgs would (in particular WITHOUT allowUnfree — the
-# omarchy module whitelists the one unfree default app, obsidian, itself).
+# omarchy module whitelists its unfree defaults, Obsidian and Superwhisper).
 #
 # Build and run as a VM (see docs/vm.md):
 #
@@ -44,7 +44,7 @@
   # Personal settings (all have sensible defaults; override what you need).
   omarchy.full_name = "Omarchy User";
   omarchy.email_address = "omarchy@example.com";
-  omarchy.theme = "ethereal"; # one of the 22 stock themes
+  omarchy.theme = "ethereal"; # one of the 23 stock themes
   omarchy.terminal = "foot";
   omarchy.scale = 1; # 1 for 1x displays, 2 for 2x (HiDPI)
 

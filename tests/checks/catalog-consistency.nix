@@ -1,6 +1,6 @@
 # Catalog consistency: every catalog pkg/feature-implied pkg must
-# exist in the pinned nixpkgs (eval-time), every cataloged menu id
-# must appear rewired in omarchy-menu.jsonc, AND every entry must
+# exist in pinned nixpkgs or owned packages (eval-time), every cataloged
+# menu id must appear rewired in omarchy-menu.jsonc, AND every entry must
 # evaluate under a consumer-style unfree/insecure whitelist built
 # only from that entry's unfreeNames + insecureNames (regression
 # net for hidden unfree deps / getName mismatches / throw-aliases).
@@ -16,8 +16,8 @@
 let
   inherit (pkgs) lib;
   catalog = import ../../pkgs/omarchy-catalog.nix;
-  # Flake-owned derivations the module's managed-packages block
-  # resolves as a fallback after nixpkgs attrs (omarchy.ownedPackages).
+  # Explicit owned derivations take precedence over same-named nixpkgs
+  # attrs, matching the module's managed-packages resolver.
   # flake.nix passes the same ownedPackagesFor set its module wrapper
   # injects, so there is no copy to keep in sync.
   ownedPkgs = ownedPackages;

@@ -69,10 +69,10 @@
     };
 
     # Upstream-owned packages not available in nixpkgs, built under pkgs/
-    # and injected by the flake wrapper (16: aether, asdcontrol, omacalc,
+    # and injected by the flake wrapper (19: aether, asdcontrol, omacalc,
     # omacut, omawrite, omasnap, monologue, hype, owe, try, yaru-theme,
     # hyprland-guiutils, hyprland-preview-share-picker, omarchy-nvim, herdr,
-    # ttfx). Added to
+    # ttfx, disktree, gliff, superwhisper). Added to
     # environment.systemPackages; entries are still subject to
     # omarchy.exclude_packages filtering.
     appPackages = lib.mkOption {
@@ -85,20 +85,19 @@
       '';
     };
 
-    # Flake-owned derivations catalog entries may address by attribute name
-    # when nixpkgs does not carry them (e.g. claude-desktop, packaged under
-    # pkgs/ here; zcode-desktop likewise). The managed-
-    # packages block resolves a catalog attr through nixpkgs first and
-    # through this set second. Set automatically by the flake's
-    # nixosModules.default; override to extend the set.
+    # Explicit package choices for Install-menu attrs (e.g. claude-desktop
+    # absent from nixpkgs, or the first-party grok-cli replacing nixpkgs'
+    # unrelated client). Managed packages resolve through this set first,
+    # then consumer nixpkgs. Set automatically by the flake's
+    # nixosModules.default; override to trim or extend the set.
     ownedPackages = lib.mkOption {
       type = lib.types.attrsOf lib.types.package;
       default = { };
       description = ''
-        Packages packaged by this flake that Install-menu catalog entries
-        can reference when the attribute does not exist in nixpkgs. Set
-        automatically by the flake's nixosModules.default; override to
-        trim or extend the set.
+        Explicit packages for Install-menu catalog attributes. These take
+        precedence over same-named consumer nixpkgs attributes; other names
+        resolve against consumer nixpkgs. Set automatically by the flake's
+        nixosModules.default; override to trim or extend the set.
       '';
     };
 
@@ -222,12 +221,12 @@
       description = "System timezone (IANA name).";
     };
 
-    # One of the 22 stock Quattro themes shipped under themes/ in the upstream
+    # One of the 23 stock Quattro themes shipped under themes/ in the upstream
     # tree (catppuccin, catppuccin-latte, ethereal, everforest, flexoki-light,
     # gruvbox, hackerman, kanagawa, last-horizon, lumon, lupine, matte-black,
     # miasma, nord, osaka-jade, retro-82, ristretto, rose-pine, solitude,
-    # tokyo-night, vantablack, white). Left as a free-form string rather than
-    # an enum because users can drop their own theme under
+    # starship, tokyo-night, vantablack, white). Left as a free-form string
+    # rather than an enum because users can drop their own theme under
     # ~/.config/omarchy/themes/<name>/. The character whitelist
     # still permits every upstream theme name while blocking path traversal
     # and newline injection — the name is interpolated into filesystem

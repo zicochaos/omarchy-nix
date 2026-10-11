@@ -56,6 +56,7 @@ in
   omarchy-etc-parity = import ./omarchy-etc-parity.nix args;
   omarchy-disabled-state = import ./omarchy-disabled-state.nix args;
   omarchy-runtime = import ./omarchy-runtime.nix args;
+  omarchy-agent-accounts = import ./omarchy-agent-accounts.nix args;
   omarchy-nix-transactions = import ./omarchy-nix-transactions.nix args;
   omarchy-flake-resolver = import ./omarchy-flake-resolver.nix args;
   omarchy-managed-options = import ./omarchy-managed-options.nix args;

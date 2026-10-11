@@ -11,9 +11,8 @@
 }:
 let
   sourceSkill = ../../skills/omarchy/SKILL.md;
-  packagedSkill = "${
-    self.packages.${system}.omarchy
-  }/share/omarchy/default/agents/skills/omarchy/SKILL.md";
+  omarchyPath = "${self.packages.${system}.omarchy}/share/omarchy";
+  packagedSkill = "${omarchyPath}/default/agents/skills/omarchy/SKILL.md";
   upstreamSkill = "${inputs.omarchy-src}/default/agents/skills/omarchy/SKILL.md";
   parityManifest = ../../skills/omarchy/skill-parity.json;
 in
@@ -99,6 +98,26 @@ pkgs.runCommand "omarchy-skill-check" { nativeBuildInputs = [ pkgs.jq ]; } ''
     grep -Fq -- "$anchor" ${packagedSkill} ||
       { echo "FAIL: parity anchor missing from SKILL.md: $anchor" >&2; exit 1; }
   done < parity-anchors.txt
+
+  # The historical Hermes migration enumerates the packaged skill tree.
+  # Exercise it against an existing profile as well as the default home,
+  # so a later upstream skill cannot bypass the NixOS provisioner policy.
+  export HOME="$TMPDIR/skill-home"
+  export OMARCHY_PATH=${omarchyPath}
+  mkdir -p "$HOME/.hermes/profiles/work/skills"
+  [[ -d $OMARCHY_PATH/default/agents/skills/omarchy-app ]]
+  bash "$OMARCHY_PATH/migrations/1787843905.sh"
+  for skills_dir in "$HOME/.hermes/skills" "$HOME/.hermes/profiles/work/skills"; do
+    for name in omarchy diagnose-crash; do
+      [[ -L $skills_dir/$name ]]
+      [[ $(readlink -f "$skills_dir/$name") == "$OMARCHY_PATH/default/agents/skills/$name" ]]
+    done
+    cmp ${sourceSkill} "$skills_dir/omarchy/SKILL.md"
+    cmp ${inputs.omarchy-src}/default/agents/skills/diagnose-crash/SKILL.md \
+      "$skills_dir/diagnose-crash/SKILL.md"
+    [[ ! -e $skills_dir/omarchy-app && ! -L $skills_dir/omarchy-app ]]
+  done
+  jq -e '."1790702606.sh" == "skip"' "$OMARCHY_PATH/migrations-nix.json" >/dev/null
 
   touch "$out"
 ''

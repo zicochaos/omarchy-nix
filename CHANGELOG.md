@@ -4,6 +4,49 @@ All notable changes to omarchy-nix, newest first. Dates are UTC.
 Upstream adaptation details and the bump checklist:
 [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
+## 2026-10-10
+
+- **Upstream Quattro moves from `8b4eae6` to `f2a39c4` (177 commits).**
+  The vendored tree has 23 themes (adding Starship), 155 classified
+  migrations, 48 classified `/etc` files, and 10 shipped user units.
+- **Three new default packages:** Disktree 0.11.0 replaces dua-cli;
+  Gliff 0.3.1 supplies remote desktop and its indicator; Superwhisper
+  1.0.0 supplies dictation. Fresh users initialize Superwhisper during
+  first-run. Migration `1791479273` preserves existing Voxtype users;
+  Setup → Defaults → Dictation selects the backend. Superwhisper's user
+  links follow the active system generation.
+- **The Docker launcher keeps its TUI dependency.** Upstream removed
+  lazydocker from its package list while `Docker.desktop` still uses it.
+  The port retains it and uses NixOS executable paths for the polkit launch.
+- **AI account dispatch, Slack, and OpenClaw use Nix packages.** Account
+  wrappers resolve the installed CLI without a mise fallback. The Grok
+  catalog now supplies xAI's first-party CLI 1.0.50 rather than the
+  unrelated nixpkgs client. OpenClaw's
+  `--check`/`--now` installer checks or installs the catalog package.
+- **OWE advances to 0.2.10** for prepared login and theme intros. Its
+  software-rendered transition tests and Qt LockFeed tests now run during
+  the build. Mesa uses one worker in the tests to avoid losing transition
+  samples when parallel CI builds compete for CPUs.
+- **Hardware and service policy stays declarative.** The 18 USB/Thunderbolt
+  approval commands and three Arch platform helpers print configuration
+  guidance; eight new menu entries are hidden and the two approval user
+  units stay disabled. Native defaults add compositor `KillMode=mixed`,
+  a 3-second fingerprint service stop timeout and restart after resume
+  when fingerprint authentication is enabled, and a plain boot console.
+- **The new `omarchy-app` agent skill is not automatically linked.** Its
+  Arch `makepkg`/PKGBUILD instructions and templates need a Nix adaptation;
+  the upstream source remains vendored. The existing Omarchy skill's
+  semantic parity classifications still match upstream.
+- **The passwordless-sudo indicator reports no Omarchy grant.** Its probe
+  no longer mistakes the declarative configuration note for an active
+  temporary grant; disabling reports that a rebuild is needed.
+- **Verification:** all 46 flake checks pass, including the desktop,
+  UX, SDDM, and fish VM tests. The package build, formatting, and
+  all-systems evaluation pass. UX opens the three new applications and
+  verifies the live Fcitx5 addon and Superwhisper panel. Gliff's 161
+  tests and CPU encode/decode probe, Superwhisper's doctor and setup
+  probes, and OWE's rendering and LockFeed tests pass.
+
 ## 2026-10-01
 
 - **CI checks the whole flake on every PR, and the nightly became an

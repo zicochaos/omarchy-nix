@@ -1,5 +1,5 @@
 # Builds every flake-owned package the Install menu can select
-# (omarchy.ownedPackages: claude-desktop, omp, zcode-desktop,
+# (omarchy.ownedPackages: claude-desktop, omp, zcode-desktop, grok-cli,
 # hermes-agent). catalog-consistency only evaluates their drvPaths, so a
 # dead vendor URL, a stale fetch hash or an autoPatchelf break after a
 # nixpkgs bump would otherwise first surface as a failed Install rebuild

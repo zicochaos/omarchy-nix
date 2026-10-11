@@ -354,7 +354,7 @@ in
           fi
 
           # --- voxtype dictation config. Upstream copies this in
-          # omarchy-voxtype-install; the package is shipped declaratively
+          # omarchy-install-dictation-voxtype; the package is shipped declaratively
           # (runtimeDeps), so seed the default config up front — the install
           # script's later cp is then a no-op over identical content.
           ${seedStubFrom "${omarchyPathOf effPkg}/default/voxtype/config.toml" "voxtype/config.toml"}
@@ -481,12 +481,9 @@ in
         #
         # omarchy-done markers are flat files under
         # ~/.local/state/omarchy/done/<name> (no path components; see
-        # bin/omarchy-done). Per-step markers exist ONLY for the two
-        # invitation hooks (omarchy-done ensure inside the hook bodies):
-        #   - voxtype-install-invitation  (Arch tarball / omarchy-voxtype-install)
-        #   - fingerprint-setup-invitation (PAM/fprintd — out of scope)
-        # Pre-create those so install/user/first-run/*.hook still get
-        # installed by first-run, but never fire their invitation toasts.
+        # bin/omarchy-done). Mute the fingerprint setup invitation because
+        # PAM/fprintd are declarative. Retain the deleted Voxtype invitation's
+        # marker for compatibility; dictation now uses backend selection.
         # Arch mise steps have no markers — they are no-op'd in the package.
         home.activation.omarchyFirstRunSkipMarkers = lib.hm.dag.entryAfter [ "omarchyThemeRender" ] ''
           omarchy_done="$HOME/.local/state/omarchy/done"

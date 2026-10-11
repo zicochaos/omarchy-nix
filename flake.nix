@@ -101,6 +101,8 @@
             pkg:
             builtins.elem (nixpkgs.lib.getName pkg) [
               "obsidian"
+              "superwhisper"
+              "slack"
               "steam"
               "steam-unwrapped"
               "claude-desktop"
@@ -115,7 +117,12 @@
       # checks are meant to consume it too. `packages` is this flake's
       # packages.<system> set (the wrapper passes its guarded hostPackages).
       ownedPackagesFor = system: packages: {
-        inherit (packages) claude-desktop omp zcode-desktop;
+        inherit (packages)
+          claude-desktop
+          omp
+          zcode-desktop
+          grok-cli
+          ;
         # Hermes Agent ships its own flake (uv2nix) — consume the packages
         # output directly instead of vendoring the build.
         hermes-agent = inputs.hermes-agent.packages.${system}.default;
@@ -180,11 +187,16 @@
           # (unfree; the menu icon font grows its U+E90F mark — see
           # pkgs/omarchy-icons/).
           zcode-desktop = pkgs.callPackage ./pkgs/zcode-desktop.nix { };
+          # First-party xAI CLI; the stable nixpkgs attr is a different client.
+          grok-cli = pkgs.callPackage ./pkgs/grok-cli.nix { };
           omacalc = pkgs.callPackage ./pkgs/omacalc.nix { };
           omacut = pkgs.callPackage ./pkgs/omacut.nix { };
           omawrite = pkgs.callPackage ./pkgs/omawrite.nix { };
           monologue = pkgs.callPackage ./pkgs/monologue.nix { };
           hype = pkgs.callPackage ./pkgs/hype.nix { };
+          disktree = pkgs.callPackage ./pkgs/disktree.nix { };
+          gliff = pkgs.callPackage ./pkgs/gliff.nix { };
+          superwhisper = pkgs.callPackage ./pkgs/superwhisper.nix { };
           owe = pkgs.callPackage ./pkgs/owe.nix { };
           omasnap = pkgs.callPackage ./pkgs/omasnap.nix { };
           try = pkgs.callPackage ./pkgs/try.nix { };
@@ -261,6 +273,9 @@
                     omawrite
                     monologue
                     hype
+                    disktree
+                    gliff
+                    superwhisper
                     omasnap
                     owe
                     try

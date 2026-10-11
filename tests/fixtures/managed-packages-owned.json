@@ -1,0 +1,4 @@
+{
+  "packages": ["grok-cli", "hello", "kdePackages.dolphin"],
+  "features": []
+}

@@ -36,6 +36,46 @@
   ...
 }:
 
+let
+  # B18 exercises real Linux process names and /proc/<pid>/exe, without
+  # requiring a hardware encoder. SIGINT records delivery and exits cleanly.
+  recorderFixture =
+    pkgs.runCommand "omarchy-screenrecording-process-fixture"
+      {
+        nativeBuildInputs = [ pkgs.stdenv.cc ];
+      }
+      ''
+        mkdir -p $out/bin
+        cat > recorder.c <<'C'
+        #include <signal.h>
+        #include <stdio.h>
+
+        int main(int argc, char **argv) {
+          if (argc < 2) return 2;
+          sigset_t signals;
+          sigemptyset(&signals);
+          sigaddset(&signals, SIGINT);
+          if (sigprocmask(SIG_BLOCK, &signals, NULL)) return 3;
+          char ready[4096];
+          if (snprintf(ready, sizeof ready, "%s.ready", argv[1]) >= sizeof ready) return 4;
+          FILE *file = fopen(ready, "w");
+          if (!file) return 4;
+          fputs("ready\n", file);
+          fclose(file);
+          int received;
+          if (sigwait(&signals, &received)) return 5;
+          file = fopen(argv[1], "w");
+          if (!file) return 6;
+          fputs("INT\n", file);
+          fclose(file);
+          return 0;
+        }
+        C
+        $CC recorder.c -o $out/bin/gpu-screen-recorder
+        cp $out/bin/gpu-screen-recorder $out/bin/wf-recorder
+        cp $out/bin/gpu-screen-recorder $out/bin/gpu-screen-recorder-helper
+      '';
+in
 {
   name = "omarchy-ux";
   meta.maintainers = [ ];
@@ -353,20 +393,120 @@
         )
 
     # --- (4c) Dictation stack (voxtype + ydotool). --------------------------
-    # voxtype is shipped declaratively (upstream parity: Install → AI →
-    # Dictation); Arch voxtype-bin also installs Voxtype Configuration.desktop
+    # Voxtype remains a declarative alternative to the default Superwhisper;
+    # Arch voxtype-bin also installs Voxtype Configuration.desktop
     # so Super+Space → Apps can open the TUI — assert that entry is present.
     machine.succeed("test -f /run/current-system/sw/share/applications/voxtype-configure.desktop")
-    # default/hypr/bindings/voxtype.lua binds F9 + Super+Ctrl+X
-    # when the binary is on PATH. [output] mode = "type" needs ydotool, whose
+    # The backend-independent dictation binding resolves the chosen backend.
+    # Voxtype's [output] mode = "type" needs ydotool, whose
     # daemon is enabled via programs.ydotool.
     machine.succeed("command -v voxtype")
     machine.succeed("command -v ydotool")
     machine.succeed("systemctl is-enabled --quiet ydotoold.service")
 
+    # New default apps must run in the desktop, with dictation's fresh-user
+    # integration ready and preferences editable outside the store.
+    assert machine.succeed(as_demo("omarchy-default-dictation")).strip() == "superwhisper"
+    machine.succeed(as_demo("superwhisper status >/dev/null"))
+    machine.wait_until_succeeds(as_demo(
+        "test -S /run/user/1000/superwhisper-fcitx5.sock"
+    ), timeout=30)
+    dictation_doctor = json.loads(machine.succeed(as_demo("superwhisper doctor --json")))
+    text_commit = next(c for c in dictation_doctor["checks"] if c["name"] == "text commit")
+    assert text_commit["status"] == "ok" and text_commit["detail"].startswith("fcitx5 addon "), text_commit
+    machine.succeed(as_demo("test -w ~/.config/superwhisper/preferences.json"))
+    machine.succeed(as_demo(
+        "test -e ~/.config/omarchy/plugins/superwhisper-panel/manifest.json"
+    ))
+    # The panel can offer choices only after its Python helper reads the
+    # live daemon; a missing interpreter must fail this IPC probe.
+    machine.wait_until_succeeds(as_demo(
+        "omarchy-shell superwhisper page tone | grep -qx ok"
+    ), timeout=30)
+    machine.succeed(as_demo("omarchy-shell superwhisper close"))
+    # Re-running initialization must preserve an explicit alternative.
+    machine.succeed(as_demo(
+        "printf \"%s\\n\" voxtype > ~/.config/omarchy/defaults/dictation; "
+        "bash $OMARCHY_PATH/install/user/first-run/dictation-superwhisper.sh"
+    ))
+    assert machine.succeed(as_demo("omarchy-default-dictation")).strip() == "voxtype"
+    machine.succeed(as_demo(
+        "printf \"%s\\n\" superwhisper > ~/.config/omarchy/defaults/dictation"
+    ))
+    # A failed write must make first-run retry instead of marking it done.
+    machine.succeed(as_demo(
+        "mkdir -p /tmp/ux-dictation-readonly/omarchy/defaults; "
+        "chmod 555 /tmp/ux-dictation-readonly/omarchy/defaults"
+    ))
+    machine.fail(as_demo(
+        "XDG_CONFIG_HOME=/tmp/ux-dictation-readonly "
+        "bash $OMARCHY_PATH/install/user/first-run/dictation-superwhisper.sh"
+    ))
+    machine.fail(as_demo("test -e ~/.agents/skills/omarchy-app"))
+    machine.fail(as_demo("omarchy-sudo-passwordless --active"))
+    machine.fail(as_demo("omarchy-sudo-passwordless --disable"))
+    # UWSM scopes inherit the caller's environment. Unlike the GUI launcher,
+    # su - has no WAYLAND_DISPLAY, so restore the live session's value.
+    wayland_display = next(
+        line.split("=", 1)[1] for line in session_env().splitlines()
+        if line.startswith("WAYLAND_DISPLAY=")
+    )
+    for app, launch in [("disktree", "disktree /home/demo"), ("gliff", "gliff"), ("superwhisper", "gtk-launch superwhisper")]:
+        machine.succeed(as_demo(
+            "WAYLAND_DISPLAY=" + wayland_display
+            + " setsid uwsm-app -- sh -c \"env > /tmp/ux-" + app
+            + "-env; exec " + launch + "\""
+            + " >/tmp/ux-" + app + ".log 2>&1 &"
+        ))
+        # GTK/winit app IDs and the Superwhisper terminal title each carry
+        # their application name; asserting a client proves visible startup.
+        probe = (
+            "hyprctl -j clients | jq -e \"any(.[]; "
+            "((.class + \\\" \\\" + .title) | ascii_downcase | contains(\\\""
+            + app + "\\\")))\""
+        )
+        try:
+            machine.wait_until_succeeds(as_demo(probe), timeout=45)
+        except Exception:
+            print(machine.succeed("cat /tmp/ux-" + app + ".log"))
+            print(machine.succeed(
+                "grep -E \"^(WAYLAND_DISPLAY|DISPLAY|XDG_RUNTIME_DIR|GDK_BACKEND)=\" "
+                "/tmp/ux-" + app + "-env || true"
+            ))
+            print(machine.succeed(as_demo("hyprctl -j clients")))
+            raise
+        address = machine.succeed(as_demo(
+            "hyprctl -j clients | jq -r \".[] | select("
+            "(.class + \\\" \\\" + .title) | ascii_downcase | contains(\\\""
+            + app + "\\\")) | .address\" | head -1"
+        )).strip()
+        machine.succeed(as_demo(
+            "hyprctl dispatch \"hl.dsp.window.close({ window = \\\"address:"
+            + address + "\\\" })\""
+        ))
+
     # eval-side proof: the JSON fixture landed in the system profile
     machine.succeed("command -v firefox")
     machine.succeed("command -v steam")  # feature steam -> programs.steam.enable
+
+    # Docker.desktop still uses the TUI despite its omission from the new
+    # upstream package list. Exercise the real helper with a pkexec stand-in,
+    # so its clean environment receives NixOS executables and the terminal.
+    machine.succeed("lazydocker --version")
+    machine.succeed("mkdir -p /tmp/ux-docker-bin")
+    machine.succeed("cat > /tmp/ux-docker-bin/omarchy-sudo-docker <<'EOF'\n"
+        "#!${pkgs.bash}/bin/bash\nexit 0\nEOF")
+    machine.succeed("cat > /tmp/ux-docker-bin/pkexec <<'EOF'\n"
+        "#!${pkgs.bash}/bin/bash\nprintf '%s\\n' \"$@\" > /tmp/ux-docker-argv\nEOF")
+    machine.succeed("chmod +x /tmp/ux-docker-bin/*")
+    machine.succeed(as_demo(
+        "PATH=/tmp/ux-docker-bin:$PATH TERM=xterm-256color omarchy-launch-docker-tui"
+    ))
+    docker_argv = machine.succeed("cat /tmp/ux-docker-argv").splitlines()
+    assert docker_argv[0].startswith("/nix/store/") and docker_argv[0].endswith("/bin/env"), docker_argv
+    assert docker_argv[1:] == ["TERM=xterm-256color", "/run/current-system/sw/bin/lazydocker"], docker_argv
+    machine.succeed("test -x " + docker_argv[0])
+    machine.succeed("test -x " + docker_argv[-1])
 
     # --- (4d) omarchy-pkg-present truth table (B9 reactivated) --------------
     machine.succeed("omarchy-pkg-present firefox")        # packages entry in JSON fixture
@@ -554,6 +694,8 @@
     machine.succeed("grep -q pam_fprintd /etc/pam.d/omarchy-lock-fingerprint")
     # fprintd is dbus-activated; the unit exists once the option is on
     machine.succeed("systemctl cat fprintd.service >/dev/null")
+    assert machine.succeed("systemctl show fprintd.service -p TimeoutStopUSec --value").strip() == "3s"
+    machine.succeed("grep -q systemd.tty.term.console=dumb /proc/cmdline")
 
     # wrong password rejected, correct password accepted (PAM level — the
     # Quickshell PamContext consumes these same service files)
@@ -575,7 +717,6 @@
     # NixOS note and exit 0 without touching system state.
     for script in [
         "omarchy-dns",
-        "omarchy-sudo-passwordless",
         "omarchy-menu-timezone",
         "omarchy-hibernation-setup",
         "omarchy-install-service-sunshine",
@@ -586,6 +727,10 @@
     ]:
         out = machine.succeed(script)
         assert "NixOS:" in out, "%s did not print its stub note: %r" % (script, out)
+
+    sudo_note = machine.succeed("omarchy-sudo-passwordless")
+    for policy in ["security.sudo.wheelNeedsPassword", "security.sudo.extraRules", "rebuild"]:
+        assert policy in sudo_note, "Missing sudo policy guidance: %r" % sudo_note
 
     # nixos-adapted no-ops: browser policy writes are gone (silent, so
     # omarchy-theme-set output stays clean) and firmware update no longer
@@ -966,91 +1111,128 @@
         assert "longer than" not in out, \
             "pgrep pattern triggers the >15-char warning: %r" % out
 
-        # gpu-screen-recorder wrapper tolerance (same class as B16): the
-        # wrapped cmdline is a full store path, so "^gpu-screen-recorder"
-        # never matches — recording would start but never stop, and the bar
-        # indicator would stay dark (verified on real hardware). The patch
-        # must be present in both the script and the QML indicator.
-        #
-        # The pattern is bracketed ([/]...) — B18, root-caused on real
-        # hardware with an instrumented shell: Indicators.qml always instantiates BOTH
-        # its horizontal and vertical blocks (visible-gated, Loader still
-        # loads), so every indicator exists twice and each instance runs its
-        # own statusProc pgrep at session start. pgrep excludes only its own
-        # PID, so with a plain pattern the two concurrent pgreps match EACH
-        # OTHER's cmdline, both exit 0, and recording latches true at every
-        # cold boot (pgrep is slow enough there, ~130ms, that the event-loop-
-        # synchronized starts always overlap); the QML's activeStateObserved
-        # guard then pins the entry forever. The bracket keeps matching the
-        # real recorder while the pgreps' own cmdlines (literal "[/]gpu…")
-        # no longer match.
-        rec_script = machine.succeed(
-            "cat /run/current-system/sw/share/omarchy/bin/omarchy-capture-screenrecording"
+        # B18: status and stop share upstream's executable-identity helper.
+        # A real ELF executable under a store path must be recognized, while
+        # a recorder-prefixed helper with the same truncated Linux process
+        # name and a recorder-shaped command line must never count or receive
+        # a stop signal. No fake /proc tree or pgrep is involved.
+        recorder_fixture = "${recorderFixture}/bin/"
+        recorder_runtime = "/run/user/1000/b18-recorders"
+        machine.succeed(as_demo("mkdir -p " + recorder_runtime + "/recordings"))
+
+        def recorder_command(args):
+            return as_demo(
+                "XDG_RUNTIME_DIR=" + recorder_runtime + " "
+                "OMARCHY_SCREENRECORD_DIR=" + recorder_runtime + "/recordings "
+                "omarchy-capture-screenrecording " + args
+            )
+
+        def start_recorder_fixture(unit, executable, extra=""):
+            machine.succeed(
+                "systemd-run --quiet --unit=" + unit + " --property=User=demo " +
+                recorder_fixture + executable + " " + recorder_runtime + "/" + unit +
+                ".signal " + extra
+            )
+            machine.wait_for_file(recorder_runtime + "/" + unit + ".signal.ready", timeout=10)
+            return machine.succeed(
+                "systemctl show " + unit + " --property=MainPID --value"
+            ).strip()
+
+        decoy_pid = start_recorder_fixture(
+            "b18-decoy", "gpu-screen-recorder-helper",
+            '"/nix/store/fake-recorder/bin/gpu-screen-recorder -w eDP-1"',
         )
-        assert '"[/]gpu-screen-recorder "' in rec_script, \
-            "capture script lost the self-match-safe wrapped-gsr pkill/pgrep pattern (B18)"
-        assert '"^gpu-screen-recorder"' not in rec_script, \
-            "capture script still anchors pkill/pgrep to ^gpu-screen-recorder"
+        # Prove this is a live pgrep candidate before rejecting it; otherwise
+        # the negative result could pass without exercising the exe check.
+        candidates = machine.succeed(as_demo("pgrep -x gpu-screen-reco")).splitlines()
+        assert decoy_pid in candidates, "recorder decoy never became a process-name candidate"
+        machine.fail(as_demo("omarchy-capture-screenrecording-process --pid " + decoy_pid))
+        machine.fail(as_demo(
+            "omarchy-capture-screenrecording-process --pid " + decoy_pid + " --signal INT"
+        ))
+        machine.fail(recorder_command("--status"))
+        machine.succeed("systemctl is-active --quiet b18-decoy")
+        machine.succeed("test ! -e " + recorder_runtime + "/b18-decoy.signal")
+
+        # Two indicator probes run together at cold boot. Both must remain
+        # idle even while a command-line decoy and the sibling query exist.
+        statuses = machine.succeed(recorder_command(
+            "--status & first=$!; " +
+            "XDG_RUNTIME_DIR=" + recorder_runtime + " omarchy-capture-screenrecording --status & second=$!; " +
+            'wait "$first"; first_status=$?; wait "$second"; second_status=$?; ' +
+            'printf "%s %s\\n" "$first_status" "$second_status"'
+        )).strip()
+        assert statuses == "1 1", "concurrent recorder status queries matched decoys: " + statuses
+
+        gpu_pid = start_recorder_fixture("b18-gpu", "gpu-screen-recorder")
+        wf_pid = start_recorder_fixture("b18-wf", "wf-recorder")
+        for pid in [gpu_pid, wf_pid]:
+            machine.succeed(as_demo("omarchy-capture-screenrecording-process --pid " + pid))
+        machine.succeed(recorder_command("--status"))
+
+        # Status needs no recordings directory; it answers the same process
+        # selection used by stop without starting a capture or signalling it.
+        machine.succeed(as_demo(
+            "XDG_RUNTIME_DIR=" + recorder_runtime + " "
+            "OMARCHY_SCREENRECORD_DIR=" + recorder_runtime + "/absent "
+            "omarchy-capture-screenrecording --status"
+        ))
+        video = recorder_runtime + "/recordings/fixture.mp4"
+        machine.succeed(as_demo(
+            "ffmpeg -y -f lavfi -i color=c=black:s=64x64:r=10 -t 0.5 "
+            "-c:v libx264 -pix_fmt yuv420p " + video + " -loglevel error"
+        ))
+        machine.succeed(as_demo(
+            "printf \"%s\\n\" " + gpu_pid + " >" + recorder_runtime + "/omarchy-screenrecord-pid; "
+            "printf \"%s\\n\" " + video + " >" + recorder_runtime + "/omarchy-screenrecord-filename"
+        ))
+        machine.succeed(recorder_command("--stop-recording"))
+        machine.wait_for_file(recorder_runtime + "/b18-gpu.signal", timeout=10)
+        machine.succeed("grep -qx INT " + recorder_runtime + "/b18-gpu.signal")
+        machine.succeed("systemctl is-active --quiet b18-wf")
+        machine.succeed("systemctl is-active --quiet b18-decoy")
+        machine.succeed("test ! -e " + recorder_runtime + "/omarchy-screenrecord-pid")
+        machine.succeed("test ! -e " + recorder_runtime + "/omarchy-screenrecord-filename")
+        machine.succeed(as_demo("ffprobe -v error " + video))
+
+        # A saved PID belonging to a decoy is stale. Status and stop must
+        # reject it without falling back to the other recorder still running.
+        machine.succeed(as_demo(
+            "printf \"%s\\n\" " + decoy_pid + " >" + recorder_runtime + "/omarchy-screenrecord-pid"
+        ))
+        machine.fail(recorder_command("--status"))
+        machine.fail(recorder_command("--stop-recording"))
+        machine.succeed("systemctl is-active --quiet b18-wf")
+        machine.succeed("systemctl is-active --quiet b18-decoy")
+        machine.succeed("test ! -e " + recorder_runtime + "/b18-wf.signal")
+        machine.succeed("test ! -e " + recorder_runtime + "/b18-decoy.signal")
+
+        # With no saved PID, a legacy recording is found and stopped by
+        # executable identity; its recorder-prefixed helper is left alive.
+        machine.succeed(as_demo("rm " + recorder_runtime + "/omarchy-screenrecord-pid"))
+        machine.succeed(as_demo(
+            "printf \"%s\\n\" " + video + " >" + recorder_runtime + "/omarchy-screenrecord-filename"
+        ))
+        machine.succeed(recorder_command("--stop-recording"))
+        machine.wait_for_file(recorder_runtime + "/b18-wf.signal", timeout=10)
+        machine.succeed("grep -qx INT " + recorder_runtime + "/b18-wf.signal")
+        machine.succeed("systemctl is-active --quiet b18-decoy")
+        machine.fail(recorder_command("--status"))
+        machine.succeed("systemctl stop b18-decoy")
+
+        # The bar and menu use the same status operation that these behavioral
+        # checks exercised, keeping their stop affordances in step.
         rec_qml = machine.succeed(
             "cat /run/current-system/sw/share/omarchy/shell/plugins/bar/indicators/ScreenRecording.qml"
         )
-        assert '"[/]gpu-screen-recorder "' in rec_qml, \
-            "bar ScreenRecording indicator lost the self-match-safe pgrep pattern (B18)"
-
-        # B18 behavioral guard, deterministic: the QML pattern must NOT
-        # match a cmdline shaped like a sibling pgrep's (which carries the
-        # literal bracket text — the cross-match that caused the boot
-        # latch), and MUST still match a real wrapped-recorder cmdline.
-        # exec -a fakes argv0; the payload is bash (NOT coreutils sleep —
-        # nixpkgs coreutils is a multicall binary that re-dispatches on
-        # argv0 and dies with "unknown program" under a faked name).
-        # systemd-run detaches the fakes from the driver's command session
-        # (a plain `cmd &` gets reaped with the driver's process group and
-        # its inherited stdout pipe blocks the driver until sleep exits).
-        # Absolute paths: systemd's exec search path does not include the
-        # NixOS system profile, so bare `bash` fails with 203/EXEC.
-        #
-        # The fake name must SURVIVE to a steady-state process:
-        #  - `bash -c "sleep 30"` exec-optimizes sleep over the shell, wiping
-        #    the exec -a argv0 (the fake only existed in a race window —
-        #    flaky green/red).
-        #  - `exec -a NAME sleep 30` breaks: NixOS coreutils is a multicall
-        #    binary that dispatches on argv0 ("unknown program").
-        # `sleep 30 & wait` keeps the argv0-renamed bash alive as the parent.
-        machine.succeed(
-            "systemd-run --quiet --unit=b18-decoy /run/current-system/sw/bin/bash "
-            "-c 'exec -a \"pgrep --quiet -f [/]gpu-screen-recorder \" "
-            "/run/current-system/sw/bin/bash -c \"/run/current-system/sw/bin/sleep 30 & wait\"'"
-        )
-        # systemd-run only queues the job. Prove the decoy actually exec'd
-        # before the negative assertion — otherwise a slow host can pass
-        # vacuously (pattern "doesn't match" because nothing has started).
-        machine.wait_until_succeeds(
-            "systemctl is-active --quiet b18-decoy", timeout=10
-        )
-        st_decoy, _ = machine.execute("pgrep --quiet -f '[/]gpu-screen-recorder '")
-        assert st_decoy != 0, \
-            "gsr pattern matches a sibling-pgrep-shaped cmdline (boot latch regression)"
-        machine.succeed(
-            "systemd-run --quiet --unit=b18-fake /run/current-system/sw/bin/bash "
-            "-c 'exec -a \"/nix/store/fake-gpu-screen-recorder-5.0/bin/.wrapped/gpu-screen-recorder -w eDP-1\" "
-            "/run/current-system/sw/bin/bash -c \"/run/current-system/sw/bin/sleep 30 & wait\"'"
-        )
-        # Same scheduling race on the positive side: poll until the fake
-        # recorder shows up instead of racing the unit's exec.
-        machine.wait_until_succeeds("pgrep --quiet -f '[/]gpu-screen-recorder '", timeout=10)
-        machine.succeed("systemctl stop b18-decoy b18-fake")
-
-        # The menu's `when:` guard must use the self-match-safe variant
-        # ([/]...), else the batched bash evaluator's own cmdline matches and
-        # "Stop Screenrecording" is visible even when nothing records.
+        assert '["omarchy-capture-screenrecording", "--status"]' in rec_qml, \
+            "bar ScreenRecording indicator no longer asks the capture script for status"
         menu_jsonc = machine.succeed(
             "cat /run/current-system/sw/share/omarchy/default/omarchy/omarchy-menu.jsonc"
         )
-        assert "'[/]gpu-screen-recorder '" in menu_jsonc, \
-            "menu when-guard lost the self-match-safe gsr pattern"
-        assert "^gpu-screen-recorder" not in menu_jsonc, \
-            "menu when-guard still anchors to ^gpu-screen-recorder"
+        recorder_menu = json.loads(jsonc_to_json(menu_jsonc))
+        assert recorder_menu["trigger.capture.screenrecord.stop"]["when"] == \
+            "omarchy-capture-screenrecording --status", "menu stop guard no longer shares capture status"
 
     # --- (11) Binary coverage: menu actions, systemd ExecStarts, autostart. -
     # Every command a user can trigger from the Omarchy menu, plus every binary
@@ -1163,9 +1345,15 @@
                     cmds.add(cmd)
 
             # Split on ;, &&, ||, | — take the first word of each segment.
+            in_test = False
             for seg in re.split(r";|&&|\|\||\|", action):
                 seg = seg.strip()
                 if not seg:
+                    continue
+                # Compound [[ ... ]] predicates are not commands. Their
+                # command substitutions were collected above.
+                if in_test or seg.startswith("[["):
+                    in_test = "]]" not in seg
                     continue
                 # Strip leading VAR=value assignments (may chain).
                 while True:
@@ -1200,6 +1388,10 @@
                 if word and word not in SKIP_BUILTINS and not word.startswith("["):
                     cmds.add(word)
             return cmds
+
+        assert extract_commands('[[ -f "Outlook.desktop" && -f "Word.desktop" ]]') == set()
+        assert extract_commands('[[ -f "Outlook.desktop" && -f "Word.desktop" ]] && missing-helper') == {"missing-helper"}
+        assert extract_commands('[[ -f "file" && $(omarchy-hw-x86) == yes ]] || other-helper') == {"omarchy-hw-x86", "other-helper"}
 
         # (a) Menu actions — parse $OMARCHY_PATH/default/omarchy/omarchy-menu.jsonc
         # with the string-aware JSONC parser (tests/checks/jsonc.py, shared
@@ -1320,10 +1512,10 @@
             )
 
         # (d) Systemd user unit ExecStarts resolve.
-        # The 8 vendored units are path-adapted in pkgs/omarchy.nix (store
+        # The 10 vendored units are path-adapted in pkgs/omarchy.nix (store
         # paths replace /usr/bin/*). Each ExecStart binary must exist.
         # Tripwire: pkgs/omarchy.nix installs units via
-        # `install … default/systemd/user/*.service` — a 9th upstream unit
+        # `install … default/systemd/user/*.service` — a new upstream unit
         # would ship unadapted and unchecked if we only asserted this list.
         # Mirror the cp -aL count tripwire: package unit dir must match
         # unit_names exactly (count + names).
@@ -1332,6 +1524,7 @@
             "omarchy-migrate-notify", "omarchy-recover-internal-monitor",
             "omarchy-sleep-lock", "omarchy-speaker-tuning",
             "omarchy-tailscale-receive",
+            "omarchy-usb-authorization", "omarchy-thunderbolt-authorization",
         ]
         # Derive the package store root in Python so we never put a shell
         # parameter-expansion brace form inside this Nix testScript string
@@ -1373,6 +1566,19 @@
             ).strip()
             binary = line.split("=", 1)[1].split()[0]
             machine.succeed("test -x " + binary)
+
+        # Authorization policy is declarative; quarantined Arch watchers
+        # must stay inactive even after upstream first-run setup executes.
+        for unit in ["omarchy-usb-authorization", "omarchy-thunderbolt-authorization"]:
+            machine.fail(as_demo("systemctl --user is-active --quiet " + unit))
+            machine.fail(as_demo("systemctl --user is-enabled --quiet " + unit))
+        kill_mode = machine.succeed(as_demo(
+            "systemctl --user show wayland-wm@hyprland.desktop.service -p KillMode --value"
+        )).strip()
+        assert kill_mode == "mixed", "Hyprland teardown must preserve its shell: " + kill_mode
+        assert machine.succeed(as_demo(
+            "systemctl --user show wayland-wm@hyprland.desktop.service -p Type --value"
+        )).strip() == "notify", "Hyprland must retain UWSM's session readiness protocol"
 
         # (e) omarchy-migrate user unit: native oneshot that closes the
         # "rebuild without omarchy-update skips migrations" gap. Assert it
@@ -1540,13 +1746,22 @@
         # (NorthEast gravity, 50%x50%) so a different output mode still
         # crops the zone the popup anchors to. At 1280x800 it is
         # pixel-identical to the former fixed 640x400+640+0 crop.
+        # f2a39c4 re-tune: on the bump's rendered wallpaper, sparse-text
+        # segmentation (--psm 11) skips both clearly rendered card lines.
+        # Replaying the VM screenshot with this pinned toolchain reads
+        # both lines with block segmentation (--psm 6), for either
+        # preprocessing. Keep both segmentation modes and the same
+        # dismissal negative fixtures so wallpaper texture cannot turn
+        # a correctly rendered notification into a false failure.
         ocr_crop = "magick /tmp/notif.png -gravity NorthEast -crop 50%x50%+0+0 +repage +gravity -colorspace Gray -resize 200% "
         ocr_chain = (
             "WAYLAND_DISPLAY=wayland-1 grim /tmp/notif.png"
             + " && " + ocr_crop + "-normalize /tmp/notif-proc.png"
             + " && " + ocr_crop + "-auto-level /tmp/notif-proc-level.png"
             + " && { tesseract /tmp/notif-proc.png stdout --psm 11;"
-            + " tesseract /tmp/notif-proc-level.png stdout --psm 11; } 2>/dev/null"
+            + " tesseract /tmp/notif-proc.png stdout --psm 6;"
+            + " tesseract /tmp/notif-proc-level.png stdout --psm 11;"
+            + " tesseract /tmp/notif-proc-level.png stdout --psm 6; } 2>/dev/null"
         )
         try:
             machine.wait_until_succeeds(
@@ -1569,7 +1784,7 @@
             machine.log(
                 "quickshell log tail: "
                 + machine.succeed(
-                    as_demo("tail -c 8000 /run/user/1000/quickshell/by-id/*/log.qslog 2>/dev/null | tail -40 || true")
+                    as_demo("tail -40 /run/user/1000/quickshell/by-id/*/log.log 2>/dev/null || true")
                 )
             )
             raise
@@ -1783,7 +1998,7 @@
         machine.succeed(as_demo("omarchy plugin clone omarchy.indicators"))
         clone_dir = "~/.config/omarchy/plugins/demo.indicators"
         # The sibling directory came along (the dir-flavoured cp -aL site).
-        machine.succeed(as_demo("test -f " + clone_dir + "/indicators/Dictation.qml"))
+        machine.succeed(as_demo("test -f " + clone_dir + "/indicators/ScreenRecording.qml"))
         manifest = json.loads(
             machine.succeed(as_demo("cat " + clone_dir + "/manifest.json"))
         )

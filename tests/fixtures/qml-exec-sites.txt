@@ -2,6 +2,9 @@ Commons/Style.qml: Process animationsProc: command: ["hyprctl", "-j", "getoption
 Commons/Style.qml: Process fcMatchProc: command: ["fc-match", "-f", "%{family[0]}", "monospace"]
 Commons/Style.qml: Process gapsOutProc: command: ["hyprctl", "-j", "getoption", "general:gaps_out"]
 Commons/Style.qml: Process hyprctlProc: command: ["hyprctl", "-j", "getoption", "decoration:rounding"]
+Commons/UntypedInput.qml: Process events: command: ["pactl", "subscribe"]
+Commons/UntypedInput.qml: Process reader: command: -
+Commons/UntypedInput.qml: Process writer: command: -
 Commons/Util.qml: Quickshell.execDetached(["bash", "-lc", 'exec "$@"', "bash"].concat(argv))
 Commons/Util.qml: Quickshell.execDetached(["bash", "-lc", command])
 Ui/MultiSelect.qml: Process optionsProcess: command: []
@@ -9,6 +12,8 @@ plugins/agents/Main.qml: Process listProcess: command: ["find", root.usageDir, "
 plugins/agents/Main.qml: Process syncMkdirProcess: command: -
 plugins/agents/Main.qml: Process syncScanProcess: command: -
 plugins/agents/Main.qml: Process updateProcess: command: -
+plugins/agents/Panel.qml: Process addProcess: command: -
+plugins/agents/Panel.qml: Process checkProcess: command: ["omarchy-agent-account-add", "--check"]
 plugins/background/Background.qml: Process bgSwitchProc: command: ["bash", "-c", "background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""]
 plugins/background/Background.qml: Process readlinkProc: command: ["readlink", "-f", root.currentBackgroundLink]
 plugins/background/Background.qml: Process sizeProbe: command: -
@@ -16,7 +21,8 @@ plugins/bar/Bar.qml: Process barHiddenProbe: command: ["bash", "-c", "[[ -f $HOM
 plugins/bar/Bar.qml: Process customProc: command: ["bash", "-lc", String(customRoot.setting("exec", ""))]
 plugins/bar/Bar.qml: Process transparentForegroundProc: command: -
 plugins/bar/Bar.qml: Util.execDetached(command)
-plugins/bar/indicators/Dictation.qml: Process -: command: ["bash", "-c", "omarchy-voxtype-status"]
+plugins/bar/indicators/PasswordlessSudo.qml: Process disableProc: command: ["omarchy-sudo-passwordless", "--disable"]
+plugins/bar/indicators/PasswordlessSudo.qml: Process statusProc: command: ["omarchy-sudo-passwordless", "--active"]
 plugins/bar/indicators/Reminder.qml: Process jsonProc: command: ["omarchy-reminder", "show", "--json"]
 plugins/bar/indicators/Reminder.qml: Quickshell.execDetached(["omarchy-reminder", "-i"])
 plugins/bar/indicators/Reminder.qml: Quickshell.execDetached(["omarchy-reminder", "show"])
@@ -35,11 +41,15 @@ plugins/clipboard/Clipboard.qml: Quickshell.execDetached([root.omarchyPath + "/b
 plugins/clipboard/Clipboard.qml: Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert", "--history-index", String(row.historyIndex)])
 plugins/emojis/Emojis.qml: Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji])
 plugins/image-picker/ImagePicker.qml: Process applyProc: command: -
+plugins/image-picker/ImagePicker.qml: Process deleteThemeProc: command: -
+plugins/image-picker/ImagePicker.qml: Process extraThemesProc: command: ["find", root.userThemesPath, "-mindepth", "1", "-maxdepth", "1", "-type", "d", "!", "-xtype", "l", "-printf", "%f\n"]
+plugins/image-picker/ImagePicker.qml: Process introPrepare: command: -
 plugins/image-picker/ImagePicker.qml: Process loadImagesProc: command: -
 plugins/image-picker/ImagePicker.qml: Process releaseProc: command: -
+plugins/image-picker/ImagePicker.qml: Process stockThemesProc: command: ["find", root.omarchyPath + "/themes", "-mindepth", "1", "-maxdepth", "1", "-type", "d", "-printf", "%f\n"]
 plugins/image-picker/ImagePicker.qml: Process themeRowsProc: command: [root.omarchyPath + "/bin/omarchy-theme-switcher", "--print-rows"]
 plugins/lock/Service.qml: Process blankProcess: command: ["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
-plugins/lock/Service.qml: Process fingerprintCheckProc: command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1 && fprintd-list \"$USER\" 2>/dev/null | grep -qi finger; then echo yes; else echo no; fi"]
+plugins/lock/Service.qml: Process fingerprintCheckProc: command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1; then LC_ALL=C fprintd-list \"$USER\" 2>&1; else echo no; fi"]
 plugins/lock/Service.qml: Process monitorDpmsProcess: command: ["hyprctl", "monitors", "-j"]
 plugins/lock/Service.qml: Process posterProc: command: ["bash", Quickshell.env("OMARCHY_PATH") + "/shell/plugins/lock/poster.sh", sourcePath]
 plugins/lock/Service.qml: Process readlinkProc: command: ["bash", "-c", "path=$(readlink -f -- \"$1\") && printf '%s\\n%s\\n' \"$path\" \"$(stat -Lc %Y:%s -- \"$path\" 2>/dev/null)\"", "_", root.currentBackgroundLink]
@@ -55,6 +65,7 @@ plugins/notifications/Service.qml: Process popupFileProc: command: -
 plugins/notifications/Service.qml: Process readHistoryProc: command: -
 plugins/notifications/Service.qml: Process restorePopupsProc: command: -
 plugins/panels/audio/Panel.qml: Process sinkAvailabilityProc: command: ["omarchy-audio-sink-availability"]
+plugins/panels/audio/Panel.qml: Process sourceAvailabilityProc: command: ["omarchy-audio-sink-availability", "sources"]
 plugins/panels/audio/Panel.qml: Process volumeSinkProc: command: ["omarchy-audio-output-sink"]
 plugins/panels/audio/Panel.qml: Quickshell.execDetached([ "omarchy-audio-input-set-default", String(node.id), String(node.name) ])
 plugins/panels/audio/Panel.qml: Quickshell.execDetached([ "omarchy-audio-output-set-default", String(node.id), String(node.name) ])
@@ -78,6 +89,7 @@ plugins/panels/monitor/Panel.qml: Process setBrightnessProc: command: -
 plugins/panels/monitor/Panel.qml: Process stateProc: command: ["omarchy-monitor-state"]
 plugins/panels/monitor/Panel.qml: Process textScaleProc: command: -
 plugins/panels/network/Panel.qml: Process actionProc: command: -
+plugins/panels/network/Panel.qml: Process activeApSignalProc: command: ["nmcli", "-t", "-f", "IN-USE,SIGNAL", "device", "wifi", "list", "ifname", root.wifiDevice ? root.wifiDevice.name : "", "--rescan", "no"]
 plugins/panels/network/Panel.qml: Process bandProc: command: -
 plugins/panels/network/Panel.qml: Process detailsProc: command: ["omarchy-network-status", "--verbose"]
 plugins/panels/network/Panel.qml: Process dnsProc: command: -
@@ -122,12 +134,17 @@ plugins/services/idle/Service.qml: Process stayAwakeStateWriter: command: -
 plugins/services/idle/Service.qml: Process wakeProcess: command: -
 plugins/services/nightlight/Service.qml: Process applyProcess: command: -
 plugins/services/nightlight/Service.qml: Process statusProbe: command: ["hyprctl", "hyprsunset", "temperature"]
+plugins/services/remote-session/Service.qml: Process statusProbe: command: ["bash", Quickshell.env("OMARCHY_PATH") + "/shell/plugins/services/remote-session/probe.sh"]
 services/AppLibrary.qml: Process hiddenEntryScan: command: ["bash", "-c", root.hiddenEntryScanCommand()]
 services/AppLibrary.qml: Process iconIndexScan: command: ["bash", "-c", root.iconIndexScanCommand()]
 services/AppLibrary.qml: Quickshell.execDetached(["omarchy-shell", "osd", "close"])
 services/AppLibrary.qml: Quickshell.execDetached(["omarchy-shell", "osd", "show", JSON.stringify({ icon: "󱓞", message: root.launchOsdMessage, duration: 0 })])
 services/AppLibrary.qml: Util.execDetached("uwsm-app -- gtk-launch " + Util.shellQuote(id + ".desktop"))
 services/AppLibrary.qml: Util.execDetached(Util.shellQuote(root.omarchyPath + "/bin/omarchy-remove-launcher-entry") + " " + Util.shellQuote(id) + " " + Util.shellQuote(String(name || id)))
+services/BackgroundIntro.qml: Process frameStatus: command: ["owe", "render-status"]
+services/BackgroundIntro.qml: Process introProc: command: ["omarchy-theme-bg-boot-intro"]
+services/BackgroundIntro.qml: Process startupBackground: command: ["readlink", "-f", Quickshell.env("HOME") + "/.local/state/omarchy/current/background"]
+services/BackgroundIntro.qml: Quickshell.execDetached(["hyprctl", "eval", "if omarchy_startup_cursor_restore then omarchy_startup_cursor_restore() end"])
 services/BrightnessKeys.qml: Process deviceProc: command: ["omarchy-hw-display"]
 services/BrightnessKeys.qml: Process setProc: command: -
 services/PluginRegistry.qml: Process -: command: -

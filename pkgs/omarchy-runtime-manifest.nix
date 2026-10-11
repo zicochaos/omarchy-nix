@@ -36,6 +36,10 @@
 # Arch mutation).
 {
   scripts = {
+    omarchy-nix-provider-path = {
+      class = "port-owned";
+      allow = [ ];
+    };
     # --- declarative-note: stubbed; menu entry hidden where one existed ----
     omarchy-dns = {
       class = "declarative-note";
@@ -58,8 +62,9 @@
       note = "Security-key (U2F) auth is declarative: adjust security.pam.u2f in your flake config.";
     };
     omarchy-sudo-passwordless = {
-      class = "declarative-note";
-      note = "Sudo policy is declarative: set security.sudo.wheelNeedsPassword = false (or security.sudo.extraRules) in your flake config.";
+      class = "nixos-adapted";
+      # The bar probes Omarchy's temporary grant, which does not exist here.
+      allow = [ ];
     };
     omarchy-setup-direct-boot = {
       class = "declarative-note";
@@ -222,6 +227,97 @@
       class = "declarative-note";
       note = "1Password is removed with omarchy-nix-remove install.service.1password (or from your flake config); there is no /usr/share browser extension file to delete on NixOS.";
     };
+    # f2a39c4: the new platform dispatcher and deferred hardware provisioner
+    # execute Arch package-owned hooks as root. NixOS owns the hardware,
+    # boot images and package lifecycle through the consumer configuration.
+    omarchy-lifecycle-dispatch = {
+      class = "declarative-note";
+      note = "Platform lifecycle hooks are Arch installer machinery; declare hardware, boot and packages in your NixOS flake config and rebuild.";
+    };
+    omarchy-provision-hardware = {
+      class = "declarative-note";
+      note = "Deferred hardware setup is Arch image machinery; declare hardware.* and boot.* in your NixOS flake config and rebuild.";
+    };
+    omarchy-update-boot = {
+      class = "declarative-note";
+      note = "NixOS builds boot images and generations through nixos-rebuild; Arch platform boot-verification hooks do not apply.";
+    };
+    # The USB/Thunderbolt approval subsystems write daemon configuration,
+    # persistent trust rules, firmware ACLs and Arch boot files. Their root
+    # helpers call sourced code, so several escape the bin-only text scan;
+    # quarantine every public entrypoint until a native port exists.
+    omarchy-setup-security-usb-authorization = {
+      class = "declarative-note";
+      note = "Omarchy's USB approval workflow is not ported; configure services.usbguard and its policy declaratively in your flake config.";
+    };
+    omarchy-remove-security-usb-authorization = {
+      class = "declarative-note";
+      note = "USB authorization is declarative: adjust services.usbguard and boot.kernelParams in your flake config and rebuild.";
+    };
+    omarchy-usb-authorization-approve = {
+      class = "declarative-note";
+      note = "Omarchy's USB approval workflow is not ported; configure services.usbguard and its policy declaratively in your flake config.";
+    };
+    omarchy-usb-authorization-boot = {
+      class = "declarative-note";
+      note = "USB boot authorization is declarative: configure boot.kernelParams and services.usbguard in your flake config and rebuild.";
+    };
+    omarchy-usb-authorization-event = {
+      class = "declarative-note";
+      note = "Omarchy's USB approval workflow is not ported; configure services.usbguard and its policy declaratively in your flake config.";
+    };
+    omarchy-usb-authorization-restore-default = {
+      class = "declarative-note";
+      note = "USB authorization is declarative: adjust services.usbguard and boot.kernelParams in your flake config and rebuild.";
+    };
+    omarchy-usb-authorization-review = {
+      class = "declarative-note";
+      note = "Omarchy's USB approval workflow is not ported; configure services.usbguard and its policy declaratively in your flake config.";
+    };
+    omarchy-usb-authorization-watch = {
+      class = "declarative-note";
+      note = "Omarchy's USB approval workflow is not ported; configure services.usbguard and its policy declaratively in your flake config.";
+    };
+    omarchy-setup-security-thunderbolt-authorization = {
+      class = "declarative-note";
+      note = "Omarchy's Thunderbolt approval workflow is not ported; configure services.hardware.bolt declaratively in your flake config.";
+    };
+    omarchy-remove-security-thunderbolt-authorization = {
+      class = "declarative-note";
+      note = "Thunderbolt services are declarative: adjust services.hardware.bolt in your flake config and rebuild.";
+    };
+    omarchy-setup-security-thunderbolt-boot = {
+      class = "declarative-note";
+      note = "Omarchy's firmware Thunderbolt boot-access workflow is not ported; manage boot access through your firmware's own settings.";
+    };
+    omarchy-remove-security-thunderbolt-boot = {
+      class = "declarative-note";
+      note = "Omarchy's firmware Thunderbolt boot-access workflow is not ported; manage boot access through your firmware's own settings.";
+    };
+    omarchy-thunderbolt-authorization-admin = {
+      class = "declarative-note";
+      note = "Omarchy's Thunderbolt approval workflow is not ported; configure services.hardware.bolt declaratively in your flake config.";
+    };
+    omarchy-thunderbolt-authorization-approve = {
+      class = "declarative-note";
+      note = "Omarchy's Thunderbolt approval workflow is not ported; configure services.hardware.bolt declaratively in your flake config.";
+    };
+    omarchy-thunderbolt-authorization-boot-enabled = {
+      class = "declarative-note";
+      note = "Omarchy's firmware Thunderbolt boot-access workflow is not ported; manage boot access through your firmware's own settings.";
+    };
+    omarchy-thunderbolt-authorization-daemon = {
+      class = "declarative-note";
+      note = "Omarchy's Thunderbolt approval workflow is not ported; configure services.hardware.bolt declaratively in your flake config.";
+    };
+    omarchy-thunderbolt-authorization-review = {
+      class = "declarative-note";
+      note = "Omarchy's Thunderbolt approval workflow is not ported; configure services.hardware.bolt declaratively in your flake config.";
+    };
+    omarchy-thunderbolt-authorization-watch = {
+      class = "declarative-note";
+      note = "Omarchy's Thunderbolt approval workflow is not ported; configure services.hardware.bolt declaratively in your flake config.";
+    };
 
     # --- nixos-adapted: hand-rewritten in pkgs/omarchy.nix postPatch --------
     # (system mutations removed; user-state flows kept; `allow` lists the
@@ -281,6 +377,32 @@
     # (binaries live on PATH on NixOS).
     omarchy-install-ai-chatgpt = {
       class = "nixos-adapted";
+    };
+    # Account dispatch resolves the catalog-installed CLI on PATH rather than
+    # mise's dispatcher and first-run installer.
+    omarchy-agent-account-exec = {
+      class = "nixos-adapted";
+    };
+    omarchy-agent-account-add = {
+      class = "nixos-adapted";
+      # Missing terminal CLIs use the catalog; panel callers get install
+      # guidance, and the generated private-browser helper pins Nix bash.
+    };
+    # OpenClaw stays catalog-installed; the Arch seed/self-update flow is
+    # replaced with a check of the CLI that the NixOS profile supplies.
+    omarchy-install-openclaw-cli = {
+      class = "nixos-adapted";
+    };
+    omarchy-install-dictation-superwhisper = {
+      class = "nixos-adapted";
+      # The package step is declarative and setup-user comes from the Nix
+      # package's share/superwhisper path; shortcut/preferences are user scope.
+    };
+    omarchy-install-dictation-voxtype = {
+      class = "nixos-adapted";
+      # Patched store-to-HOME copy; download/setup and service enable remain
+      # per-user. Package installation routes into the declarative stub.
+      allow = [ "systemctl-user" ];
     };
     # v4.0.2 remove-ai wave: only the ollama variant mutates system state
     # (unit + /var/lib) — both are services.ollama-owned on NixOS; the
@@ -390,10 +512,22 @@
       # unit + files under ~/.config — user scope, no /etc, no sudo.
       allow = [ "systemctl-user" ];
     };
-    omarchy-voxtype-remove = {
+    omarchy-remove-dictation-voxtype = {
       class = "user-safe";
       # systemctl --user disable of the per-user voxtype daemon (user scope);
       # package removal routes into the omarchy-pkg-drop stub.
+      allow = [ "systemctl-user" ];
+    };
+    omarchy-remove-dictation-superwhisper = {
+      class = "user-safe";
+      # Disable the per-user service and remove only package-owned user links;
+      # preferences, history, models and independently installed copies stay.
+      allow = [ "systemctl-user" ];
+    };
+    omarchy-system-lid-inhibit = {
+      class = "user-safe";
+      # A transient per-user logind inhibitor tracks external displays;
+      # the only systemctl mutation stops that user's transient unit.
       allow = [ "systemctl-user" ];
     };
     omarchy-restart-trackpad = {
@@ -617,5 +751,15 @@
     # (services.gnome.gcr-ssh-agent); both scripts are declarative-note stubs.
     "setup.security.ssh-agent"
     "remove.service.ssh-agent"
+    # f2a39c4 USB/Thunderbolt approval and boot-access setup write root
+    # policy imperatively. Their complete command chains are stubbed above.
+    "setup.security.usb-authorization"
+    "setup.security.usb-authorization-boot"
+    "remove.security.usb-authorization"
+    "remove.security.usb-authorization-boot"
+    "setup.security.thunderbolt"
+    "setup.security.thunderbolt-boot"
+    "remove.security.thunderbolt"
+    "remove.security.thunderbolt-boot"
   ];
 }

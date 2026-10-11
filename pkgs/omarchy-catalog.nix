@@ -77,6 +77,12 @@
       pkgs = [ "signal-desktop" ];
       binaries = [ "signal-desktop" ];
     };
+    "install.service.slack" = {
+      arch = "slack-desktop";
+      pkgs = [ "slack" ];
+      binaries = [ "slack" ];
+      unfreeNames = [ "slack" ];
+    };
     "install.service.tailscale" = {
       arch = "tailscale";
       feature = "tailscale";
@@ -459,5 +465,6 @@
   # the entry). Keyed by the arch name passed to omarchy-pkg-present.
   aliases = {
     "voxtype-bin".binaries = [ "voxtype" ];
+    "superwhisper-bin".binaries = [ "superwhisper" ];
   };
 }

@@ -44,6 +44,7 @@ builtins.seq sys.config.system.build.toplevel.drvPath (
   if
     !(builtins.all (n: builtins.elem n allowed) [
       "obsidian"
+      "superwhisper"
       "steam"
       "steam-unwrapped"
     ])

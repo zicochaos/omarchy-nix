@@ -7,7 +7,7 @@ Omarchy is DHH's opinionated Linux desktop. As of Quattro, its "desktop" is a
 single [quickshell](https://quickshell.org) process: the bar, launcher,
 menus, notifications, OSDs, control panels, lock screen, and polkit agent are
 all plugins of one long-running shell. It is driven by a Lua-based Hyprland
-config (≥0.56) and ~470 `omarchy-*` bash scripts, themed by a TOML + template
+config (≥0.56) and ~520 `omarchy-*` bash scripts, themed by a TOML + template
 engine.
 
 This project ports that to NixOS **by vendoring upstream**, not by
@@ -21,7 +21,7 @@ the desktop you get is the real Omarchy desktop, not a reimplementation.
 reproduces the real Omarchy desktop: Hyprland session via uwsm,
 quickshell bar/menus, Super+Enter terminal, theme switching with live
 colors (not just wallpaper), editable user configs, first-run hooks, the
-full upstream package set (including the 16 upstream-owned packages
+full upstream package set (including the 19 upstream-owned packages
 that the pinned nixpkgs lacks or carries only as an unrelated or older
 build, packaged under `pkgs/`), and a NixOS-native
 `omarchy update` flow. Verified in a running session on real Intel GPU
@@ -48,8 +48,9 @@ or a complete update followed by activation. Those paths
 still need separate desktop verification after relevant changes.
 
 > Upstream's Quattro line is at `v4.0.4` (2026-09-15); this port tracks the
-> `quattro` branch (release + post-release fixes). The vendored `version`
-> file still reads `4.0.0.alpha` — upstream does not bump it at release time.
+> `quattro` branch at `f2a39c4` (2026-10-10, release + post-release fixes).
+> The vendored `version` file still reads `4.0.0.alpha` — upstream does
+> not bump it at release time.
 
 ### Known app behaviour (zcode-desktop's desktop entry)
 
@@ -79,22 +80,16 @@ for manual desktop exploration.
 
 ## Changelog
 
-- **2026-10-01** — A full project audit and its fixes. **Security:** the
-  module no longer grants wheel users NOPASSWD `sudo tzupdate` (a root
-  write primitive through its path flags) or Nix `trusted-users` (root
-  equivalent). **Fixes:** `omarchy update` offers the reboot again after
-  its default `boot`-mode rebuild; the bar's keyboard-layout widget works
-  (`xkbcli` on PATH); Home Manager no longer overwrites files your own
-  Home Manager configuration manages; migrations that ask a question no
-  longer swallow the rest of the queue; `exclude_packages` accepts
-  attribute names; a consumer's own `allowUnfreePredicate` no longer
-  breaks evaluation; Hyprland is pinned to the 0.56.2 release with
-  matching 64/32-bit Mesa; herdr evaluates without
-  import-from-derivation. **New options:** `omarchy.systemTuning.enable`
-  and `omarchy.hyprlandCache.enable`; the Home-Manager module is exported
-  as `homeModules.default`. **Tests:** every PR now evaluates the whole
-  flake, several checks that could never fail now can, and the nightly
-  run updates all inputs as an early-warning canary.
+- **2026-10-10** — Upstream Quattro advances to `f2a39c4` (177 commits).
+  Adds the Starship theme, Disktree, Gliff remote desktop, and Superwhisper
+  dictation. Fresh users initialize Superwhisper; existing Voxtype users
+  keep their backend, selectable under Setup → Defaults → Dictation.
+  AI account dispatch, Slack, and OpenClaw use Nix-installed packages.
+  USB/Thunderbolt approval wizards remain declarative configuration;
+  their upstream services are shipped disabled. The new Arch-oriented
+  app-building agent skill is omitted from automatic links pending Nix
+  packaging templates. All 46 flake checks, including four desktop VM
+  tests, and the package build pass.
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md). Upstream adaptation
 details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
@@ -105,7 +100,7 @@ details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
 The running desktop is produced by the same code that produces it on Arch
 Omarchy: the same quickshell process (`$OMARCHY_PATH/shell/shell.qml`), the
-same Hyprland Lua config chain, the same ~470 `omarchy-*` bash scripts, the
+same Hyprland Lua config chain, the same ~520 `omarchy-*` bash scripts, the
 same TOML + template theme engine. The NixOS layer is glue (a vendoring
 derivation, two modules, options, activation), not a reimplementation.
 
@@ -195,7 +190,7 @@ and in `configuration.nix`:
   omarchy.enable = true;
   omarchy.full_name = "Your Name";
   omarchy.email_address = "you@example.com";
-  omarchy.theme = "ethereal";   # one of the 22 stock themes
+  omarchy.theme = "ethereal";   # one of the 23 stock themes
 
   users.users.your-user = {
     isNormalUser = true;
@@ -217,7 +212,7 @@ and in `configuration.nix`:
 }
 ```
 
-The module whitelists the one unfree default app (obsidian) itself, so
+The module whitelists the unfree default apps (Obsidian and Superwhisper), so
 `nixpkgs.config.allowUnfree` is not needed. `example/configuration.nix` is a
 complete, runnable consumer (wired in-repo as `nixosConfigurations.example`)
 you can build as a VM:
@@ -344,15 +339,20 @@ the same semantics as upstream's static `/usr/share/omarchy`; a
 store-path value would freeze the tree at login and make the update
 flow's post-rebuild steps read stale migrations), the full upstream default
 package set from nixpkgs (foot, neovim, btop, lazygit, chromium, nautilus,
-libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 16
+libreoffice, obs-studio, kdenlive, dev toolchains, fonts, …) plus the 19
 upstream-owned packages packaged by this flake (aether, omacut, omawrite,
 omacalc, omasnap, monologue, hype, owe, try, asdcontrol, yaru-theme,
-hyprland-guiutils, hyprland-preview-share-picker, omarchy-nvim, herdr, ttfx),
-the parity services (avahi, printing, docker, gnome-keyring, fwupd, upower,
+hyprland-guiutils, hyprland-preview-share-picker, omarchy-nvim, herdr, ttfx,
+disktree, gliff, superwhisper), the parity services (avahi, printing,
+docker, gnome-keyring, fwupd, upower,
 …, all `mkDefault`), a uwsm-managed Hyprland session (≥0.56 for the
 Lua config), default SDDM, PipeWire/NetworkManager/Bluetooth daemons, the
 Omarchy Plymouth boot splash, and the Omarchy SDDM login theme + Hyprland
 greeter.
+
+The package ships 10 upstream user units. The USB and Thunderbolt approval
+units stay disabled: configure USB policy with `services.usbguard`, and
+Thunderbolt with the existing native `services.hardware.bolt` service.
 
 Per-user (Home-Manager module): seeds `~/.config/hypr/hyprland.lua` (the
 entry point that dispatches into `$OMARCHY_PATH`), the user-editable stub
@@ -372,6 +372,11 @@ updates. Real, user-owned
 files or directories at those link paths are never overwritten:
 activation moves them aside to `<path>.hm-backup-<timestamp>` first
 (existing symlinks are simply adopted).
+
+Fresh users run Superwhisper's per-user setup as an explicit first-run
+step. Its launcher and plugin links follow the active system generation.
+Migration `1791479273` preserves Voxtype for existing dictation users;
+Setup → Defaults → Dictation selects and initializes either backend.
 
 See [`docs/options.md`](docs/options.md) for the full `omarchy.*` option
 reference, and [`docs/install.md`](docs/install.md) for the fresh-install
@@ -424,11 +429,12 @@ limitations.
 ```
 flake.nix              # inputs + outputs (packages, modules, checks, configs)
 config.nix             # omarchy.* option schema
-pkgs/                  # vendoring + themes + 16 upstream-owned packages:
+pkgs/                  # vendoring + themes + 19 upstream-owned packages:
   omarchy.nix          #   the upstream tree -> $out/share/omarchy
   plymouth-omarchy-theme.nix sddm-omarchy-theme.nix yaru-theme.nix
   aether.nix asdcontrol.nix omacalc.nix omacut.nix omawrite.nix omasnap.nix
   monologue.nix hype.nix owe.nix
+  disktree.nix gliff.nix superwhisper.nix
   try.nix hyprland-guiutils.nix hyprland-preview-share-picker.nix
   omarchy-nvim.nix omarchy-fish.nix ttfx.nix herdr.nix herdr-zig-deps.nix
   quickshell.nix       #   quickshell 0.3.1 pin (stable nixpkgs has 0.3.0)

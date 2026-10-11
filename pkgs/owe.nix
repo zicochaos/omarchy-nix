@@ -34,6 +34,8 @@
   lib,
   stdenv,
   fetchFromGitHub,
+  fetchurl,
+  bash,
   meson,
   ninja,
   pkg-config,
@@ -48,18 +50,30 @@
   systemd,
   qt6,
   socat,
+  python3,
+  mesa,
 }:
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "owe";
-  version = "0.2.8";
+  version = "0.2.10";
 
   src = fetchFromGitHub {
     owner = "omacom";
     repo = "owe";
     rev = "v${finalAttrs.version}";
-    hash = "sha256-2GfzL66OQ2r7UwBQ09dSFW2pw6wH84+m1VsBBvyxIaA=";
+    hash = "sha256-8bRTpvxnh+uECUfgvMyeBU/hBOVfSxgStDfn+xBpph0=";
   };
+
+  patches = [
+    # The authoritative Omarchy recipe carries this test-only fix: prepared
+    # intro invalidation must not depend on consecutive writes getting
+    # distinct filesystem timestamps.
+    (fetchurl {
+      url = "https://raw.githubusercontent.com/omacom/omarchy-pkgs/d58cb276a21f9dac37fa612e1850f93264510de6/pkgbuilds/owe/lock-policy-timestamp.patch";
+      hash = "sha256-Pr9BMJOSKwkXvKYMQnIMZCTHexaVMXNkv3P5/XRTdtg=";
+    })
+  ];
 
   nativeBuildInputs = [
     meson
@@ -69,6 +83,23 @@ stdenv.mkDerivation (finalAttrs: {
     makeWrapper
     wayland-scanner
   ];
+
+  nativeCheckInputs = [
+    python3
+    mesa
+  ];
+
+  postPatch = ''
+    # These upstream fixtures generate executables at runtime, beyond the
+    # reach of patchShebangs. Give their mock helpers store interpreters.
+    substituteInPlace test/daemon.py \
+      --replace-fail '#!/usr/bin/env python3' '#!${python3}/bin/python3' \
+      --replace-fail '#!/bin/sh' '#!${bash}/bin/sh'
+    substituteInPlace test/startup.py \
+      --replace-fail '#!/bin/bash' '#!${bash}/bin/bash'
+    substituteInPlace test/uninstall.sh \
+      --replace-fail '#!/bin/sh' '#!${bash}/bin/sh'
+  '';
 
   buildInputs = [
     # meson side (gl.pc/egl.pc/glesv2.pc come from libglvnd via libGL)
@@ -126,7 +157,8 @@ stdenv.mkDerivation (finalAttrs: {
     # that to /usr/bin/owed. Here it goes to the store binary.
     install -Dm644 "${finalAttrs.src}/systemd/owed.service" "$out/lib/systemd/user/owed.service"
     substituteInPlace "$out/lib/systemd/user/owed.service" \
-      --replace-fail '%h/.local/bin/owed' "$out/bin/owed"
+      --replace-fail '%h/.local/bin/owed' "$out/bin/owed" \
+      --replace-fail '/bin/bash' '${bash}/bin/bash'
 
     # hypridle hook (Arch: /usr/bin/owe-idle) and the theme-set hook
     # (Arch: /usr/share/owe/10-owe-sync; installed 644 — omarchy-hook-install
@@ -155,9 +187,31 @@ stdenv.mkDerivation (finalAttrs: {
       --prefix PATH : ${lib.makeBinPath [ ffmpeg ]}
   '';
 
-  # Arch runs `meson test` in check(); skipped here — the suite's GL tests
-  # (transition, egl-context) need a rendering GL context the sandbox does
-  # not provide.
+  # Upstream's EGL fixtures use surfaceless software rendering, so no
+  # compositor or GPU device is needed. Pin Mesa's vendor file rather than
+  # relying on /run/opengl-driver inside the build sandbox.
+  doCheck = true;
+  checkPhase = ''
+    runHook preCheck
+    export HOME="$TMPDIR/owe-test-home"
+    mkdir -p "$HOME"
+    export __EGL_VENDOR_LIBRARY_FILENAMES=${mesa}/share/glvnd/egl_vendor.d/50_mesa.json
+    # llvmpipe's worker pool can miss the 250 ms transition samples when
+    # other builds compete for CPUs. These tiny fixtures need one worker.
+    export LP_NUM_THREADS=1
+    meson test --no-rebuild --print-errorlogs
+    python3 - <<'PY'
+    import json
+    from pathlib import Path
+    results = {entry["name"].split(":")[-1]: entry["result"]
+               for line in Path("meson-logs/testlog.json").read_text().splitlines()
+               if (entry := json.loads(line))}
+    for name in ("egl-context", "transition"):
+        assert results[name] == "OK", (name, results[name])
+    PY
+    ctest --test-dir build-qml --output-on-failure
+    runHook postCheck
+  '';
 
   meta = {
     description = "Wallpaper engine for Omarchy (video/GIF/still backgrounds) with the lock-screen video feed QML module";

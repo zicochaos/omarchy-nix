@@ -23,7 +23,7 @@ upstream closed unmerged).
 Upstream Quattro's "desktop" is a **single `quickshell` process** that provides
 the bar, launcher, menus, notifications, OSDs, control panels, lock screen,
 and polkit agent as plugins, plus a **Lua-based Hyprland config** (≥0.56),
-~470 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
+~520 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
 engine**. Waybar/wofi/mako/hyprlock/hyprpaper/swaybg/polkit-gnome are gone
 in Quattro. This port packages the upstream tree at `$out/share/omarchy`,
 exports `OMARCHY_PATH`, and seeds `~/.config/hypr/hyprland.lua` so Hyprland's

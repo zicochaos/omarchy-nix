@@ -5,10 +5,14 @@
 # with a literal dot). Regression: add + rebuild used to fail with
 # "unknown nixpkgs attribute 'kdePackages.dolphin'" even though
 # pkgs.kdePackages.dolphin exists.
+# Explicit owned packages must also win over a same-named nixpkgs attr:
+# grok-cli is xAI's subscription CLI here, while nixpkgs carries an unrelated
+# third-party API-key client under that name.
 {
   self,
   nixpkgs,
   pkgs,
+  ownedPackages,
   ...
 }:
 let
@@ -37,6 +41,7 @@ let
     needle: cfg: builtins.any (p: (p.drvPath or "") == needle.drvPath) cfg.environment.systemPackages;
   goodFile = ../fixtures/managed-packages-nested.json;
   good = (mkEval goodFile).config;
+  owned = (mkEval ../fixtures/managed-packages-owned.json).config;
 
   # A rejected name must fail exactly where the module resolves it, not
   # anywhere in the evaluation. The list type's merge forces every element
@@ -75,6 +80,14 @@ else if !(pkgIn pkgs.kdePackages.dolphin good) then
   throw "nested managed attr 'kdePackages.dolphin' missing from environment.systemPackages"
 else if failingDefs goodFile != [ ] then
   throw "the good managed-packages fixture has systemPackages entries that fail to evaluate"
+else if ownedPackages.grok-cli.drvPath == pkgs.grok-cli.drvPath then
+  throw "the Grok regression fixture must distinguish the first-party owned CLI from nixpkgs' third-party CLI"
+else if !(pkgIn ownedPackages.grok-cli owned) then
+  throw "managed grok-cli must select the first-party omarchy.ownedPackages derivation"
+else if pkgIn pkgs.grok-cli owned then
+  throw "managed grok-cli selected nixpkgs' unrelated third-party CLI"
+else if !(pkgIn pkgs.hello owned) || !(pkgIn pkgs.kdePackages.dolphin owned) then
+  throw "managed attrs outside omarchy.ownedPackages must still resolve against consumer nixpkgs"
 else if
   !(rejectedAlone ../fixtures/managed-packages-nested-missing.json [
     "kdePackages"
