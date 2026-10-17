@@ -46,6 +46,10 @@ else if sysctl."net.ipv4.tcp_congestion_control" != "bbr" then
   throw "demo config missing net.ipv4.tcp_congestion_control=bbr (etc/sysctl.d/99-omarchy-sysctl.conf, 2026-09-13)"
 else if sysctl."net.core.default_qdisc" != "fq" then
   throw "demo config missing net.core.default_qdisc=fq (etc/sysctl.d/99-omarchy-sysctl.conf, 2026-09-13)"
+else if sysctl."net.ipv4.conf.all.arp_ignore" != 1 then
+  throw "demo config missing arp_ignore=1 (etc/sysctl.d/90-omarchy-arp.conf, 33783b1)"
+else if sysctl."net.ipv4.conf.all.arp_announce" != 2 then
+  throw "demo config missing arp_announce=2 (etc/sysctl.d/90-omarchy-arp.conf, 33783b1)"
 else if sysctl."fs.inotify.max_user_watches" != 524288 then
   throw "demo config lost fs.inotify.max_user_watches=524288 (nixpkgs sysctl.nix default changed)"
 else if !(hasInfix "HandlePowerKey=ignore" logindConf) then
@@ -54,6 +58,16 @@ else if demoCfg.systemd.settings.Manager.DefaultTimeoutStopSec != "5s" then
   throw "demo config missing DefaultTimeoutStopSec=5s (etc/systemd/system.conf.d/10-faster-shutdown.conf)"
 else if demoCfg.systemd.settings.Manager.DefaultLimitNOFILE != "65536:524288" then
   throw "demo config missing DefaultLimitNOFILE (etc/systemd/system.conf.d/20-omarchy-nofile.conf)"
+else if
+  (demoCfg.systemd.managerEnvironment."SYSTEMD_DEFAULT_MOUNT_RATE_LIMIT_BURST" or null) != "30"
+then
+  throw "demo config missing SYSTEMD_DEFAULT_MOUNT_RATE_LIMIT_BURST=30 (etc/systemd/system.conf.d/20-mount-events.conf, 33783b1)"
+else if (demoCfg.environment.etc."mpv/mpv.conf".source or null) == null then
+  throw "demo config missing /etc/mpv/mpv.conf (etc/mpv/mpv.conf, 33783b1)"
+else if (demoCfg.environment.etc."xkb/rules/evdev".source or null) == null then
+  throw "demo config missing /etc/xkb/rules/evdev (etc/xkb, 33783b1)"
+else if (demoCfg.environment.etc."xkb/symbols/omarchy".source or null) == null then
+  throw "demo config missing /etc/xkb/symbols/omarchy (etc/xkb, 33783b1)"
 else if !(hasInfix "DefaultLimitNOFILE=65536:524288" userConf) then
   throw "demo config user.conf missing DefaultLimitNOFILE (etc/systemd/user.conf.d/20-omarchy-nofile.conf)"
 else if demoCfg.systemd.services.docker.unitConfig.DefaultDependencies != false then
@@ -157,7 +171,13 @@ else
 
     # The vendored sources the module/seeds point at must exist
     # in the package (a path typo would only fail at runtime).
-    for f in etc/fastfetch/config.jsonc etc/gnupg/dirmngr.conf; do
+    for f in \
+      etc/fastfetch/config.jsonc \
+      etc/gnupg/dirmngr.conf \
+      etc/mpv/mpv.conf \
+      etc/xkb/rules/evdev \
+      etc/xkb/symbols/omarchy
+    do
       if [ ! -f "${omarchyPkg}/share/omarchy/$f" ]; then
         echo "package is missing share/omarchy/$f"
         exit 1

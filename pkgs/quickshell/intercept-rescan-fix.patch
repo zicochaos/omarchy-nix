@@ -1,0 +1,17 @@
+Omarchy-nix: drop the synchronous scanDir() from the URL interceptor.
+Calling into the scanner from the QML engine thread deadlocks the engine
+during the shell's plugin reload on Qt 6.11 (the shell goes silent after
+"Local plugin changed, reloading" and lazily loaded panels never return);
+the interception table stays maintained by the initial scan and watcher.
+
+diff --git i/src/core/qsintercept.cpp w/src/core/qsintercept.cpp
+index 8f14178..8f14179 100644
+--- i/src/core/qsintercept.cpp
++++ w/src/core/qsintercept.cpp
+@@ -27,7 +27,6 @@ QUrl QsUrlInterceptor::intercept(
+ 	{
+ 		auto path = QFileInfo(url.toLocalFile()).absoluteFilePath();
+-		this->scanner.scanDir(QFileInfo(path).dir());
+ 		if (this->scanner.fileIntercepts.contains(path)) url.setScheme("qs");
+ 	}
+ 

@@ -4,6 +4,61 @@ All notable changes to omarchy-nix, newest first. Dates are UTC.
 Upstream adaptation details and the bump checklist:
 [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
+## 2026-10-17
+
+- **Upstream Quattro moves from `f2a39c4` to `33783b1` (160 commits).**
+  The vendored tree has 23 themes, 194 classified migrations, 52
+  classified `/etc` files, and 8 shipped user units.
+- **quickshell advances to 0.3.2 with upstream's load patch plus one
+  port fix.** Upstream's package patches quickshell with
+  load_qtquick_611.patch; without it the 33783b1 menu panel never opens.
+  The port adds intercept-rescan-fix.patch: upstream's patch calls the
+  QML scanner synchronously from the URL interceptor, which deadlocks the
+  engine during plugin reloads against the pin's Qt 6.11 (the shell goes
+  silent after "Local plugin changed, reloading" and lazily loaded panels
+  never return).
+- **Two new upstream-owned packages: Signed 0.3.1 and
+  omarchy-hyprland-titlebars 0.2.2.** Signed (PDF signing and filling)
+  replaces Xournal++ in the base packages; the titlebars plugin draws
+  floating-workspace titlebars and is built against the pinned Hyprland,
+  with its fixed `/usr/lib` load path rewritten to the plugin's store
+  path. OBS Studio, Kdenlive and Xournal++ left the base set with no
+  menu entries replacing them (install with omarchy-nix-search); clang
+  and llvm moved from the base set into the Rust dev-environment
+  catalog entry (bindgen's libclang).
+- **Superwhisper's panel is pre-seeded before the session starts** (HM
+  module) and the vendored setup-user is replaced at first-run by a port
+  step with its idempotent user-scope subset: linking the panel or forcing
+  a plugin rescan mid-session destroys the shell's lazily loaded panels
+  (the menu never maps again; measured in checks.omarchy-ux). The menu
+  launcher flow also changed upstream — `omarchy menu summon root` is the
+  apps-searching launcher now; the "apps" route opens the dock's app grid.
+- **The desktop is localized (upstream "Omarchy in 50 languages").**
+  Setup → Language sets the session LANG through the user's uwsm env;
+  locale generation stays declarative (`i18n.supportedLocales`, all
+  locales by default — the Arch root helper and its passwordless sudoers
+  grant are N/A). Japanese, Chinese and Korean typing works out of the
+  box: the five fcitx5 CJK engines join the runtime packages, the
+  fcitx5 D-Bus activation file is path-adapted, and the keyboard
+  widget's live Fcitx state watcher runs through a pygobject wrapper.
+  Omarchy's own XKB option (Caps Lock stays, Shift + Caps Lock composes)
+  is vendored into `/etc/xkb` — the exact libxkbcommon mechanism
+  upstream relies on.
+- **The USB/Thunderbolt approval feature is fully reverted, upstream and
+  here.** The 21 command chains, both user units, the polkit rules and
+  the eight hidden menu ids are gone; usbguard/bolt stay declarative.
+- **New upstream surface classified:** the floating dock, Appearance
+  menu (corners, opacity, glassy bar, titlebars), workspace layout
+  modes, Super+Shift+S screenshots, faster/perf-reworked menus, the
+  `omarchy-system` power router, mpv hardware decoding and ARP
+  own-address answering as native `/etc` defaults, a raised systemd
+  mount-event rate allowance, and the Microsoft webapp remove entries.
+  Kimi's new default-agent menu choice is dropped (no nixpkgs attr on
+  the pin, like muse/ori); its usage collector ships shebang-patched.
+- **Verification:** all 46 flake checks pass, including the desktop,
+  UX, SDDM and fish VM tests. The package build, formatting and
+  all-systems evaluation pass.
+
 ## 2026-10-10
 
 - **Upstream Quattro moves from `8b4eae6` to `f2a39c4` (177 commits).**

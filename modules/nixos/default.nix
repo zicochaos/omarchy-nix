@@ -317,10 +317,19 @@ let
         # --- Input method (fcitx5). The Qt integration module is not a
         # top-level attribute; it lives under the Qt package scopes. We pull
         # the Qt5 build for broad app compatibility (Qt5 is still the common
-        # case on a desktop; add qt6Packages.fcitx5-qt later if needed). ---
+        # case on a desktop; add qt6Packages.fcitx5-qt later if needed).
+        # The CJK engines (33783b1 base packages, for Japanese/Korean/
+        # Chinese setups) ride the already-linked /share/fcitx5. ---
         fcitx5
         fcitx5-gtk
         libsForQt5.fcitx5-qt
+        fcitx5-chewing
+        # pinyin/table engines: the top-level attr is a throw-alias on
+        # this pin; the real package lives in the Qt6 scope.
+        qt6Packages.fcitx5-chinese-addons
+        fcitx5-hangul
+        fcitx5-mozc
+        fcitx5-table-extra
 
         # --- Power / brightness ---
         brightnessctl
@@ -433,12 +442,14 @@ let
         luarocks
 
         # --- Upstream parity: GUI apps ---
-        obs-studio
+        # (obs-studio and kdenlive left the upstream base packages at
+        # 33783b1 ("Stop shipping OBS Studio and Kdenlive to new installs")
+        # with no menu entries replacing them; install them with
+        # omarchy-nix-search. xournalpp was replaced by Signed, which ships
+        # via omarchy.appPackages (pkgs/signed.nix).)
         libreoffice-fresh
-        kdePackages.kdenlive
         obsidian
         pinta
-        xournalpp
         localsend
         moonlight-qt
         # omacalc replaced gnome-calculator upstream (quattro "Switch to
@@ -463,9 +474,10 @@ let
 
         # --- Upstream parity: dev toolchains ---
         # (rust removed upstream from base packages: "We don't need rust any
-        # longer"; the Rust dev env stays available via the Install menu.)
-        clang
-        llvm
+        # longer"; the Rust dev env stays available via the Install menu.
+        # clang/llvm left the base set at 33783b1 too — upstream now installs
+        # clang alongside the Rust dev environment (bindgen's libclang); the
+        # catalog's install.development.rust entry carries it.)
         ruby
         dotnet-runtime
         mise
@@ -1048,6 +1060,15 @@ in
               "net.ipv4.tcp_congestion_control" = "bbr";
               "net.core.default_qdisc" = "fq";
               "net.ipv4.tcp_mtu_probing" = 1;
+              # ARP own-address answering (upstream etc/sysctl.d/
+              # 90-omarchy-arp.conf, 33783b1): with a dock's Ethernet and
+              # Wi-Fi on one network, the kernel default lets each interface
+              # answer for the other's address, so NetworkManager takes the
+              # wired routes down over the conflict while it probes.
+              "net.ipv4.conf.all.arp_ignore" = 1;
+              "net.ipv4.conf.default.arp_ignore" = 1;
+              "net.ipv4.conf.all.arp_announce" = 2;
+              "net.ipv4.conf.default.arp_announce" = 2;
               "vm.dirty_background_bytes" = 67108864;
               "vm.dirty_bytes" = 268435456;
               "vm.dirty_writeback_centisecs" = 1500;
@@ -1110,6 +1131,14 @@ in
         # version-dependent block right below — see the comment there).
         systemd.settings.Manager.DefaultLimitNOFILE = lib.mkDefault "65536:524288";
 
+        # Mount-event rate allowance (upstream etc/systemd/system.conf.d/
+        # 20-mount-events.conf, 33783b1): the default five mount events per
+        # second can defer local filesystems and binfmt registration during
+        # boot; thirty keeps mounting unthrottled under boot-time bursts.
+        # Through systemd.managerEnvironment, which nixpkgs serializes into
+        # the [Manager] ManagerEnvironment= line.
+        systemd.managerEnvironment."SYSTEMD_DEFAULT_MOUNT_RATE_LIMIT_BURST" = lib.mkDefault "30";
+
         # USB autosuspend off (upstream etc/modprobe.d/
         # omarchy-usb-autosuspend.conf): autosuspend drops flaky receivers
         # and devices; -1 disables it. Plain assignment, not mkDefault:
@@ -1156,6 +1185,30 @@ in
         environment.etc."xdg/kitty/kitty.conf" = lib.mkIf (cfg.package != null) {
           source = "${cfg.package}/share/omarchy/etc/xdg/kitty/kitty.conf";
         };
+
+        # mpv system defaults (upstream etc/mpv/mpv.conf, 33783b1): hardware
+        # decoding through the reliable-decoders list with software fallback.
+        # mpv reads /etc/mpv/mpv.conf as its system config; ~/.config/mpv
+        # keeps overriding it.
+        environment.etc."mpv/mpv.conf" = lib.mkIf (cfg.package != null) {
+          source = "${cfg.package}/share/omarchy/etc/mpv/mpv.conf";
+        };
+
+        # Omarchy's own XKB option (upstream etc/xkb, 33783b1): Caps Lock
+        # stays Caps Lock and Shift + Caps Lock becomes Compose — stock XKB
+        # has no such option, so the rules file includes the system rules
+        # (%S, resolved per-process by libxkbcommon) and appends one option
+        # line, and the symbols file defines it. libxkbcommon searches
+        # /etc/xkb ahead of the system root (compiled-in extra path), which
+        # is the exact mechanism upstream relies on; the vendored Hyprland
+        # config applies the option to every keyboard (default/hypr/
+        # input.lua).
+        environment.etc."xkb/rules/evdev".source = lib.mkIf (
+          cfg.package != null
+        ) "${cfg.package}/share/omarchy/etc/xkb/rules/evdev";
+        environment.etc."xkb/symbols/omarchy".source = lib.mkIf (
+          cfg.package != null
+        ) "${cfg.package}/share/omarchy/etc/xkb/symbols/omarchy";
 
         # sudo parity (upstream etc/sudoers.d/omarchy-passwd-tries and
         # omarchy-tzupdate): 10 password tries; NOPASSWD for timedatectl

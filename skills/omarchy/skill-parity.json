@@ -1,10 +1,6 @@
 {
   "comment": "Semantic parity manifest for the NixOS omarchy skill. Every h2-h4 (##+) heading and every Command Groups table row in the upstream default/agents/skills/omarchy/SKILL.md must appear here, classified as preserved (carried over verbatim in intent), adapted (rewritten for NixOS), or omitted (intentionally excluded, reason required). checks.omarchy-skill fails when upstream adds a section or command group that is not classified here, or when this manifest classifies something upstream removed. An optional 'anchor' string is grepped in our SKILL.md to prove the classified content is actually present. (v4.0.0: upstream split the deep guidance into sibling topic guides and folded Common Tasks/Patterns into the new section layout.)",
   "sections": {
-    "When This Skill MUST Be Used": {
-      "status": "adapted",
-      "note": "Trigger list lives in the frontmatter description (what agents actually match on) plus the intro; paths rewritten to the NixOS port. A redundant MUST section duplicates the frontmatter and drifts."
-    },
     "Topic Guides": {
       "status": "omitted",
       "reason": "v4.0.0 moved the deep guidance (hyprland/plugins/theming/hooks/capture/contributing) into sibling .md files that are NOT shipped by omarchy-nix — our skill keeps the equivalent NixOS-adapted guidance inline, and contributing.md is upstream-repo workflow that does not apply to the port."

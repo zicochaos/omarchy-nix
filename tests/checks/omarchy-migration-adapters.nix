@@ -33,9 +33,10 @@ pkgs.runCommand "omarchy-migration-adapters-check" { } ''
   fail() { echo "FAIL: $*" >&2; [[ ! -s $TMPDIR/run.log ]] || cat "$TMPDIR/run.log" >&2; exit 1; }
   A=${omarchyPkg}/share/omarchy/migrations-nix
   NVIM_SOURCE=${nvimPkg}/share/omarchy-nvim/config/lua/config/remote_clipboard.lua
+  NVIM_LUALINE=${nvimPkg}/share/omarchy-nvim/config/lua/plugins/lualine-transparent.lua
   EXT=/run/current-system/sw/share/omarchy/default/chromium/extensions
 
-  tested="1780517689.sh 1781587663.sh 1784401744.sh 1787580187.sh 1788996284.sh 1789764927.sh"
+  tested="1780517689.sh 1781587663.sh 1784401744.sh 1787580187.sh 1788996284.sh 1789764927.sh 1791723398.sh 1791935188.sh"
   [[ $(ls "$A" | sort | xargs) == "$tested" ]] ||
     fail "adapters changed ($(ls "$A" | xargs)); add their cases to this check"
 
@@ -283,6 +284,60 @@ pkgs.runCommand "omarchy-migration-adapters-check" { } ''
   ! grep -qx 'systemctl --user start owed.service' "$STUB_LOG" ||
     fail "1789764927 started owed without a graphical session"
   echo "1789764927 OK"
+
+  # --- 1791723398: nvim transparency snippets from the profile --------
+  fresh trans-absent
+  run 1791723398.sh "$NO_NVIM"
+  [[ ! -e $H/.config/nvim ]] || fail "1791723398 created a config"
+
+  fresh trans-present
+  mkdir -p "$H/.config/nvim/lua/plugins" "$H/.config/nvim/plugin/after"
+  printf '%s\n' '-- existing plugins' >"$H/.config/nvim/lua/plugins/keep.lua"
+  # A transparency file the user changed is kept, not replaced.
+  printf '%s\n' '-- customized transparency' >"$H/.config/nvim/plugin/after/transparency.lua"
+  run 1791723398.sh "$WITH_NVIM"
+  cmp -s "$NVIM_LUALINE" "$H/.config/nvim/lua/plugins/lualine-transparent.lua" ||
+    fail "1791723398 did not install the packaged lualine spec"
+  [[ $(cat "$H/.config/nvim/plugin/after/transparency.lua") == '-- customized transparency' ]] ||
+    fail "1791723398 replaced a customized transparency file"
+  find "$H/.config" -type f | sort | xargs md5sum >"$TMPDIR/before"
+  run 1791723398.sh "$WITH_NVIM"
+  find "$H/.config" -type f | sort | xargs md5sum >"$TMPDIR/after"
+  cmp -s "$TMPDIR/before" "$TMPDIR/after" || fail "1791723398 is not idempotent"
+
+  fresh trans-no-source
+  mkdir -p "$H/.config/nvim/lua/plugins"
+  run 1791723398.sh "$NO_NVIM"
+  [[ ! -e $H/.config/nvim/plugin/after/transparency.lua ]] ||
+    fail "1791723398 installed a transparency file without a source"
+  grep -q 'sources not found' "$TMPDIR/run.log" || fail "1791723398 without a source said nothing"
+
+  fresh trans-link
+  mkdir -p "$TMPDIR/dot/nvim-dir"
+  ln -s "$TMPDIR/dot/nvim-dir" "$H/.config/nvim"
+  run 1791723398.sh "$WITH_NVIM"
+  is_link "$H/.config/nvim"
+  [[ ! -e $TMPDIR/dot/nvim-dir/plugin ]] ||
+    fail "1791723398 wrote into a symlinked nvim directory"
+  grep -q 'Preserving symlink-managed Neovim config' "$TMPDIR/run.log" ||
+    fail "1791723398 skipped a managed config silently"
+  echo "1791723398 OK"
+
+  # --- 1791935188: browser --no-default-browser-check flags -----------
+  fresh flags-none
+  run 1791935188.sh "$NO_NVIM"
+  [[ -z $(find "$H/.config" -name '*-flags.conf') ]] || fail "1791935188 created a flags file"
+
+  fresh flags-append
+  mkdir -p "$H/.config"
+  printf '%s' '--ozone-platform=wayland' >"$H/.config/chromium-flags.conf"
+  run 1791935188.sh "$NO_NVIM"
+  [[ $(cat "$H/.config/chromium-flags.conf") == $'--ozone-platform=wayland\n--no-default-browser-check' ]] ||
+    fail "1791935188 did not append the flag after a newline"
+  run 1791935188.sh "$NO_NVIM"
+  [[ $(grep -c -- '--no-default-browser-check' "$H/.config/chromium-flags.conf") == 1 ]] ||
+    fail "1791935188 appended the flag twice"
+  echo "1791935188 OK"
 
   touch $out
 ''

@@ -16,7 +16,8 @@
 # which is explicitly out of scope (AGENTS.md: "vendor, don't rewrite").
 #
 # Path adaptation also covers:
-#   - the 10 systemd user units under default/systemd/user/ (/usr/bin/* and
+#   - the systemd user units under default/systemd/user/ (8 since the
+#     33783b1 revert of the USB/Thunderbolt approval feature; /usr/bin/* and
 #     /usr/share/omarchy → store paths). Unit semantics, [Install] targets,
 #     and ordering are left untouched.
 #   - install/user/xcompose.sh (hardcoded include path for default/xcompose).
@@ -56,6 +57,10 @@
   coreutils,
   util-linux,
   gnugrep,
+  # omarchy-hyprland-titlebars plugin: the vendored default/hypr/
+  # workspace-modes.lua loads titlebars.so from a fixed /usr/lib path on
+  # Arch; substitute this derivation's store path (see postPatch).
+  hyprlandTitlebars,
 }:
 
 let
@@ -149,6 +154,51 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail '#!/usr/bin/python3' '#!${python3}/bin/python3'
         substituteInPlace bin/omarchy-dev-font \
           --replace-fail '#!/usr/bin/python3' '#!${python3}/bin/python3'
+        # 33783b1 wave: the Kimi usage scanner and the agent-account
+        # transfer helper are new stdlib-only Python bin scripts.
+        substituteInPlace bin/omarchy-agent-usage-kimi bin/omarchy-agent-account-transfer \
+          --replace-fail '#!/usr/bin/python3' '#!${python3}/bin/python3'
+        # The i18n wave dispatches the stdlib-only input-methods tools
+        # (configure.py / typing_setup.py) through /usr/bin/python3 by
+        # absolute path from bash wrappers.
+        substituteInPlace bin/omarchy-input-method bin/omarchy-font-cjk \
+          bin/omarchy-setup-input bin/omarchy-setup-keyboard bin/omarchy-language \
+          --replace-fail '/usr/bin/python3' '${python3}/bin/python3'
+
+        # D-Bus activation for fcitx5: configure.py installs this service
+        # file into ~/.local/share/dbus-1/services so activation goes
+        # through the supervised user unit. The Exec path is dead on NixOS;
+        # the system-profile path is stable across rebuilds (fcitx5 is in
+        # the runtime deps), unlike a store path that a rebuild + GC
+        # would orphan.
+        substituteInPlace default/input-methods/org.fcitx.Fcitx5.service \
+          --replace-fail 'Exec=/usr/bin/fcitx5' \
+            'Exec=/run/current-system/sw/bin/fcitx5'
+
+        # The keyboard widget's live Fcitx state watcher: the QML execs
+        # /usr/bin/python3 (dead on NixOS) on the pygobject-based
+        # indicator.py. Route it through a wrapper that pins the pygobject
+        # interpreter and its typelib path (same treatment as
+        # omarchy-file-select).
+        cat > bin/omarchy-input-method-indicator <<EOF
+    #!/bin/bash
+    # omarchy-nix: run default/input-methods/indicator.py under pygobject.
+    export GI_TYPELIB_PATH="${glib}/lib/girepository-1.0"
+    exec ${pythonWithGi}/bin/python3 "\''${OMARCHY_PATH:-/run/current-system/sw/share/omarchy}/default/input-methods/indicator.py" "\$@"
+    EOF
+        chmod +x bin/omarchy-input-method-indicator
+        substituteInPlace shell/Commons/InputMethodState.qml \
+          --replace-fail \
+            '["/usr/bin/python3", Quickshell.env("OMARCHY_PATH") + "/default/input-methods/indicator.py"]' \
+            '[Quickshell.env("OMARCHY_PATH") + "/bin/omarchy-input-method-indicator", Quickshell.env("OMARCHY_PATH") + "/default/input-methods/indicator.py"]'
+
+        # Floating-workspace titlebars: Hyprland loads the plugin from a
+        # fixed /usr/lib path on Arch (and skips titlebars when it is
+        # absent). Point the Lua loader at the packaged plugin's store
+        # path.
+        substituteInPlace default/hypr/workspace-modes.lua \
+          --replace-fail '"/usr/lib/omarchy-hyprland-titlebars/titlebars.so"' \
+            '"${hyprlandTitlebars}/lib/omarchy-hyprland-titlebars/titlebars.so"'
 
         # --- systemd user units: binary + omarchy path adaptation only ---
         # bt-agent lives in bluez-tools on nixpkgs (not bluez).
@@ -192,11 +242,9 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "/usr/bin/omarchy-tailscale-receive" \
             "$out/share/omarchy/bin/omarchy-tailscale-receive"
 
-        substituteInPlace default/systemd/user/omarchy-usb-authorization.service \
-          --replace-fail "/usr/bin/bash" "${bash}/bin/bash"
-        substituteInPlace default/systemd/user/omarchy-thunderbolt-authorization.service \
-          --replace-fail "/usr/bin/omarchy-thunderbolt-authorization-watch" \
-            "$out/share/omarchy/bin/omarchy-thunderbolt-authorization-watch"
+        # (The USB/Thunderbolt authorization user units were fully reverted
+        # upstream at 33783b1 and no longer ship; their stub chains and menu
+        # ids went with them — see the runtime manifest.)
 
         # omarchy-launch-browser and omarchy-launch-webapp resolve the .desktop
         # via a fixed brace list of data dirs. Arch has /usr/share/applications;
@@ -240,11 +288,22 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace install/user/first-run/enable-user-units.sh \
           --replace-fail $'  bt-agent.service \\\n  owed.service \\\n' $'  bt-agent.service \\\n' \
           --replace-fail \
-            $'  omarchy-crash-watch.service \\\n  omarchy-usb-authorization.service \\\n  omarchy-thunderbolt-authorization.service; do' \
-            '  omarchy-crash-watch.service; do' \
-          --replace-fail \
             'omarchy-hook-install theme-set /usr/share/owe/10-owe-sync' \
             $'if systemctl --user cat owed.service >/dev/null 2>&1; then\n  systemctl --user enable --now owed.service\n  omarchy-hook-install theme-set /run/current-system/sw/share/owe/10-owe-sync\nfi'
+
+        # omarchy-language: locale generation is the one root step in the
+        # Setup > Language flow (writes /etc/locale.gen + locale-gen behind
+        # the upstream passwordless sudoers grant). NixOS generates locales
+        # declaratively (i18n.supportedLocales — all of them by default), so
+        # the generate_locale root paths become a declarative note that
+        # fails the pick only when the locale genuinely is missing; the
+        # user-scope remainder (uwsm session LANG + the language marker +
+        # CJK input-method seeding) runs unchanged. The orphaned sudoers
+        # probe and generator lookup go with them.
+        substituteInPlace bin/omarchy-language \
+          --replace-fail $'generate_locale() {\n  local code=$1 locale=$2\n  locale_generated "$locale" && return\n\n  if (( EUID == 0 )); then\n    "$generator" "$code"\n  elif generator_is_passwordless "$code"; then\n    sudo -n "$generator" "$code"\n  elif [[ -t 0 ]]; then\n    # A terminal can carry sudo\'s own prompt.\n    sudo "$generator" "$code"\n  else\n    # Picked from the menu there is no terminal, so polkit asks on screen.\n    pkexec "$generator" "$code"\n  fi\n}' \
+            $'generate_locale() {\n  local code=$1 locale=$2\n  locale_generated "$locale" && return\n\n  # omarchy-nix: locales are declarative (i18n.supportedLocales).\n  echo "NixOS: the $locale locale is not generated — add it to i18n.supportedLocales in your flake config, rebuild, then pick the language again." >&2\n  return 1\n}' \
+          --replace-fail $'# Generating a locale is the one step that needs root. The helper does it from\n# a registry code alone, at the path etc/sudoers.d/omarchy-locale-generate\n# names, so the passwordless rule matches even where $OMARCHY_PATH points at a\n# checkout; without the package (a bare dev checkout) the checkout\'s own copy\n# runs, behind a password prompt.\ngenerator=/usr/bin/omarchy-locale-generate\n[[ -x $generator ]] || generator=$OMARCHY_PATH/bin/omarchy-locale-generate\n\n# True when sudo would run the helper for this code without a password. `sudo\n# -l` alone only says a command is permitted, which the blanket %wheel rule\n# answers yes to; the long listing prints the matched entry\'s tags, so\n# !authenticate is the grant and nothing else. Under -n it prompts for\n# nothing, so a machine whose omarchy-settings predates the grant falls\n# through to a prompt instead of failing.\ngenerator_is_passwordless() {\n  sudo -n -l -l "$generator" "$1" 2>/dev/null | grep -q \'!authenticate\'\n}\n\n' ""
 
         # mise is Arch packaging (tarballs under /opt/packages, omarchy-mise-install
         # wrappers). Upstream runs these from install/user/all.sh and again from
@@ -352,14 +411,29 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace migrations/1791470456.sh \
           --replace-fail 'cp "$source" "$replacement"' \
             'cp --no-preserve=mode "$source" "$replacement"'
+        # 33783b1 user-safe migrations with the same store->$HOME copy
+        # class: the window-opaque toggle file, omarchy-browser.desktop and
+        # the hyprland-mimeapps template.
+        substituteInPlace migrations/1791705142.sh \
+          --replace-fail 'cp "$OMARCHY_PATH/default/hypr/toggles/window-opaque.lua" "$toggles_dir/"' \
+            'cp --no-preserve=mode "$OMARCHY_PATH/default/hypr/toggles/window-opaque.lua" "$toggles_dir/"'
+        substituteInPlace migrations/1791934674.sh \
+          --replace-fail 'cp -f "$OMARCHY_PATH/applications/omarchy-browser.desktop" ~/.local/share/applications/' \
+            'cp -f --no-preserve=mode "$OMARCHY_PATH/applications/omarchy-browser.desktop" ~/.local/share/applications/' \
+          --replace-fail 'cp "$OMARCHY_PATH/config/hyprland-mimeapps.list" "$list"' \
+            'cp --no-preserve=mode "$OMARCHY_PATH/config/hyprland-mimeapps.list" "$list"'
 
         # Selecting the declarative dictation package initializes only user
-        # state; a missing package needs a rebuild rather than an Arch install.
+        # state; a missing package needs a rebuild rather than an Arch
+        # install. setup-user is replaced by the port's idempotent
+        # first-run step (same file): the vendor script's panel link and
+        # forced rescanPlugins destroy the shell's lazily loaded panels
+        # (see the dictation-superwhisper.sh block below).
         substituteInPlace bin/omarchy-install-dictation-superwhisper \
           --replace-fail 'omarchy-pkg-add superwhisper-bin' \
             'omarchy-pkg-present superwhisper-bin || { echo "Superwhisper is absent. Restore it in omarchy.appPackages and rebuild." >&2; exit 1; }' \
           --replace-fail 'bash /usr/share/superwhisper/setup-user' \
-            '/run/current-system/sw/share/superwhisper/setup-user'
+            'bash "$OMARCHY_PATH/install/user/first-run/dictation-superwhisper.sh" --init'
         substituteInPlace bin/omarchy-remove-dictation-superwhisper \
           --replace-fail '/usr/bin/superwhisper' '/run/current-system/sw/bin/superwhisper' \
           --replace-fail '/opt/superwhisper' '/run/current-system/sw/share/superwhisper/app'
@@ -381,7 +455,9 @@ stdenv.mkDerivation (finalAttrs: {
         # `on` fail, since cp cannot open the read-only destination.
         substituteInPlace install/user/hardware/vm-no-animations.sh \
           --replace-fail 'cp "$OMARCHY_PATH/default/hypr/toggles/no-animations.lua"' \
-                         'cp --no-preserve=mode "$OMARCHY_PATH/default/hypr/toggles/no-animations.lua"'
+                         'cp --no-preserve=mode "$OMARCHY_PATH/default/hypr/toggles/no-animations.lua"' \
+          --replace-fail 'cp "$OMARCHY_PATH/default/hypr/toggles/window-opaque.lua"' \
+                         'cp --no-preserve=mode "$OMARCHY_PATH/default/hypr/toggles/window-opaque.lua"'
         substituteInPlace bin/omarchy-hyprland-toggle \
           --replace-fail 'cp "$FLAG_SOURCE" "$FLAG_FILE"' \
                          'cp --no-preserve=mode "$FLAG_SOURCE" "$FLAG_FILE"'
@@ -836,9 +912,9 @@ stdenv.mkDerivation (finalAttrs: {
     echo
     confirm_reboot() {
       if [[ ''${OMARCHY_UPDATE_UNATTENDED:-0} == "1" ]]; then
-        echo "$1 Run omarchy-system-reboot when ready."
+        echo "$1 Run omarchy-system reboot when ready."
       elif gum confirm "$1"; then
-        omarchy-system-reboot
+        omarchy-system reboot
         exit 0
       fi
     }
@@ -1100,12 +1176,12 @@ stdenv.mkDerivation (finalAttrs: {
         done
 
         substituteInPlace bin/omarchy-agent-account-add \
-          --replace-fail $'mise use -g "$package" >/dev/null 2>&1 || fail "Installing the $name CLI didn\x27t finish."' \
+          --replace-fail $'mise use -g "$package" >/dev/null 2>&1 || fail "$(omarchy-i18n agents.installCliFailed "$name")"' \
             'fail "$name is not installed. Install it from Install > AI, then add the account again."' \
           --replace-fail 'mise use -g "$package" || exit 1' \
             'omarchy-nix-add "install.ai.$provider" || exit 1' \
-          --replace-fail '#!/bin/bash\nexec omarchy-launch-browser' \
-            '#!${bash}/bin/bash\nexec omarchy-launch-browser'
+          --replace-fail '#!/bin/bash\nexec omarchy-launch-browser --private "$1"' \
+            '#!${bash}/bin/bash\nexec omarchy-launch-browser --private "$1"'
 
         # OpenClaw's new private, self-updating Node copy is an Arch
         # packaging path. The catalog already owns its Nix CLI package.
@@ -1140,6 +1216,20 @@ stdenv.mkDerivation (finalAttrs: {
 
         # Fresh users get the upstream default dictation backend. Existing
         # users keep their choice and can initialize it from Setup -> Defaults.
+        # omarchy-nix: the vendored setup-user is NOT run at first-run. Two of
+        # its steps are toxic here at 33783b1: linking the panel into the
+        # watched ~/.config/omarchy/plugins mid-session, and the forced
+        # `omarchy-shell shell rescanPlugins` — both make the shell's plugin
+        # registry reload, which permanently destroys the lazily loaded
+        # panels (menu/dock/notifications never map again; measured in
+        # checks.omarchy-ux). The HM module pre-seeds the panel link before
+        # the session starts, and this step runs the remaining idempotent
+        # user-scope subset of setup-user (launcher + app links, the
+        # preferences seed that unbinds Right Alt, daemon enable + readiness,
+        # the superwhisper:// scheme default, agent skill links, the fcitx5
+        # addon pickup and the bar-widget placement — a shell.json config
+        # write, the safe reload path, which also instantiates the panel's
+        # IPC target).
         mkdir -p install/user/first-run
         cat > install/user/first-run/dictation-superwhisper.sh <<'EOF'
     set -e
@@ -1153,7 +1243,64 @@ stdenv.mkDerivation (finalAttrs: {
         rm -f "$temporary"
       fi
       if [[ $(omarchy-default-dictation) == superwhisper ]]; then
-        /run/current-system/sw/share/superwhisper/setup-user
+        config_home="''${XDG_CONFIG_HOME:-$HOME/.config}"
+        data_home="''${XDG_DATA_HOME:-$HOME/.local/share}"
+        sw=/run/current-system/sw
+
+        [[ -e $HOME/.local/bin/superwhisper || -L $HOME/.local/bin/superwhisper ]] || {
+          mkdir -p "$HOME/.local/bin"
+          ln -s "$sw/bin/superwhisper" "$HOME/.local/bin/superwhisper"
+        }
+        [[ -L $data_home/superwhisper/app/current ]] || {
+          mkdir -p "$data_home/superwhisper/app"
+          ln -s "$sw/share/superwhisper/app" "$data_home/superwhisper/app/current"
+        }
+        preferences="$config_home/superwhisper/preferences.json"
+        if [[ ! -e $preferences ]]; then
+          mkdir -p "''${preferences%/*}"
+          (umask 077; printf '%s\n' '{"toggleRecordingShortcut":"Alt+Space","pushToTalkShortcut":"","cancelRecordingShortcut":"Escape"}' >"$preferences")
+        fi
+        systemctl --user enable --now superwhisper.service
+        systemctl --user restart superwhisper.service
+        ready=false
+        for (( attempt = 0; attempt < 50; attempt++ )); do
+          if superwhisper status >/dev/null 2>&1; then
+            ready=true
+            break
+          fi
+          sleep 0.1
+        done
+        if [[ $ready != "true" ]]; then
+          echo "Superwhisper did not become ready. Check systemctl --user status superwhisper.service." >&2
+          exit 1
+        fi
+        xdg-mime default superwhisper-url.desktop x-scheme-handler/superwhisper
+        mkdir -p "$config_home/omarchy/plugins" "$HOME/.agents/skills"
+        panel="$config_home/omarchy/plugins/superwhisper-panel"
+        if [[ ! -e $panel && ! -L $panel ]]; then
+          ln -s "$sw/share/superwhisper/app/assets/omarchy-plugin/superwhisper-panel" "$panel"
+        fi
+        ln -sfn "$sw/share/superwhisper/app/assets/agent-skill/superwhisper" "$HOME/.agents/skills/superwhisper"
+        for agent in .claude .codex .pi/agent; do
+          if [[ -d $HOME/$agent ]]; then
+            mkdir -p "$HOME/$agent/skills"
+            ln -sfn "$sw/share/superwhisper/app/assets/agent-skill/superwhisper" "$HOME/$agent/skills/superwhisper"
+          fi
+        done
+        if systemctl --user -q is-active omarchy-fcitx5.service; then
+          systemctl --user restart omarchy-fcitx5.service
+        fi
+        # Place the bar widget (a shell.json config write — the safe reload
+        # path). The panel is registered from the startup scan when
+        # pre-seeded; placing it here instantiates the component and its IPC
+        # target. Bounded like upstream's setup-user.
+        for (( attempt = 0; attempt < 50; attempt++ )); do
+          placement=$(omarchy-shell shell putBarWidget superwhisper.panel '{"'section'":"right"}' 2>/dev/null) || placement=""
+          if [[ $placement == "ok" || -z $placement ]]; then
+            break
+          fi
+          sleep 0.1
+        done
       fi
     fi
     EOF
@@ -1784,12 +1931,16 @@ stdenv.mkDerivation (finalAttrs: {
         # too: omp is packaged in-repo (pkgs/omp.nix) and Hermes Agent is
         # consumed from its own flake input — both as install.ai.* catalog
         # ids injected below (upstream's install.ai.hermes id is the desktop
-        # app pair, which stays dropped — not packaged here).
+        # app pair, which stays dropped — not packaged here). 33783b1 adds
+        # Kimi as a default-agent choice (mise/npm lazy-install); no kimi
+        # attr is on the pin (re-checked 2026-10-17), so its entry is
+        # dropped like muse/ori — revisit when an attr lands.
         for drop_key in \
           setup.default.agent.agy \
           setup.default.agent.ori \
           setup.default.agent.cursor-agent \
           setup.default.agent.muse \
+          setup.default.agent.kimi \
           install.ai.hermes \
           remove.ai.hermes \
           install.ai.perplexity \

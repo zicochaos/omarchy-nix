@@ -41,11 +41,13 @@ let
   };
 
   # Omarchy's packaging repo; only pkgbuilds/omarchy-nvim/ is consumed.
+  # 33783b1 bump: carries the transparency.lua rework and the new
+  # lualine-transparent.lua the nvim migration installs.
   omarchyPkgs = fetchFromGitHub {
     owner = "omacom";
     repo = "omarchy-pkgs";
-    rev = "e2bc7586e2bebfa09365fc5e32059969f0714ddc";
-    hash = "sha256-yAN/F0nRr3XiMUFuI1TD+Ve43F3cNE/2fOaDEipwk2U=";
+    rev = "60551aaddc098c34cd69862ed8c0569e1ce74d5f";
+    hash = "sha256-oPh7/wliFihgYMoVZY/z1dYHKBMvUgV+PR9ijnPhX4I=";
   };
 in
 stdenvNoCC.mkDerivation (finalAttrs: {

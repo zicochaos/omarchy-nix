@@ -25,13 +25,13 @@ repo:
 - **Lua-based Hyprland config (≥0.56).** `~/.config/hypr/hyprland.lua`
   `dofile`s `$OMARCHY_PATH/default/hypr/bootstrap.lua`, then `require()s
   default.hypr.omarchy` (defaults) + `hypr.*` (user overrides).
-- **~520 `omarchy-*` bash scripts** in `bin/` do everything. Dispatched
+- **~530 `omarchy-*` bash scripts** in `bin/` do everything. Dispatched
   via the `omarchy` router or called bare from PATH.
 - **TOML + template theme engine.** `omarchy-theme-set` copies a
   theme's `colors.toml` into a staging dir, runs
   `omarchy-theme-set-templates` (one awk pass over
   `default/themed/*.tpl`; per-template sed until upstream `349ecc0`) to
-  render 19 per-app configs, atomically swaps the dir into place.
+  render 20 per-app configs, atomically swaps the dir into place.
 
 ## Upstream's own conventions (`AGENTS.md`)
 
@@ -74,8 +74,10 @@ during **ISO chroot finalization**:
   `omarchy-finalize-user`; skill
   symlinks, xdg-user-dirs, mime defaults, `install/user/all.sh`).
 - `install/user/all.sh` runs per-user leaves: `theme.sh`, `chromium.sh`,
-  `git.sh`, `xcompose.sh`, `mise.sh`, `mise-work.sh`, `default-keyring.sh`,
-  `dictation-default.sh`, `platform-setup.sh`, and hardware/VM fixups.
+  `git.sh`, `xcompose.sh`, `input-method.sh`, `mise.sh`, `mise-work.sh`,
+  `default-keyring.sh`, `platform-setup.sh`, and hardware/VM fixups
+  (`dictation-default.sh` was folded away at 33783b1 — the backend
+  marker is seeded by the port's own first-run step and Setup → Defaults).
 - `install/user/first-run/*.sh` run on first login: fingerprint setup,
   GNOME theme, GTK primary paste, audio tuning,
   welcome/wifi notifications.
@@ -102,8 +104,8 @@ declared by the NixOS module instead.
 
 ## Upstream defaults (from the vendored source)
 
-These are the defaults encoded in the upstream source (rev `f2a39c4`,
-2026-10-10, post-v4.0.4 quattro branch). Compare against them when verifying
+These are the defaults encoded in the upstream source (rev `33783b1`,
+2026-10-16, post-v4.0.4 quattro branch). Compare against them when verifying
 parity:
 
 - **Theme**: `ethereal` — `current/theme/` gets the 19 rendered configs
@@ -144,6 +146,7 @@ parity:
 - **Key bindings** (`default/hypr/bindings/applications.lua`):
   - `SUPER+RETURN` → Terminal (`{ omarchy = "terminal" }`)
   - `SUPER+SHIFT+RETURN` / `SUPER+SHIFT+B` → Browser
+  - `SUPER+SHIFT+S` → Screenshot (33783b1)
   - `SUPER+SHIFT+F` → File manager (nautilus)
   - `SUPER+SHIFT+N` → Editor
   - `SUPER+SPACE` → Omarchy launcher (the shell's launcher, not a
@@ -153,10 +156,11 @@ parity:
 
 ## Where this port deliberately differs from upstream
 
-The current bump advances `8b4eae6` → `f2a39c4` by 177 commits. Its tree
-contains 519 `omarchy-*` commands, 23 themes, 155 migrations, 48 `/etc`
-files, and 10 user units. The flake packages 19 upstream-owned apps,
-including Disktree 0.11.0, Gliff 0.3.1, and Superwhisper 1.0.0. These
+The current bump advances `f2a39c4` → `33783b1` by 160 commits. Its tree
+contains 529 `omarchy-*` commands, 23 themes, 194 migrations, 52 `/etc`
+files, and 8 user units. The flake packages 21 upstream-owned apps,
+including Disktree 0.11.0, Gliff 0.3.1, Superwhisper 1.0.0, Signed 0.3.1
+and the omarchy-hyprland-titlebars plugin 0.2.2. These
 three applications open in the automated desktop session. All 46 flake
 checks, including the four VM tests, pass, together with the package
 build, formatting, and all-systems evaluation.
@@ -164,7 +168,7 @@ build, formatting, and all-systems evaluation.
 | Area | Upstream | This port | Why |
 |---|---|---|---|
 | **Tree location** | `/usr/share/omarchy` | `$out/share/omarchy` (nix store) | Nix constraint: nothing mutable in `/usr`. `$OMARCHY_PATH` points here. |
-| **Bin on PATH** | `/usr/bin/omarchy-*` (Arch package) | `$OMARCHY_PATH/bin` prepended to session PATH | We chose Approach A (session PATH) over B (top-level `$out/bin/`). The 10 shipped user units are path-adapted in `pkgs/omarchy.nix`; USB/Thunderbolt approval units remain disabled. |
+| **Bin on PATH** | `/usr/bin/omarchy-*` (Arch package) | `$OMARCHY_PATH/bin` prepended to session PATH | We chose Approach A (session PATH) over B (top-level `$out/bin/`). The 8 shipped user units are path-adapted in `pkgs/omarchy.nix` (the USB/Thunderbolt approval units were fully reverted upstream at 33783b1). |
 | **OMARCHY_PATH source** | `default/bash/env-bootstrap` (sourced by `/etc/profile.d/omarchy.sh`, skel `.bashrc`, `uwsm/env.d/10-omarchy`) | NixOS `environment.sessionVariables` + `environment.etc."xdg/uwsm/env.d/10-omarchy"` | We do NOT source `env-bootstrap`; it carries Arch/pacman dev-link logic. Same effect via NixOS-native channels. |
 | **Bash rc** | `/etc/skel/.bashrc` (= `default/bashrc`) copied at account creation; sources `default/bash/rc` | HM seeds `~/.bashrc` from `default/bashrc` only when absent (never replaces an existing file or link); `default/bash/init` reads fzf key bindings from `/run/current-system/sw/share/fzf` (`/share/fzf` in `environment.pathsToLink`) | NixOS has no Omarchy skel. Existing rc files belong to the user or their dotfile manager (HM `programs.bash`, Dotter, ...). |
 | **Theme render trigger** | ISO chroot finalization (`omarchy-apply-system`) | HM activation script (`omarchyThemeRender`) | No ISO stage on NixOS; run the same upstream `omarchy-theme-set` in HEADLESS mode during `home-manager switch`. |
@@ -189,11 +193,11 @@ build); this table is the feature-level summary.
 | Class | Meaning | Items |
 |---|---|---|
 | **Adapted** | Works, in a NixOS-native form | Install/Remove menu (catalog → `omarchy-nix-add/remove` → `omarchy-packages.json` → rebuild, transactional with audit logs); Update → Omarchy (flake update + `nixos-rebuild boot` by default, live `switch` with `OMARCHY_NIX_REBUILD_CMD=switch`; upstream's command-scoped sudo hardening from 349ecc0 is kept — `bash -p` startup check, one password prompt, `sudo -N` wrapper — with its `/usr/bin` tools pointed at store paths and `/run/wrappers/bin/{sudo,pkexec}`, and the source-root check comparing resolved paths because `$OMARCHY_PATH` is a symlinked profile path); migrations (fail-closed classifier, NixOS adapters); firmware update (`fwupdmgr`); presence checks (`omarchy-pkg-present` via catalog + PATH); first-run / finalize-user (vendored, runs on first login); systemd user units (10 shipped and path-adapted; USB/Thunderbolt approval units disabled); lock-screen PAM (declared natively); zram swap (`zramSwap`, upstream's zstd/full-RAM profile); cross-arch execution (opt-in `omarchy.binfmtEmulatedSystems` → `boot.binfmt.emulatedSystems`); sshd key add/remove; `omarchy-update-restart` (compares `/run/{booted,current}-system/kernel`); development menu (global Nix packages via the catalog; direct upstream dev-env flows remain user-scoped mise tooling); AI account dispatch (Nix-installed CLIs, no mise fallback); Slack (native catalog package); OpenClaw CLI (`--check`/`--now` checks or installs the catalog package); dictation (Superwhisper first-run setup, Voxtype backend preservation); snapshots (print a NixOS generations note); the three system-level defaults behind skipped upstream migrations (logind `InhibitDelayMaxSec=15` via `services.logind.settings`, `NetworkManager-wait-online` mask, Wi-Fi powersave off via `networking.networkmanager.wifi.powersave`); bundled Chromium extensions (`--load-extension` in the seeded `chromium-flags.conf` path-adapted to `/run/current-system/sw/share/omarchy`, existing user files rewritten by migration adapter `1780517689.sh`) |
-| **N/A** | No NixOS analogue; removed or stubbed | AUR (menu entry deleted; `omarchy-pkg-aur-accessible` always exits 1); pacman channels/mirrors (`omarchy-channel-current` prints `nixos`); limine + snapper (systemd-boot + boot generations instead); direct-boot, hybrid-gpu, hibernation-setup, DNS, fido2, passwordless-sudo, plymouth/timezone refresh, sunshine (declarative-note stubs; their menu entries are deleted); pacman keyring/orphans/reinstall helpers; USB/Thunderbolt approval and boot-access workflows (18 command chains stubbed, eight menu ids hidden, two user units disabled; use declarative USB policy and native Bolt); platform lifecycle/hardware/boot helpers (three declarative-note stubs); `omarchy-app` automatic skill links (Arch packaging templates await a Nix adaptation); `mise` dev-tool manager (Arch tarballs under `/opt/packages`; `mise.sh`/`mise-work.sh` no-op'd; **rejected** as a feature: the dev menu installs global Nix packages via the catalog, which is the final model) |
+| **N/A** | No NixOS analogue; removed or stubbed | AUR (menu entry deleted; `omarchy-pkg-aur-accessible` always exits 1); pacman channels/mirrors (`omarchy-channel-current` prints `nixos`); limine + snapper (systemd-boot + boot generations instead); direct-boot, hybrid-gpu, hibernation-setup, DNS, fido2, passwordless-sudo, plymouth/timezone refresh, sunshine (declarative-note stubs; their menu entries are deleted); pacman keyring/orphans/reinstall helpers; USB/Thunderbolt approval and boot-access workflows were stubbed here until upstream itself fully reverted them at 33783b1 (usbguard/bolt stay declarative); platform lifecycle/hardware/boot helpers (three declarative-note stubs); `omarchy-app` automatic skill links (Arch packaging templates await a Nix adaptation); `mise` dev-tool manager (Arch tarballs under `/opt/packages`; `mise.sh`/`mise-work.sh` no-op'd; **rejected** as a feature: the dev menu installs global Nix packages via the catalog, which is the final model) |
 | **Deferred** | Possible on NixOS, not done | NordVPN service (menu entry deleted; re-verified 2026-09-13 against `nixos-26.05` HEAD `21a67dc4`: neither the `nordvpn` package nor `services.nordvpn` exists on the stable channel — both are on `nixos-unstable` only. An earlier note here claimed the backport had reached 26.05; that was wrong. Restore when a stable channel carries both, or via a consumer-side overlay); zen / brave-origin browsers (AUR-only, no nixpkgs attrs on the 26.05 pin; menu entries deleted); Cursor CLI + Muse Code default-agent choices and the Perplexity app (v4.0.3; no nixpkgs attrs on the pin — the nixpkgs `muse` attr is the MusE audio sequencer, a name collision — menu entries deleted; revisit when attrs land) |
 | **Blocked / untested** | Needs an external precondition | Fingerprint **reader** on real hardware (the PAM services themselves are declared and pamtester-verified in `checks.omarchy-ux`); real-hardware specifics of the behavioral surface; menu IPC, notifications, OSD, lock and polkit are covered in the VM by `checks.omarchy-ux` section (10) since 2026-07-29, but multi-monitor lock, fingerprint dialog and panel interactions still need a real-hardware pass |
 
-### Arch `/etc` overlay (48 files)
+### Arch `/etc` overlay (52 files)
 
 Upstream's `etc/` tree (copied to `/etc` by the Arch ISO installer) is
 classified file-by-file in `pkgs/omarchy-etc-manifest.nix`, enforced
@@ -253,7 +257,15 @@ file fails the build until classified). Summary by class:
   XDG_CONFIG_DIRS, keeping upstream's override layering.
   The USB/Thunderbolt approval polkit rules and root daemon unit are also
   N/A: their policy stays consumer-owned through `services.usbguard` and
-  the existing native `services.hardware.bolt` service.
+  the existing native `services.hardware.bolt` service (all four of those
+  files were fully reverted upstream at 33783b1). 33783b1 additions:
+  `mpv/mpv.conf` (hardware decoding) and the `xkb/` pair (Omarchy's own
+  Caps-Lock/Shift-Compose option, loaded through libxkbcommon's /etc/xkb
+  extra path) are **vendored**; `sysctl.d/90-omarchy-arp.conf` and
+  `systemd/system.conf.d/20-mount-events.conf` are **native**
+  (`boot.kernel.sysctl`, `systemd.managerEnvironment`); the locale-generate
+  sudoers grant and the two binfmt drop-ins are N/A (locales are
+  `i18n.supportedLocales`; nixpkgs owns its binfmt units).
 
 ## When upstream updates
 

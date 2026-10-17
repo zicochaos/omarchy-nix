@@ -31,6 +31,8 @@
   "gnupg/dirmngr.conf" = "vendored"; # environment.etc."gnupg/dirmngr.conf"
   "limine-entry-tool.d/omarchy-defaults.conf" = "na"; # limine bootloader config — NixOS owns boot entries
   "limine-entry-tool.d/omarchy-uki.conf" = "na"; # limine UKI toggle
+  # 33783b1: mpv hardware decoding through the reliable-decoders list.
+  "mpv/mpv.conf" = "vendored"; # environment.etc."mpv/mpv.conf" — mpv's system config layer (~/.config/mpv overrides)
   "mkinitcpio.conf.d/omarchy_hooks.conf" = "na"; # Arch mkinitcpio initrd hooks — NixOS builds its own initrd
   "mkinitcpio.conf.d/00-omarchy-hooks.conf" = "na"; # platform-specific Arch HOOKS baseline; boot.initrd owns the NixOS initrd
   "mkinitcpio.conf.d/thunderbolt_module.conf" = "na"; # Arch early-module probe; boot.initrd.availableKernelModules is consumer-owned, services.hardware.bolt covers userspace
@@ -38,8 +40,6 @@
   "NetworkManager/conf.d/omarchy-wifi-powersave.conf" = "native"; # networking.networkmanager.wifi.powersave
   "nsswitch.conf" = "na"; # nixpkgs generates nsswitch.conf from system.nssModules; services.avahi nssmdns4 covers mdns_minimal
   "plymouth/plymouthd.conf" = "native"; # boot.plymouth.theme = "omarchy"
-  "polkit-1/rules.d/40-omarchy-thunderbolt.rules" = "na"; # Omarchy approval helpers and their imperative Bolt policy are not ported; services.hardware.bolt keeps its native permissions
-  "polkit-1/rules.d/40-omarchy-usb.rules" = "na"; # Omarchy USB approval helper is not ported; consumer-owned services.usbguard policy remains declarative
   "profile.d/omarchy.sh" = "covered"; # env-bootstrap deliberately NOT sourced (Arch dev-link logic); same effect via sessionVariables + uwsm env.d — docs/UPSTREAM.md
   "sddm.conf.d/10-theme.conf" = "native"; # services.displayManager.sddm.theme
   "sddm.conf.d/10-wayland.conf" = "native"; # sddm.wayland.enable + Wayland.CompositorCommand
@@ -49,8 +49,14 @@
   # `sudo asdcontrol` and takes the prompt. Same on NixOS.
   "sudoers.d/omarchy-passwd-tries" = "native"; # security.sudo.extraConfig (passwd_tries=10)
   "sudoers.d/omarchy-dns" = "na"; # passwordless omarchy-dns provider switch — DNS is declarative (omarchy-dns is a stub; services.resolved / networking.nameservers)
+  # 33783b1: passwordless omarchy-locale-generate for the 50-language menu;
+  # NixOS generates locales declaratively (i18n.supportedLocales) and
+  # omarchy-locale-generate is a declarative-note stub — the grant would
+  # never fire.
+  "sudoers.d/omarchy-locale-generate" = "na";
   "sudoers.d/omarchy-theme-browser" = "na"; # passwordless browser-accent policy write — /etc browser policy dirs are module-owned on NixOS (omarchy-theme-set-browser is a no-op stub)
   "sudoers.d/omarchy-tzupdate" = "native"; # security.sudo.extraRules (only NOPASSWD timedatectl set-timezone with upstream's anchored single-argument regex)
+  "sysctl.d/90-omarchy-arp.conf" = "native"; # boot.kernel.sysctl (arp_ignore/arp_announce — dock Ethernet + Wi-Fi on one network)
   "sysctl.d/90-omarchy-file-watchers.conf" = "covered"; # nixpkgs config/sysctl.nix already ships the identical fs.inotify.max_user_watches=524288 mkDefault
   "sysctl.d/99-omarchy-sysctl.conf" = "native"; # boot.kernel.sysctl (zram-era VM tuning + tcp_mtu_probing)
   "systemd/logind.conf.d/10-ignore-power-button.conf" = "native"; # services.logind.settings.Login.HandlePowerKey = "ignore"
@@ -59,10 +65,18 @@
   "systemd/resolved.conf.d/10-disable-multicast.conf" = "na"; # systemd-resolved not enabled on NixOS (NetworkManager owns DNS); LLMNR/mDNS are off by resolved simply not running
   "systemd/resolved.conf.d/20-docker-dns.conf" = "na"; # resolved bridge listener not in use; docker defaults pass the host resolver through to containers
   "systemd/system.conf.d/10-faster-shutdown.conf" = "native"; # systemd.settings.Manager.DefaultTimeoutStopSec = "5s"
+  "systemd/system.conf.d/20-mount-events.conf" = "native"; # systemd.settings.Manager.ManagerEnvironment (SYSTEMD_DEFAULT_MOUNT_RATE_LIMIT_BURST=30)
   "systemd/system.conf.d/20-omarchy-nofile.conf" = "native"; # systemd.settings.Manager.DefaultLimitNOFILE
   "systemd/system/docker.service.d/no-block-boot.conf" = "native"; # systemd.services.docker.unitConfig.DefaultDependencies = false
-  "systemd/system/bolt.service.d/omarchy-authorization.conf" = "na"; # unsupported Omarchy policy guard; services.hardware.bolt is declared natively
-  "systemd/system/omarchy-thunderbolt-authorization.service" = "na"; # unsupported root approval daemon; its /etc marker and /var trust state are never provisioned here
+  # 33783b1 binfmt plumbing: nixpkgs' own systemd-binfmt.service and
+  # proc-sys-fs-binfmt_misc.mount own registration on NixOS; the port's
+  # cross-arch execution is the opt-in omarchy.binfmtEmulatedSystems.
+  "systemd/system/proc-sys-fs-binfmt_misc.mount.d/10-omarchy-conditions.conf" = "na";
+  "systemd/system/systemd-binfmt.service.d/10-eager-mount.conf" = "na";
+  # (polkit-1/rules.d/40-omarchy-{usb,thunderbolt}.rules,
+  # systemd/system/bolt.service.d/omarchy-authorization.conf and
+  # systemd/system/omarchy-thunderbolt-authorization.service were fully
+  # reverted upstream at 33783b1 with the approval feature.)
   "systemd/system/plocate-updatedb.service.d/ac-only.conf" = "native"; # services.locate (plocate) + systemd.services.update-locatedb ConditionACPower (nixpkgs unit name)
   "systemd/system/user@.service.d/10-faster-shutdown.conf" = "native"; # systemd.services."user@".serviceConfig.TimeoutStopSec = "5s"
   "systemd/user.conf.d/20-omarchy-nofile.conf" = "native"; # systemd.user.settings.Manager (post-26.05) / systemd.user.extraConfig (26.05) DefaultLimitNOFILE — version-dependent
@@ -71,4 +85,10 @@
   "tmpfiles.d/omarchy-zswap.conf" = "native"; # systemd.tmpfiles.rules: w! zswap enabled=N (boot-only)
   "udev/rules.d/60-omarchy-io-scheduler.rules" = "native"; # services.udev.extraRules (kyber on whole disks nvme*/sd*/mmcblk*/vd*; partitions and zram carry no scheduler)
   "xdg/kitty/kitty.conf" = "vendored"; # environment.etc."xdg/kitty/kitty.conf" — v4.0.3 moved kitty's base defaults here; the user seed became a thin include/override file on top
+  # 33783b1: Omarchy's own XKB option (Caps Lock + Shift = Compose). The
+  # rules file includes the system rules via %S and appends the option;
+  # libxkbcommon searches /etc/xkb ahead of its compiled-in root, which is
+  # exactly the mechanism upstream relies on (see modules/nixos).
+  "xkb/rules/evdev" = "vendored"; # environment.etc."xkb/rules/evdev"
+  "xkb/symbols/omarchy" = "vendored"; # environment.etc."xkb/symbols/omarchy"
 }

@@ -235,9 +235,15 @@ pkgs.runCommand "omarchy-runtime-check" { nativeBuildInputs = [ pkgs.jq ]; } ''
       [[ -f $upstream/bin/$n ]] || { echo "stale manifest key (not in upstream bin): $n"; bad=1; }
     fi
   done < <(jq -r '.scripts | to_entries[] | [.key, .value.class] | @tsv' "$manifest")
-  while read -r n; do
-    [[ -f $upstream/$n ]] || { echo "stale manifest file key (not upstream): $n"; bad=1; }
-  done < <(jq -r '.files | keys[]' "$manifest")
+  while read -r n c; do
+    if [[ $c == port-owned ]]; then
+      # Port-authored files land in the packaged tree only (e.g. the
+      # first-run dictation step written by pkgs/omarchy.nix).
+      [[ -f $root/$n ]] || { echo "stale port-owned file key (not in package): $n"; bad=1; }
+    else
+      [[ -f $upstream/$n ]] || { echo "stale manifest file key (not upstream): $n"; bad=1; }
+    fi
+  done < <(jq -r '.files | to_entries[] | [.key, (.value.class // "")] | @tsv' "$manifest")
 
   # hidden menu ids must be gone
   while read -r id; do

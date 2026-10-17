@@ -1,10 +1,12 @@
 ---
 name: omarchy
 description: >
-  Use when customizing an installed omarchy-nix desktop on NixOS, including
-  Hyprland, Quickshell, themes, terminals, monitors, keybindings, screenshots,
-  reminders, user configuration, package selection, or Omarchy updates.
-  Excludes development of the omarchy-nix or upstream Omarchy source trees.
+  Use when customizing an installed omarchy-nix desktop on NixOS — any file
+  under ~/.config/ counts, including Hyprland, Quickshell (bar, widgets,
+  dock), themes, fonts, terminals, monitors, keybindings, window behavior,
+  appearance, screenshots, screen recording, reminders, user configuration,
+  package selection, or Omarchy updates. Excludes development of the
+  omarchy-nix or upstream Omarchy source trees.
 ---
 
 # Omarchy on NixOS

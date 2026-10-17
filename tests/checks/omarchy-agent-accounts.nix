@@ -119,6 +119,9 @@ pkgs.runCommand "omarchy-agent-accounts-check" { nativeBuildInputs = [ pkgs.pyth
       pending = Path(state("begin", provider))
       if provider == "claude":
           (pending / ".claude.json").write_text(json.dumps({"oauthAccount": {"accountUuid": "fixture-claude", "emailAddress": "claude@example.invalid"}}))
+          # 33783b1: register also requires a completed OAuth login in
+          # .credentials.json (claudeAiOauth), not just the account file.
+          (pending / ".credentials.json").write_text(json.dumps({"claudeAiOauth": {"subscriptionType": "pro"}}))
       elif provider == "codex":
           (pending / "auth.json").write_text(json.dumps({"tokens": {"account_id": "fixture-codex"}}))
       else:

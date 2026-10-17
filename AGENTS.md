@@ -23,7 +23,7 @@ upstream closed unmerged).
 Upstream Quattro's "desktop" is a **single `quickshell` process** that provides
 the bar, launcher, menus, notifications, OSDs, control panels, lock screen,
 and polkit agent as plugins, plus a **Lua-based Hyprland config** (≥0.56),
-~520 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
+~530 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
 engine**. Waybar/wofi/mako/hyprlock/hyprpaper/swaybg/polkit-gnome are gone
 in Quattro. This port packages the upstream tree at `$out/share/omarchy`,
 exports `OMARCHY_PATH`, and seeds `~/.config/hypr/hyprland.lua` so Hyprland's
@@ -92,15 +92,18 @@ NixOS-specific commands share one consumer-flake resolver
 - `hermes-agent` → `github:NousResearch/hermes-agent` (the `hermes`
   default-agent CLI, consumed as its own flake — it brings its own nixpkgs;
   its home-manager input follows ours).
-- `quickshell`: this repo pins 0.3.1 (`pkgs/quickshell.nix`, injected as
+- `quickshell`: this repo pins 0.3.2 (`pkgs/quickshell.nix`, injected as
   `omarchy.quickshellPackage`) because stable nixpkgs carries 0.3.0 — 0.3.1
-  fixes the plugin-reload OSD side effect measured here and carries
-  session-lock/wifi crash fixes. `checks.omarchy-desktop` verifies the shell
-  loads and registers its instance, `checks.omarchy-quickshell-version`
-  guards the pin, and `checks.omarchy-ux` asserts the OSD survives a plugin
-  reload. Drop the pin (`pkgs/quickshell.nix`, the flake's packages entry,
-  the wrapper injection and the version check) when the nixpkgs pin carries
-  0.3.1 or newer.
+  fixed the plugin-reload OSD side effect measured here, and the 33783b1
+  shell needs 0.3.2 plus upstream's load_qtquick_611.patch (the menu panel
+  never opens without it) and this port's intercept-rescan-fix.patch
+  (upstream's patch deadlocks the engine on plugin reloads against the
+  pin's Qt 6.11).
+  `checks.omarchy-desktop` verifies the shell loads and registers its
+  instance, `checks.omarchy-quickshell-version` guards the pin, and
+  `checks.omarchy-ux` asserts the OSD survives a plugin reload. Drop the pin
+  (`pkgs/quickshell.nix`, the flake's packages entry, the wrapper injection
+  and the version check) when the nixpkgs pin carries 0.3.2 or newer.
 
 ## Verification (every stage)
 

@@ -291,15 +291,12 @@
   "1788261467.sh" = "user-safe"; # seed the Secret portal backend only when no user portal
   #                                # config exists, then restart the per-user portal
   "1788281348.sh" = "user-safe"; # refresh theme intro assets and the session marker ($HOME)
-  "1789433473.sh" = "skip"; # imperative USBGuard policy setup; USB authorization is
-  #                           # consumer-declared and the Omarchy workflow is not ported
   "1790114905.sh" = "user-safe"; # replace only Omarchy's stale PipeWire host config ($HOME)
   #                                # and try-restart the per-user speaker-tuning service
-  "1790344599.sh" = "skip"; # imperative Bolt policy/service setup; services.hardware.bolt
-  #                           # is declarative and the Omarchy approval workflow is not ported
   "1790397381.sh" = "skip"; # move Arch's OpenClaw seed into a self-updating user runtime;
   #                           # NixOS keeps the catalog-installed CLI instead
-  "1790608617.sh" = "skip"; # repair the unsupported imperative USBGuard approval workflow
+  # (1789433473/1790344599/1790608617, the USB/Thunderbolt approval setups, were
+  # fully reverted upstream together with the feature.)
   "1790702362.sh" = "skip"; # Arch base-devel/Qt compiler packages; development tools come
   #                           # from the Nix catalog or a consumer development shell
   "1790702606.sh" = "skip"; # omarchy-app's makepkg/PKGBUILD templates need Nix adaptation
@@ -322,4 +319,71 @@
   "1791542175.sh" = "skip"; # Gliff via omarchy-pkg-add; appPackages owns the package
   "1791581004.sh" = "skip"; # Limine rebuild/boot-menu verification for console kernel param;
   #                           # NixOS builds its kernel command line and boot generations
+
+  # --- bump 33783b1 (2026-10-16) ---
+  "1786967403.sh" = "user-safe"; # drop saved workspace layouts of named workspaces ($HOME
+  #                              # + hyprctl reload)
+  "1787679775.sh" = "skip"; # mise npm lazy-install of the Kimi CLI; the mise model is
+  #                           # rejected here and Kimi is not on the nixpkgs pin
+  "1789928586.sh" = "skip"; # ARM Limine recovery packages as explicit in the pacman DB
+  "1790364978.sh" = "skip"; # GB10 system-sleep disable via an Arch sudo hardware script;
+  #                           # sleep masking is consumer NixOS configuration
+  "1790517230.sh" = "skip"; # DGX Spark UKI-less boot (efibootmgr + limine tooling)
+  "1790917415.sh" = "skip"; # ProArt P14 libinput quirk under /etc/libinput; hardware
+  #                           # quirks are consumer udev/libinput configuration here
+  "1790917571.sh" = "user-safe"; # ProArt speaker UCM reroute: systemctl --user restarts only
+  "1790917620.sh" = "skip"; # N1x pacman.conf repository ordering
+  "1790917773.sh" = "skip"; # N1x quiet console via limine-entry-tool
+  "1790950659.sh" = "skip"; # N1x Plymouth LUKS panel brightness via mkinitcpio hooks
+  "1790953795.sh" = "skip"; # ProArt reserved GPU memory via limine-entry-tool
+  "1790973240.sh" = "skip"; # ProArt speaker firmware + LV2 plugins via pkg-add; the
+  #                           # firmware is Arch packaging and audio tuning stays
+  #                           # user-selectable (omarchy-audio-tuning)
+  "1790984400.sh" = "skip"; # Dell XPS 16 reserved GPU memory via limine-entry-tool
+  "1790984500.sh" = "skip"; # N1x zram/rtkit/memory tuning via pacman + systemd system
+  #                           # units; zram is zramSwap and the sysctls are module-declared
+  "1790984600.sh" = "skip"; # N1x USB4 enable via limine-entry-tool kernel params
+  "1790984700.sh" = "skip"; # N1x GPU firmware efi_reclaim adjust (limine config sed)
+  "1791077437.sh" = "skip"; # N1x move to the linux-omarchy-n1x kernel (pacman/mkinitcpio/
+  #                           # limine throughout; kernel choice is boot.kernelPackages)
+  "1791134093.sh" = "skip"; # N1x USB4 root-port wakeup udev rule under /etc; udev rules
+  #                           # are services.udev.extraRules on NixOS
+  "1791147791.sh" = "skip"; # runtime-apply the ARP sysctls; the module ships them via
+  #                           # boot.kernel.sysctl and a rebuild/boot applies them
+  "1791152480.sh" = "skip"; # N1x rescue UKI removal + pacman hook cleanup
+  "1791367434.sh" = "user-safe"; # shared input-method defaults: pkg-add routes into the
+  #                              # declarative stub (the module ships the fcitx5 addons),
+  #                              # omarchy-input-method configure is $HOME-only
+  "1791403310.sh" = "skip"; # omarchy-hyprland-titlebars via pkg-add; the module ships the
+  #                           # plugin (omarchy.appPackages)
+  "1791408113.sh" = "skip"; # ProArt fnlock modprobe default + mkinitcpio rebuild;
+  #                           # boot.extraModprobeConfig is declarative here
+  "1791640449.sh" = "user-safe"; # keyboard-layout widget move via omarchy-bar ($HOME)
+  "1791676907.sh" = "user-safe"; # lone-Shift input-method trigger in ~/.config/fcitx5 +
+  #                              # busctl --user ReloadConfig
+  "1791696584.sh" = "user-safe"; # StartupWMClass repair in ~/.local/share/applications
+  "1791698594.sh" = "user-safe"; # workspace-layout lua rewrite ($HOME state)
+  "1791705142.sh" = "user-safe"; # window-opaque toggle for animation-off setups ($HOME;
+  #                              # the package patch prevents copied store modes leaking)
+  "1791708587.sh" = "skip"; # Signed via pkg-add; appPackages owns the package
+  "1791722809.sh" = "user-safe"; # herdr tab-bar transparency in ~/.config/herdr/config.toml
+  "1791723398.sh" = "adapter"; # nvim transparency snippets: same layout as 1781587663 —
+  #                           # the sources live in the omarchy-nvim profile, not
+  #                           # /usr/share/omarchy-nvim
+  "1791769486.sh" = "skip"; # full revert of the USB/Thunderbolt approval feature:
+  #                           # tears down usbguard/bolt state, /etc markers, limine
+  #                           # entries and pacman packages that never existed here
+  "1791784278.sh" = "skip"; # N1x GPU-memory firmware call + limine entry cleanup
+  "1791867831.sh" = "skip"; # N1x CPPC udev rule under /etc (services.udev.extraRules)
+  "1791875754.sh" = "user-safe"; # StartupWMClass appends in ~/.local/share/applications
+  "1791898365.sh" = "skip"; # limine.conf boot-menu timeout/quiet tuning (/boot)
+  "1791934674.sh" = "user-safe"; # omarchy-browser.desktop copy + hyprland-mimeapps.list
+  #                              # link routing ($HOME; package patch covers the cp)
+  "1791935188.sh" = "adapter"; # browser --no-default-browser-check: keep the $HOME
+  #                           # flags.conf appends, drop the root /etc policy writes
+  #                           # (browser policy dirs are module-owned)
+  "1791968925.sh" = "user-safe"; # shell.json tray reorder via jq ($HOME)
+  "1791969355.sh" = "user-safe"; # shell.json bar center split via jq ($HOME)
+  "1792020559.sh" = "user-safe"; # fcitx5 candidate-window theming (omarchy theme helpers)
+  "1792041364.sh" = "skip"; # Gliff on aarch64 via pkg-add; appPackages owns the package
 }

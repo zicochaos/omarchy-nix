@@ -1,3 +1,5 @@
+Commons/InputDevices.qml: Process watcher: command: ["bash", "-c", "dirs=(\"$2\"); for dir in \"$1\" \"$3\"; do [[ -d $dir ]] && dirs+=(\"$dir\"); done; " + "exec inotifywait -m -q -e create,delete,delete_self,moved_to --format '%w|%e|%f' \"${dirs[@]}\"", "input-devices", root.inputDir, root.devDir, root.udevDir]
+Commons/InputMethodState.qml: Process watcher: command: [Quickshell.env("OMARCHY_PATH") + "/bin/omarchy-input-method-indicator", Quickshell.env("OMARCHY_PATH") + "/default/input-methods/indicator.py"]
 Commons/Style.qml: Process animationsProc: command: ["hyprctl", "-j", "getoption", "animations:enabled"]
 Commons/Style.qml: Process fcMatchProc: command: ["fc-match", "-f", "%{family[0]}", "monospace"]
 Commons/Style.qml: Process gapsOutProc: command: ["hyprctl", "-j", "getoption", "general:gaps_out"]
@@ -16,10 +18,13 @@ plugins/agents/Panel.qml: Process addProcess: command: -
 plugins/agents/Panel.qml: Process checkProcess: command: ["omarchy-agent-account-add", "--check"]
 plugins/background/Background.qml: Process bgSwitchProc: command: ["bash", "-c", "background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""]
 plugins/background/Background.qml: Process readlinkProc: command: ["readlink", "-f", root.currentBackgroundLink]
+plugins/background/Background.qml: Process recoverProc: command: [ "bash", "-c", 'target=$(readlink -f "$1"); if [[ -e $target ]]; then echo "$target"; else ' + 'find "$2" -maxdepth 1 -type f \\( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" \\) | sort | head -n 1; fi', "resolve", root.currentBackgroundLink, root.currentThemeBackgrounds ]
 plugins/background/Background.qml: Process sizeProbe: command: -
 plugins/bar/Bar.qml: Process barHiddenProbe: command: ["bash", "-c", "[[ -f $HOME/.local/state/omarchy/toggles/bar-off ]] && echo yes || echo no"]
 plugins/bar/Bar.qml: Process customProc: command: ["bash", "-lc", String(customRoot.setting("exec", ""))]
 plugins/bar/Bar.qml: Process transparentForegroundProc: command: -
+plugins/bar/Bar.qml: Util.execDetached("omarchy-bar background cycle")
+plugins/bar/Bar.qml: Util.execDetached("omarchy-bar sync-glass")
 plugins/bar/Bar.qml: Util.execDetached(command)
 plugins/bar/indicators/PasswordlessSudo.qml: Process disableProc: command: ["omarchy-sudo-passwordless", "--disable"]
 plugins/bar/indicators/PasswordlessSudo.qml: Process statusProc: command: ["omarchy-sudo-passwordless", "--active"]
@@ -30,6 +35,7 @@ plugins/bar/indicators/ScreenRecording.qml: Process statusProc: command: -
 plugins/bar/widgets/KeyboardLayout.qml: Process briefsProc: command: ["xkbcli", "list", "--load-exotic"]
 plugins/bar/widgets/KeyboardLayout.qml: Process queryProc: command: ["hyprctl", "-j", "devices"]
 plugins/bar/widgets/SystemUpdate.qml: Process updateProc: command: ["omarchy-update-available"]
+plugins/bar/widgets/Workspaces.qml: Process modeProc: command: -
 plugins/clipboard/Clipboard.qml: Process currentProc: command: [root.captureScript]
 plugins/clipboard/Clipboard.qml: Process imageWatchProc: command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "image/png", "--watch", root.captureScript, "image/png"]
 plugins/clipboard/Clipboard.qml: Process initProc: command: ["pkill", "-f", "wl-paste .*--watch .*/shell/plugins/clipboard/capture\\.sh"]
@@ -39,6 +45,12 @@ plugins/clipboard/Clipboard.qml: Quickshell.execDetached([root.omarchyPath + "/b
 plugins/clipboard/Clipboard.qml: Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-file", row.mime, row.path])
 plugins/clipboard/Clipboard.qml: Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--copy-only", "--history-index", String(row.historyIndex)])
 plugins/clipboard/Clipboard.qml: Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert", "--history-index", String(row.historyIndex)])
+plugins/dock/Dock.qml: Process modeProc: command: -
+plugins/dock/Dock.qml: Util.execDetached("omarchy-dock pinned " + pins.map(function(id) { return Util.shellQuote(id) }).join(" "))
+plugins/dock/Dock.qml: Util.execDetached("omarchy-dock unpin " + Util.shellQuote(key))
+plugins/dock/Dock.qml: Util.execDetached(command)
+plugins/dock/DockWindow.qml: Util.execDetached("omarchy-dock autohide " + (window.autohide ? "off" : "on"))
+plugins/dock/DockWindow.qml: Util.execDetached("omarchy-dock position " + modelData[0])
 plugins/emojis/Emojis.qml: Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji])
 plugins/image-picker/ImagePicker.qml: Process applyProc: command: -
 plugins/image-picker/ImagePicker.qml: Process deleteThemeProc: command: -
@@ -53,11 +65,12 @@ plugins/lock/Service.qml: Process fingerprintCheckProc: command: ["bash", "-c", 
 plugins/lock/Service.qml: Process monitorDpmsProcess: command: ["hyprctl", "monitors", "-j"]
 plugins/lock/Service.qml: Process posterProc: command: ["bash", Quickshell.env("OMARCHY_PATH") + "/shell/plugins/lock/poster.sh", sourcePath]
 plugins/lock/Service.qml: Process readlinkProc: command: ["bash", "-c", "path=$(readlink -f -- \"$1\") && printf '%s\\n%s\\n' \"$path\" \"$(stat -Lc %Y:%s -- \"$path\" 2>/dev/null)\"", "_", root.currentBackgroundLink]
-plugins/lock/Service.qml: Process strandedLockCheckProc: command: ["bash", "-c", "omarchy-hyprland-session-locked"]
+plugins/lock/Service.qml: Process strandedLockCheckProc: command: ["bash", "-c", "omarchy-hyprland-session-lock-stranded \"$PPID\""]
 plugins/lock/Service.qml: Process wakeProcess: command: ["bash", "-c", "omarchy-system-wake"]
 plugins/menu/Menu.qml: Process guardProc: command: -
 plugins/menu/Menu.qml: Process providerProc: command: -
 plugins/menu/Menu.qml: Process resultProc: command: -
+plugins/menu/Menu.qml: Process selectionProc: command: -
 plugins/menu/Menu.qml: Util.execDetached(command)
 plugins/notifications/Service.qml: Process ensureDirsProc: command: ["mkdir", "-p", service.stateDir, service.popupStateDir, service.historyDir, service.imagesDir]
 plugins/notifications/Service.qml: Process focusAppProc: command: -
@@ -122,7 +135,7 @@ plugins/panels/weather/Panel.qml: Process locationSaveProc: command: -
 plugins/panels/wifiqr/Panel.qml: Process pwProc: command: -
 plugins/panels/wifiqr/Panel.qml: Process qrProc: command: -
 plugins/polkit/PolkitAgent.qml: Process laptopClosedProc: command: ["bash", "-c", "omarchy-hw-laptop-closed && echo closed || echo open"]
-plugins/reminders/ReminderFlow.qml: Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-notification-send", "Invalid reminder", "Enter the number of minutes"])
+plugins/reminders/ReminderFlow.qml: Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-notification-send", I18n.t("reminders.invalidTitle"), I18n.t("reminders.invalidBody")])
 plugins/reminders/ReminderFlow.qml: Quickshell.execDetached(args)
 plugins/services/battery/Service.qml: Process powerProfileProcess: command: -
 plugins/services/battery/Service.qml: Process powerProfileReadProcess: command: ["busctl", "--json=short", "get-property", "net.hadess.PowerProfiles", "/net/hadess/PowerProfiles", "net.hadess.PowerProfiles", "ActiveProfile"]
@@ -139,6 +152,7 @@ services/AppLibrary.qml: Process hiddenEntryScan: command: ["bash", "-c", root.h
 services/AppLibrary.qml: Process iconIndexScan: command: ["bash", "-c", root.iconIndexScanCommand()]
 services/AppLibrary.qml: Quickshell.execDetached(["omarchy-shell", "osd", "close"])
 services/AppLibrary.qml: Quickshell.execDetached(["omarchy-shell", "osd", "show", JSON.stringify({ icon: "󱓞", message: root.launchOsdMessage, duration: 0 })])
+services/AppLibrary.qml: Util.execDetached("omarchy-launch-tui " + command.map(function(word) { return Util.shellQuote(word) }).join(" "))
 services/AppLibrary.qml: Util.execDetached("uwsm-app -- gtk-launch " + Util.shellQuote(id + ".desktop"))
 services/AppLibrary.qml: Util.execDetached(Util.shellQuote(root.omarchyPath + "/bin/omarchy-remove-launcher-entry") + " " + Util.shellQuote(id) + " " + Util.shellQuote(String(name || id)))
 services/BackgroundIntro.qml: Process frameStatus: command: ["owe", "render-status"]
@@ -147,6 +161,7 @@ services/BackgroundIntro.qml: Process startupBackground: command: ["readlink", "
 services/BackgroundIntro.qml: Quickshell.execDetached(["hyprctl", "eval", "if omarchy_startup_cursor_restore then omarchy_startup_cursor_restore() end"])
 services/BrightnessKeys.qml: Process deviceProc: command: ["omarchy-hw-display"]
 services/BrightnessKeys.qml: Process setProc: command: -
+services/PluginRegistry.qml: Process -: command: -
 services/PluginRegistry.qml: Process -: command: -
 services/PluginRegistry.qml: Process -: command: -
 services/PluginRegistry.qml: Process -: command: [ "inotifywait", "-m", "-r", "-q", "-e", "close_write,create,delete,move", "--format", "%w%f", registry.pluginsDir ]

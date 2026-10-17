@@ -361,6 +361,9 @@
         "cargo"
         "rustfmt"
         "clippy"
+        # 33783b1: upstream installs clang with the Rust dev environment
+        # (bindgen and rb-sys gems load libclang from it).
+        "clang"
       ];
       binaries = [
         "cargo"

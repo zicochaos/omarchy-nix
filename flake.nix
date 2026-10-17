@@ -137,6 +137,14 @@
         system:
         let
           pkgs = pkgsFor system;
+          # Floating-workspace titlebars plugin (upstream base package since
+          # 33783b1). Plugin ABI must match the compositor the module runs,
+          # so it builds against the hyprland flake input with that input's
+          # own nixpkgs (toolchain + libs identical to Hyprland's build).
+          hyprland-titlebars =
+            inputs.hyprland.inputs.nixpkgs.legacyPackages.${system}.callPackage
+              ./pkgs/omarchy-hyprland-titlebars.nix
+              { hyprland = inputs.hyprland.packages.${system}.hyprland; };
         in
         {
           omarchy = pkgs.callPackage ./pkgs/omarchy.nix {
@@ -151,6 +159,9 @@
             pipewire = pkgs.pipewire;
             systemd = pkgs.systemd;
             tailscale = pkgs.tailscale;
+            # The vendored workspace-modes.lua loads titlebars.so from a
+            # store path substituted at build time (see pkgs/omarchy.nix).
+            hyprlandTitlebars = hyprland-titlebars;
           };
           # Plymouth boot-splash theme + SDDM login theme/Hyprland greeter.
           # Consumed by the omarchy NixOS module (boot.plymouth.themePackages
@@ -198,9 +209,15 @@
           gliff = pkgs.callPackage ./pkgs/gliff.nix { };
           superwhisper = pkgs.callPackage ./pkgs/superwhisper.nix { };
           owe = pkgs.callPackage ./pkgs/owe.nix { };
+          # signed: PDF signing/filling (replaced Xournal++ in the upstream
+          # base packages at 33783b1).
+          signed = pkgs.callPackage ./pkgs/signed.nix { };
           omasnap = pkgs.callPackage ./pkgs/omasnap.nix { };
           try = pkgs.callPackage ./pkgs/try.nix { };
           hyprland-guiutils = pkgs.callPackage ./pkgs/hyprland-guiutils.nix { };
+          # Built against the hyprland input (see the let binding above);
+          # re-exported so nixosModules can inject it via omarchy.appPackages.
+          omarchy-hyprland-titlebars = hyprland-titlebars;
           hyprland-preview-share-picker = pkgs.callPackage ./pkgs/hyprland-preview-share-picker.nix { };
           omarchy-nvim = pkgs.callPackage ./pkgs/omarchy-nvim.nix { };
           omarchy-fish = pkgs.callPackage ./pkgs/omarchy-fish.nix { };
@@ -279,6 +296,7 @@
                     omasnap
                     owe
                     try
+                    signed
                     hyprland-guiutils
                     hyprland-preview-share-picker
                     omarchy-nvim
@@ -287,6 +305,9 @@
                     # v4.0.0 upstream-owned binaries.
                     herdr
                     ttfx
+                    # Floating-workspace titlebars plugin (33783b1); built
+                    # against the hyprland input — see the packages output.
+                    omarchy-hyprland-titlebars
                   ]
                 );
                 omarchy.nvimPackage = lib.mkDefault hostPackages.omarchy-nvim;

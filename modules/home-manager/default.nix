@@ -292,6 +292,21 @@ in
           ${seedStub effPkg "omarchy/hooks/pre-refresh-pacman.d/add-custom-repo.sample"}
           ${seedStub effPkg "omarchy/hooks/theme-set.d/show-theme-notification.sample"}
 
+          # Superwhisper bar panel plugin: pre-seeded as a generation-stable
+          # symlink so the shell's FIRST plugin scan sees it. The vendor's
+          # setup-user links it mid-session instead; a watched plugin tree
+          # changing while the shell starts (or its registry rescan)
+          # destroys the lazily loaded panels at the 33783b1 rev — the
+          # dictation first-run step in pkgs/omarchy.nix fills this in only
+          # when still absent (superwhisper installed after the first login).
+          if [ -d /run/current-system/sw/share/superwhisper/app/assets/omarchy-plugin/superwhisper-panel ] \
+            && [ ! -e "$HOME/.config/omarchy/plugins/superwhisper-panel" ] \
+            && [ ! -L "$HOME/.config/omarchy/plugins/superwhisper-panel" ]; then
+            run mkdir -p "$HOME/.config/omarchy/plugins"
+            run ln -s /run/current-system/sw/share/superwhisper/app/assets/omarchy-plugin/superwhisper-panel \
+              "$HOME/.config/omarchy/plugins/superwhisper-panel"
+          fi
+
           # --- terminals : the four terminals Quattro ships configs for.
           ${seedStub effPkg "ghostty/config"}
           ${seedStub effPkg "foot/foot.ini"}
@@ -318,8 +333,15 @@ in
           ${seedStub effPkg "chromium-flags.conf"}
           ${seedStub effPkg "chromium/Default/Preferences"}
           ${seedStub effPkg "obsidian/user-flags.conf"}
-          ${seedStub effPkg "xournalpp/settings.xml"}
+          # (xournalpp/settings.xml went away with the app at 33783b1 —
+          # Signed replaces it and carries no user config.)
           ${seedStub effPkg "hyprland-preview-share-picker/config.yaml"}
+
+          # Hyprland-desktop mimeapps (33783b1 link routing): apps' xdg-open
+          # and the portal resolve http/https through omarchy-launch-browser,
+          # which hands the link to the running default browser. Seeded for
+          # fresh users; existing users get it from migration 1791934674.
+          ${seedStub effPkg "hyprland-mimeapps.list"}
 
           # --- autostart : XDG autostart desktop entries (launched by
           # the desktop environment on session start).

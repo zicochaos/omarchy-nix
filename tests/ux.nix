@@ -1512,19 +1512,19 @@ in
             )
 
         # (d) Systemd user unit ExecStarts resolve.
-        # The 10 vendored units are path-adapted in pkgs/omarchy.nix (store
+        # The 8 vendored units are path-adapted in pkgs/omarchy.nix (store
         # paths replace /usr/bin/*). Each ExecStart binary must exist.
         # Tripwire: pkgs/omarchy.nix installs units via
         # `install … default/systemd/user/*.service` — a new upstream unit
         # would ship unadapted and unchecked if we only asserted this list.
         # Mirror the cp -aL count tripwire: package unit dir must match
-        # unit_names exactly (count + names).
+        # unit_names exactly (count + names). (The USB/Thunderbolt
+        # authorization units were fully reverted upstream at 33783b1.)
         unit_names = [
             "bt-agent", "omarchy-crash-watch", "omarchy-fcitx5",
             "omarchy-migrate-notify", "omarchy-recover-internal-monitor",
             "omarchy-sleep-lock", "omarchy-speaker-tuning",
             "omarchy-tailscale-receive",
-            "omarchy-usb-authorization", "omarchy-thunderbolt-authorization",
         ]
         # Derive the package store root in Python so we never put a shell
         # parameter-expansion brace form inside this Nix testScript string
@@ -1567,11 +1567,6 @@ in
             binary = line.split("=", 1)[1].split()[0]
             machine.succeed("test -x " + binary)
 
-        # Authorization policy is declarative; quarantined Arch watchers
-        # must stay inactive even after upstream first-run setup executes.
-        for unit in ["omarchy-usb-authorization", "omarchy-thunderbolt-authorization"]:
-            machine.fail(as_demo("systemctl --user is-active --quiet " + unit))
-            machine.fail(as_demo("systemctl --user is-enabled --quiet " + unit))
         kill_mode = machine.succeed(as_demo(
             "systemctl --user show wayland-wm@hyprland.desktop.service -p KillMode --value"
         )).strip()
@@ -1651,13 +1646,17 @@ in
         raise last
 
     with machine.nested("menu IPC: apps search launches the top hit"):
-        machine.succeed(as_demo("omarchy-menu summon apps"))
+        # 33783b1: summoning the "apps" route opens the dock's app grid
+        # (omarchy-dock-apps layer); the menu itself is the launcher now —
+        # summon root and let the search text pull the apps provider in
+        # (Menu.qml loadProvidersForSearch merges app rows into root).
+        machine.succeed(as_demo("omarchy-menu summon root"))
         machine.wait_until_succeeds(layer_probe("omarchy-menu", True), timeout=30)
 
         def re_summon_apps_menu():
             machine.succeed(as_demo("omarchy-shell shell hide omarchy.menu || true"))
             machine.sleep(1)
-            machine.succeed(as_demo("omarchy-menu summon apps"))
+            machine.succeed(as_demo("omarchy-menu summon root"))
             machine.wait_until_succeeds(layer_probe("omarchy-menu", True), timeout=30)
 
         send_chars_retry(
