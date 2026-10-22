@@ -218,10 +218,6 @@
   # --- post-v4.0.3 wave (31bd80da) ---
   "1788941927.sh" = "skip"; # basecamp-cli via mise wrapper (mise model rejected — catalog is
   #                           # final; basecamp is not on the pin and has no menu entry)
-  "1789091250.sh" = "user-safe"; # T3 Code theme activation: re-runs omarchy-install-ai-t3-code
-  #                           # (patched: package step routes through omarchy-nix-add, the
-  #                           # `t3 theme set` call is best-effort) after the arch-name
-  #                           # omarchy-pkg-present guard matches the t3code catalog entry
 
   # --- bump b679363 (2026-09-13) ---
   "1789095456.sh" = "skip"; # Panther Lake kernel swap via omarchy-pkg-add + limine
@@ -386,4 +382,19 @@
   "1791969355.sh" = "user-safe"; # shell.json bar center split via jq ($HOME)
   "1792020559.sh" = "user-safe"; # fcitx5 candidate-window theming (omarchy theme helpers)
   "1792041364.sh" = "skip"; # Gliff on aarch64 via pkg-add; appPackages owns the package
+
+  # --- bump 3c7027d (2026-10-22) ---
+  "1791080527.sh" = "skip"; # Snapdragon camera firmware/udev provisioning; hardware remains consumer-owned
+  "1791382872.sh" = "skip"; # mise lazy shims and config rewriting; Nix catalog owns the tools
+  "1791621765.sh" = "skip"; # mkinitcpio/Limine boot-image rebuild; NixOS owns its initrd
+  "1792202836.sh" = "user-safe"; # user mpv/Chromium flags, gated on Qualcomm hardware
+  "1792259038.sh" = "user-safe"; # remembered background paths under HOME; store copies are made writable
+  "1792334754.sh" = "skip"; # OpenClaw self-updating runtime; the Nix CLI remains catalog-owned
+  "1792343099.sh" = "skip"; # removes user's Node request in favor of mise defaults not installed here
+  "1792343225.sh" = "skip"; # moves mise pruning settings to an Arch-owned system file
+  "1792345511.sh" = "skip"; # T3 package-to-AppImage conversion; retain the Nix catalog package
+  "1792359308.sh" = "skip"; # Snapdragon camera package setup; hardware remains consumer-owned
+  "1792474908.sh" = "user-safe"; # repair Brave Origin shortcut in user profiles; reuses 1786643346
+  "1792507034.sh" = "skip"; # root NetworkManager reload; native connectivity config activates at rebuild
+  "1792648436.sh" = "user-safe"; # migrate DND and retire the old notification state under HOME
 }

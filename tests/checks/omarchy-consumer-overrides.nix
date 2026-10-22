@@ -22,6 +22,9 @@ let
     else
       throw "omarchy-consumer-overrides: ${name}: got ${builtins.toJSON got}, want ${builtins.toJSON want}";
   sddmCmd = "weston --shell=kiosk";
+  tailscaleOverride = pkgs.tailscale.overrideAttrs (_: {
+    pname = "tailscale-consumer-override";
+  });
   overridden = ext {
     omarchy.autologin.user = "demo";
     services.displayManager.sddm.autoLogin.relogin = false;
@@ -31,12 +34,34 @@ let
     services.pipewire.alsa.support32Bit = false;
     services.pipewire.pulse.enable = false;
     services.displayManager.sddm.settings.Wayland.CompositorCommand = sddmCmd;
+    networking.networkmanager.settings.connectivity = {
+      uri = "http://connectivity.example.invalid/check";
+      response = "online";
+    };
+    services.timesyncd.fallbackServers = [ "time.example.invalid" ];
+    services.tailscale = {
+      enable = true;
+      package = tailscaleOverride;
+    };
   };
 in
 assert expect "relogin" overridden.services.displayManager.sddm.autoLogin.relogin false;
 assert expect "rtkit" overridden.security.rtkit.enable false;
 assert expect "pipewire" overridden.services.pipewire.enable false;
 assert expect "pipewire.alsa.support32Bit" overridden.services.pipewire.alsa.support32Bit false;
+assert expect "connectivity endpoint" overridden.networking.networkmanager.settings.connectivity.uri
+  "http://connectivity.example.invalid/check";
+assert expect "connectivity response"
+  overridden.networking.networkmanager.settings.connectivity.response
+  "online";
+assert expect "NTP fallback servers" overridden.services.timesyncd.fallbackServers [
+  "time.example.invalid"
+];
+assert expect "Taildrop uses the configured Tailscale package"
+  (builtins.elem (toString tailscaleOverride) (
+    map toString overridden.systemd.user.services.omarchy-tailscale-receive.path
+  ))
+  true;
 assert expect "defaultSession (demo, no autologin)"
   demo.config.services.displayManager.defaultSession
   "hyprland-uwsm";

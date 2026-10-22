@@ -1590,6 +1590,13 @@ in
         ).strip()
         assert int(marker_count) > 0, "omarchy-migrate produced no markers"
 
+    # A login shell can reach IPC even when owed.service lacks socat/qs.
+    # Check the real daemon's handoff, which previously retried forever.
+    with machine.nested("OWE hands still backgrounds to the shell"):
+        machine.wait_until_succeeds(as_demo(
+            "journalctl --user -u owed.service --no-pager -o cat | grep -q \"shell background enabled\""
+        ), timeout=60)
+
     # --- (10) Behavioral desktop contract. ----------------------------------
     # Ported concepts from upstream test/acceptance.d: drive the shell over
     # its IPC and assert observable effects (layer namespaces, windows, lock
@@ -1609,6 +1616,18 @@ in
             "hyprctl -j layers | jq -e \"[.. | objects | select(.namespace? == \\\""
             + ns + "\\\" and (.w // 0) > 1 and (.h // 0) > 1)] | length " + op + "\""
         )
+
+    # The new notification canvas stays mapped while idle. Its actual
+    # cards, rather than a layer's dimensions, establish visibility.
+    def notification_probe(present):
+        condition = ".toasts > 0" if present else ".toasts == 0"
+        return as_demo("omarchy-shell notifications probe | jq -e " + json.dumps(condition))
+
+    desktop_ocr = (
+        "WAYLAND_DISPLAY=wayland-1 grim /tmp/desktop-ocr.png"
+        " && magick /tmp/desktop-ocr.png -resize 200% /tmp/desktop-ocr-large.png"
+        " && tesseract /tmp/desktop-ocr-large.png stdout --psm 11 2>/dev/null"
+    )
 
     # Lock lifecycle evidence (runs as root): the shell logs
     # "omarchy lock <iso> <event>" via console.log, which quickshell writes
@@ -1709,6 +1728,7 @@ in
         machine.succeed(
             as_demo("omarchy-notification-send -u critical \"Acceptance notification\" \"Shell notification rendering\"")
         )
+        machine.wait_until_succeeds(notification_probe(True), timeout=30)
         machine.wait_until_succeeds(layer_probe("omarchy-notifications", True), timeout=30)
         machine.screenshot("behavioral-notification")
         # Rendered content, not just the surface: OCR the visible popup.
@@ -1788,12 +1808,10 @@ in
             )
             raise
 
-        # Note: ~/.local/state/omarchy/notifications.json is NOT a usable
-        # secondary assertion channel — a displayed popup lives in
-        # popupModel, never in the persisted pending/past lists, and
-        # dismissAll clears both (verified empirically).
+        # The canvas remains mapped after dismissal; zero cards plus the
+        # negative OCR fixture prove that the content really disappeared.
         machine.succeed(as_demo("omarchy-shell notifications dismissAll"))
-        machine.wait_until_succeeds(layer_probe("omarchy-notifications", False), timeout=30)
+        machine.wait_until_succeeds(notification_probe(False), timeout=30)
         # Negative fixture: the SAME OCR pipeline + matcher must FAIL when
         # no popup is visible (proves the assertion has teeth, per the
         # acceptance criteria).
@@ -1814,32 +1832,30 @@ in
         machine.screenshot("behavioral-osd")
         machine.wait_until_succeeds(layer_probe("omarchy-osd", False), timeout=60)
 
-    with machine.nested("lock authenticates with the user password"):
-        machine.succeed(as_demo("omarchy-shell lock lock"))
-        machine.wait_until_succeeds(
-            lock_log_seen("omarchy lock .*lock-requested"), timeout=30
-        )
-        # The ext-session-lock surface is really up: the compositor confirms
-        # the secure state (on this build the lock goes lock-requested ->
-        # secure=true; session-locked=true is not emitted).
-        try:
-            machine.wait_until_succeeds(
-                lock_log_seen("omarchy lock .*secure=true"), timeout=30
+    # Count new lifecycle records so a second cycle cannot pass using the
+    # first cycle's secure/unlocked messages.
+    def lock_event_count(event):
+        return int(machine.succeed(
+            "awk '/omarchy lock .*" + event
+            + "/ {n++} END {print n+0}' /run/user/1000/quickshell/by-id/*/log.log"
+        ).strip())
+
+    for cycle in range(2):
+        with machine.nested("lock authenticates, cycle " + str(cycle + 1)):
+            secure_before = lock_event_count("secure=true")
+            unlocked_before = lock_event_count("unlocked")
+            machine.succeed(as_demo("omarchy-shell lock lock"))
+            retry(lambda _: lock_event_count("secure=true") > secure_before, timeout_seconds=30)
+            machine.screenshot("behavioral-lock-" + str(cycle + 1))
+            send_chars_retry(
+                "demo",
+                ready=lock_log_seen("omarchy lock .*secure=true"),
+                success=("test $(awk '/omarchy lock .*unlocked/ {n++} END {print n+0}' "
+                         "/run/user/1000/quickshell/by-id/*/log.log) -gt "
+                         + str(unlocked_before)),
+                attempts=3,
+                per_try_timeout=15,
             )
-        except Exception:
-            machine.log(
-                "lock log dump: "
-                + machine.execute("grep 'omarchy lock' /run/user/1000/quickshell/by-id/*/log.log")[1]
-            )
-            raise
-        machine.screenshot("behavioral-lock")
-        send_chars_retry(
-            "demo",
-            ready=lock_log_seen("omarchy lock .*secure=true"),
-            success=lock_log_seen("omarchy lock .*unlocked"),
-            attempts=3,
-            per_try_timeout=15,
-        )
 
     with machine.nested("polkit prompt authenticates (agent round trip)"):
         machine.succeed("rm -f /tmp/pkexec.out /tmp/pkexec.err /tmp/pkrun.sh")
@@ -1874,6 +1890,121 @@ in
         )
         machine.wait_until_succeeds(layer_probe("omarchy-polkit", False), timeout=30)
 
+    # Two real compositor outputs, one provided by Hyprland's headless
+    # backend. Verify monitor-local slots and Quickshell's live workspace
+    # IDs after change_id, then unplug with an open menu. This exercises
+    # virtual hotplug; it does not claim physical connector/EDID coverage.
+    def lua_dispatch(expression):
+        return as_demo("hyprctl dispatch " + json.dumps(expression))
+
+    def live_monitors():
+        return json.loads(machine.succeed(as_demo("hyprctl -j monitors")))
+
+    with machine.nested("per-monitor workspaces and output removal"):
+        original = live_monitors()
+        assert len(original) == 1, original
+        primary = original[0]["name"]
+        # Independent model consumer of the same built Quickshell binary.
+        # An IPC query observes actual Hyprland events, including the
+        # workspace-ID change that the old 0.3.2 tag did not handle.
+        machine.succeed("cat > /tmp/workspace-probe.qml <<'QML'\n"
+            "import Quickshell\nimport Quickshell.Io\nimport Quickshell.Hyprland\n"
+            "Scope { IpcHandler { target: \"workspaceProbe\"; "
+            "function ids(): string { return JSON.stringify("
+            "Hyprland.workspaces.values.map(w => w.id).sort((a,b) => a-b)); } } }\nQML")
+        probe = "WAYLAND_DISPLAY=wayland-1 quickshell -p /tmp/workspace-probe.qml"
+        machine.succeed(as_demo(probe + " --daemonize"))
+        machine.succeed(as_demo("hyprctl output create headless"))
+        retry(lambda _: len(live_monitors()) == 2, timeout_seconds=30)
+        secondary = next(m["name"] for m in live_monitors() if m["name"] != primary)
+        try:
+            machine.succeed(as_demo("hyprctl eval " + json.dumps(
+                "hl.monitor({ output = " + json.dumps(secondary)
+                + ", mode = \"1280x800@60\", position = \"auto\", scale = 1 })"
+            )))
+            for monitor in [primary, secondary]:
+                machine.succeed(lua_dispatch("o.workspaces.focus(3, " + json.dumps(monitor) + ")"))
+            monitors = {m["name"]: m for m in live_monitors()}
+            first_id = monitors[primary]["activeWorkspace"]["id"]
+            second_id = monitors[secondary]["activeWorkspace"]["id"]
+            assert first_id != second_id, monitors
+            assert (first_id - 1) % 10 == (second_id - 1) % 10 == 2, monitors
+            mapping = machine.succeed(as_demo("cat ~/.local/state/omarchy/monitor-workspaces"))
+            assert primary in mapping and secondary in mapping, mapping
+
+            def workspace_models_agree(expected_id):
+                actual = sorted(w["id"] for w in json.loads(
+                    machine.succeed(as_demo("hyprctl -j workspaces"))))
+                observed = json.loads(machine.succeed(as_demo(probe + " ipc call workspaceProbe ids")))
+                return expected_id in actual and observed == actual
+            # Instantiate and check the lazy singleton BEFORE the event;
+            # otherwise a fresh snapshot after it could hide a missed event.
+            retry(lambda _: workspace_models_agree(second_id), timeout_seconds=30)
+            # Keep the workspace active so Hyprland does not delete it.
+            changed_id = second_id + 3
+            machine.succeed(lua_dispatch(
+                "hl.dsp.workspace.change_id({ workspace = " + json.dumps(str(second_id))
+                + ", id = " + str(changed_id) + " })"
+            ))
+            retry(lambda _: workspace_models_agree(changed_id), timeout_seconds=30)
+            machine.succeed(as_demo("omarchy-menu summon root"))
+            machine.wait_until_succeeds(layer_probe("omarchy-menu", True), timeout=30)
+            machine.succeed(as_demo("hyprctl output remove " + secondary))
+            retry(lambda _: len(live_monitors()) == 1, timeout_seconds=30)
+            machine.wait_until_succeeds(layer_probe("omarchy-menu", True), timeout=30)
+            machine.wait_until_succeeds(as_demo(desktop_ocr + ' | grep -qi "Apps"'), timeout=30)
+            machine.screenshot("monitor-removal-menu")
+            machine.succeed(as_demo("omarchy-shell shell hide omarchy.menu"))
+            machine.wait_until_succeeds(layer_probe("omarchy-menu", False), timeout=30)
+        finally:
+            machine.execute(as_demo("hyprctl output remove " + secondary))
+            machine.execute(as_demo(probe + " kill"))
+        machine.succeed(lua_dispatch("o.workspaces.focus(1, " + json.dumps(primary) + ")"))
+
+    with machine.nested("floating titlebar renders and retints in the live session"):
+        machine.succeed(lua_dispatch("hl.dsp.exec_cmd(" + json.dumps(
+            "foot --app-id=acceptance-titlebar --title=AcceptanceTitlebar sleep infinity"
+        ) + ")"))
+        def titlebar_client():
+            return next((c for c in json.loads(machine.succeed(as_demo("hyprctl clients -j")))
+                         if c["class"] == "acceptance-titlebar"), None)
+        retry(lambda _: titlebar_client() is not None, timeout_seconds=30)
+        # Starting from tiling, cycling back selects floating and loads the
+        # real plugin against the same Hyprland build as the compositor.
+        machine.succeed(as_demo("omarchy-hyprland-workspace-layout-toggle back"))
+        machine.wait_until_succeeds(as_demo(
+            "hyprctl plugin list -j | jq -e \"any(.[]; .name == \\\"hyprbars\\\")\""
+        ), timeout=30)
+        retry(lambda _: titlebar_client()["floating"], timeout_seconds=30)
+        for theme, color in [("tokyo-night", "24283B"), ("nord", "3B4252")]:
+            # Real theme IPC and Hyprland reload run; only the wallpaper
+            # transition is skipped to isolate the titlebar's pixels.
+            machine.succeed(as_demo("OMARCHY_THEME_SKIP_BACKGROUND=1 omarchy-theme-set " + theme))
+            machine.succeed(as_demo("omarchy-shell notifications dismissAll"))
+            def titlebar_pixels(_last=False):
+                client = titlebar_client()
+                x, y = client["at"]
+                width = client["size"][0]
+                crop = "%dx70+%d+%d" % (width, x, max(0, y - 35))
+                return machine.execute(as_demo(
+                    "WAYLAND_DISPLAY=wayland-1 grim /tmp/titlebar.png"
+                    " && magick /tmp/titlebar.png -crop " + crop
+                    + " +repage /tmp/titlebar-crop.png"
+                    " && magick /tmp/titlebar-crop.png -format %c histogram:info:-"
+                    + " | grep -qi \"#" + color + "\""
+                ))[0] == 0
+            retry(titlebar_pixels, timeout_seconds=30)
+            machine.wait_until_succeeds(as_demo(
+                "magick /tmp/titlebar-crop.png -resize 300% /tmp/titlebar-text.png"
+                " && tesseract /tmp/titlebar-text.png stdout --psm 11 2>/dev/null"
+                " | grep -qi AcceptanceTitlebar"
+            ), timeout=30)
+            machine.screenshot("titlebar-live-" + theme)
+        address = titlebar_client()["address"]
+        machine.succeed(lua_dispatch("hl.dsp.window.close({ window = " + json.dumps("address:" + address) + " })"))
+        machine.succeed(as_demo("omarchy-hyprland-workspace-layout-toggle"))
+        machine.succeed(as_demo("omarchy-shell notifications dismissAll"))
+
     # --- (12) Plugin clone: behavioral run (TODO #23). ---------------------
     # Runs last on purpose. Any change inside ~/.config/omarchy/plugins makes
     # the shell reload every plugin (inotify -> reloadPlugins -> unload +
@@ -1882,7 +2013,7 @@ in
     # ("... another handler is registered for target osd"), the stale one
     # belonged to the unloaded instance, and the first `omarchy osd` call
     # rendered nothing while still exiting 0 (in two runs the later volume-OSD
-    # assertion then timed out). The current pin (0.3.1, pkgs/quickshell.nix)
+    # assertion then timed out). The current pin (2b4501a, pkgs/quickshell.nix)
     # renders that first call in every run; the strict assertion further down
     # guards exactly that. The reload still logs duplicate-handler warnings
     # for the bar-widget targets on 0.3.1 (upstream's broader class,
@@ -1928,6 +2059,34 @@ in
         machine.execute(as_demo("omarchy-osd -i volume-high -p 50 -d 4000"))
         machine.sleep(2)
         return osd_shown()
+
+    def lazy_panels_after_reload(stage):
+        with machine.nested("menu, dock and notifications render after " + stage):
+            machine.succeed(as_demo("omarchy-menu summon root"))
+            machine.wait_until_succeeds(layer_probe("omarchy-menu", True), timeout=30)
+            machine.wait_until_succeeds(as_demo(desktop_ocr + ' | grep -qi "Apps"'), timeout=30)
+            machine.succeed(as_demo("omarchy-shell shell hide omarchy.menu"))
+            machine.wait_until_succeeds(layer_probe("omarchy-menu", False), timeout=30)
+            machine.succeed(as_demo("omarchy-menu summon apps"))
+            machine.wait_until_succeeds(layer_probe("omarchy-dock-apps", True), timeout=30)
+            # The layer exists before synchronous icon loads over the VM's
+            # 9p store finish. Observe the rendered grid before asking it to
+            # close; toggling again during that I/O can exceed IPC's 2 s.
+            machine.wait_until_succeeds(
+                as_demo(desktop_ocr + ' | grep -qi "Search apps"'), timeout=45
+            )
+            machine.screenshot("reload-grid-" + stage)
+            machine.succeed(as_demo("omarchy-menu summon apps"))
+            machine.wait_until_succeeds(layer_probe("omarchy-dock-apps", False), timeout=30)
+            machine.succeed(as_demo("omarchy-shell notifications dismissAll"))
+            machine.succeed(as_demo('omarchy-notification-send -u critical "Reload notification" "Shell reload rendering"'))
+            machine.wait_until_succeeds(notification_probe(True), timeout=30)
+            machine.wait_until_succeeds(
+                as_demo(ocr_chain + ' | grep -qi "Shell reload rendering"'), timeout=45
+            )
+            machine.screenshot("reload-panels-" + stage)
+            machine.succeed(as_demo("omarchy-shell notifications dismissAll"))
+            machine.wait_until_succeeds(notification_probe(False), timeout=30)
 
     # Warm the OSD panel before the reload: the first call of a session can
     # be cold (the probe observes the baseline needing a second attempt), and
@@ -1981,9 +2140,12 @@ in
                 "OSD dead on the first call after the plugin reload (stale IpcHandler)"
             )
 
+        lazy_panels_after_reload("clone")
+
         machine.succeed(as_demo("omarchy plugin remove demo.clock --yes"))
         with machine.nested("remove converges (shell rescan is async)"):
             retry(lambda last: clone_removed("demo.clock", "omarchy.clock", last), timeout_seconds=30)
+        lazy_panels_after_reload("remove")
 
     # Second clone targets the rename pass: omarchy.indicators carries
     # clonePaths (a whole sibling directory + a relative import rewritten in

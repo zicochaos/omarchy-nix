@@ -37,10 +37,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # quickshell is NOT an input: this repo pins 0.3.1 in pkgs/quickshell.nix
-    # (stable nixpkgs carries 0.3.0) and injects it as
-    # omarchy.quickshellPackage. See that file for the measured reasons and
-    # the drop condition.
+    # quickshell is NOT an input: this repo pins 0.3.2.r7.g2b4501a plus
+    # load/reload patches in pkgs/quickshell.nix (stable nixpkgs has 0.3.0)
+    # and injects it as omarchy.quickshellPackage. Drop only for an equivalent
+    # snapshot/fixes with OmarchyLoadPatch and passing desktop/reload
+    # acceptance; a numeric version alone is insufficient. See that file.
 
     # Hermes Agent (Nous Research, MIT): the `hermes` default-agent CLI.
     # Upstream installs it with its own installer; here we consume the
@@ -195,7 +196,7 @@
           claude-desktop = pkgs.callPackage ./pkgs/claude-desktop.nix { };
           omp = pkgs.callPackage ./pkgs/omp.nix { };
           # zcode-desktop: Z.ai's ZCode, repackaged from the vendor's deb
-          # (unfree; the menu icon font grows its U+E90F mark — see
+          # (unfree; the menu icon font grows its U+E910 mark — see
           # pkgs/omarchy-icons/).
           zcode-desktop = pkgs.callPackage ./pkgs/zcode-desktop.nix { };
           # First-party xAI CLI; the stable nixpkgs attr is a different client.
@@ -227,8 +228,8 @@
           # tmux; not in nixpkgs).
           ttfx = pkgs.callPackage ./pkgs/ttfx.nix { };
           herdr = pkgs.callPackage ./pkgs/herdr.nix { };
-          # quickshell 0.3.1 pin (stable nixpkgs carries 0.3.0). See the
-          # file header for the measured reasons and the removal condition.
+          # quickshell 0.3.2.r7.g2b4501a snapshot + load/reload patches.
+          # See the file header for the exact revision and removal condition.
           quickshell = pkgs.callPackage ./pkgs/quickshell.nix { };
           # Icons for stock Omarchy themes (nixpkgs dropped yaru-theme with murrine).
           yaru-theme = pkgs.callPackage ./pkgs/yaru-theme.nix { };
@@ -313,8 +314,9 @@
                 omarchy.nvimPackage = lib.mkDefault hostPackages.omarchy-nvim;
 
                 # The desktop's quickshell build. Default is this flake's
-                # 0.3.1 pin (see pkgs/quickshell.nix); a consumer can point it
-                # at any other build with omarchy.quickshellPackage.
+                # 0.3.2.r7.g2b4501a snapshot + load/reload patches (see
+                # pkgs/quickshell.nix); an equivalent build can be selected
+                # with omarchy.quickshellPackage after desktop/reload checks.
                 omarchy.quickshellPackage = lib.mkDefault hostPackages.quickshell;
 
                 # Flake-owned Install-menu derivations (see ownedPackagesFor

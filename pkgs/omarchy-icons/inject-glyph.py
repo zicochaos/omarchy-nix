@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Inject the ZCode mark (U+E90F) into the vendored Omarchy menu icon font.
+"""Inject the ZCode mark (U+E910) into the vendored Omarchy menu icon font.
 
-The vendored font ships one glyph per app (U+E900..U+E90E, catalogued in
+The vendored font ships one glyph per app (U+E900..U+E90F, catalogued in
 default/fonts/omarchy/README.md); ZCode has none, so its Install -> AI entry
 would fall back to the fallback font family's generic glyph. The mark is
 traced from the vendor's official app icon (pkgs/omarchy-icons/zcode.svg) and
@@ -30,7 +30,7 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.svgLib.path import parse_path
 from fontTools.ttLib import TTFont
 
-CODEPOINT = 0xE90F
+CODEPOINT = 0xE910
 GLYPH_NAME = "zcode"
 EM = 1024
 BOX = 896
@@ -64,6 +64,8 @@ def main(font_path, mark_path, out_path):
     # recalcTimestamp=False keeps head.modified as vendored, so the patched
     # font is byte-reproducible.
     font = TTFont(font_path, recalcTimestamp=False)
+    if CODEPOINT in font.getBestCmap():
+        raise ValueError(f"U+{CODEPOINT:04X} is already assigned by the upstream font")
     glyph.recalcBounds(font["glyf"])
     font["glyf"][GLYPH_NAME] = glyph
     font["hmtx"][GLYPH_NAME] = (EM, glyph.xMin)

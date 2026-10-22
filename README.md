@@ -7,7 +7,7 @@ Omarchy is DHH's opinionated Linux desktop. As of Quattro, its "desktop" is a
 single [quickshell](https://quickshell.org) process: the bar, launcher,
 menus, notifications, OSDs, control panels, lock screen, and polkit agent are
 all plugins of one long-running shell. It is driven by a Lua-based Hyprland
-config (≥0.56) and ~530 `omarchy-*` bash scripts, themed by a TOML + template
+config (≥0.56) and ~540 `omarchy-*` bash scripts, themed by a TOML + template
 engine.
 
 This project ports that to NixOS **by vendoring upstream**, not by
@@ -24,13 +24,16 @@ colors (not just wallpaper), editable user configs, first-run hooks, the
 full upstream package set (including the 21 upstream-owned packages
 that the pinned nixpkgs lacks or carries only as an unrelated or older
 build, packaged under `pkgs/`), and a NixOS-native
-`omarchy update` flow. Verified in a running session on real Intel GPU
-hardware (2026-07-28). The automated acceptance suite checks the subset
-described below on subsequent changes.
+`omarchy update` flow. Earlier revisions were verified in a running
+session on real Intel GPU hardware (2026-07-28). The October 22 snapshot
+passes all 46 flake checks, including four VM tests. Physical GPU
+verification of this bump is pending; historical hardware results apply
+to their stated revisions.
 
 Automated NixOS tests run under `nix flake check`:
 `checks.omarchy-desktop` (stack comes up), `checks.omarchy-ux`
-(behavioral acceptance: Super+Enter opens foot, headless theme rendering,
+(behavioral acceptance: Super+Enter opens foot, theme files and live
+titlebar colors, lock cycles, virtual monitor hotplug, plugin reloads,
 config editability, and command coverage of menu actions and `when:`/`disabled:` guards,
 autostart, and systemd command — the shell's QML exec sites are pinned
 by a reviewed per-site list), `checks.omarchy-fish` (vendor
@@ -39,16 +42,18 @@ with its Wayland greeter and the omarchy theme, autologin into the uwsm
 session, and a greeter render of the vendored theme).
 
 Most VM tests start the session from tty1 with SDDM disabled (the sddm
-check being the exception); theme checks
-use headless rendering, and package/update checks skip the real system
-rebuild. These tests do not establish live bar/shell color changes,
-typing at the interactive SDDM greeter (the sddm check covers the daemon,
-the greeter's theme render and the autologin handoff, not a real login),
-or a complete update followed by activation. Those paths
-still need separate desktop verification after relevant changes.
+check being the exception). Theme-file checks use headless rendering;
+the floating-titlebar check runs real theme IPC and checks rendered
+colors. Package/update checks skip the real system rebuild. These tests
+do not establish every live bar/shell color path, physical monitor
+identity, input through the CJK engines, interactive SDDM login, or a
+complete update followed by activation. The sddm check covers the daemon,
+the greeter's theme render and the autologin handoff. The remaining paths
+need separate desktop verification after relevant changes.
 
-> Upstream's Quattro line is at `v4.0.4` (2026-09-15); this port tracks the
-> `quattro` branch at `f2a39c4` (2026-10-10, release + post-release fixes).
+> This port tracks the `quattro` branch at `3c7027d` (2026-10-22), after
+> `4.5.0-rc1` (2026-10-20). Stable `4.0.6` (2026-10-19) is a divergent
+> backport line, not the base of this snapshot.
 > The vendored `version` file still reads `4.0.0.alpha` — upstream does
 > not bump it at release time.
 
@@ -80,17 +85,18 @@ for manual desktop exploration.
 
 ## Changelog
 
-- **2026-10-17** — Upstream Quattro advances to `33783b1` (160 commits).
-  Signed replaces Xournal++ for PDF signing; the titlebars plugin draws
-  floating-workspace titlebars (built against the pinned Hyprland). The
-  desktop localizes into 50 languages — session LANG via the user's uwsm
-  env, locales staying declarative — and Japanese/Chinese/Korean typing
-  works out of the box with the fcitx5 CJK engines and the vendored
-  Caps-Lock/Shift-Compose XKB option. New dock, Appearance menu,
-  workspace layout modes, and Super+Shift+S screenshots. The
-  USB/Thunderbolt approval feature is fully reverted, upstream and here.
-  All 46 flake checks, including four desktop VM tests, and the package
-  build pass.
+- **2026-10-22** — Upstream Quattro advances to `3c7027d` (206 commits),
+  vendoring per-monitor workspaces and the Omapager notification engine.
+  Quickshell is pinned to `0.3.2.r7.g2b4501a` with both load/reload
+  patches retained. NetworkManager connectivity checks and timesyncd
+  fallbacks are native; T3 and agent installs stay in the Nix catalog,
+  which also handles the new 1Password removal entry. Wallpaper copies
+  stay writable, missing Neovim migration sources remain pending for
+  retry, and ZCode's glyph preserves Tailscale's new upstream slot.
+  All 46 checks, including four VM tests, pass. User services receive
+  their IPC tools and helpers, fixing OWE's shell handoff; Taildrop
+  honors the configured Tailscale package. Physical GPU verification
+  is pending. See the full entry for the verification limits.
 
 Full history: [`CHANGELOG.md`](CHANGELOG.md). Upstream adaptation
 details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
@@ -101,7 +107,7 @@ details and the bump checklist: [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
 The running desktop is produced by the same code that produces it on Arch
 Omarchy: the same quickshell process (`$OMARCHY_PATH/shell/shell.qml`), the
-same Hyprland Lua config chain, the same ~530 `omarchy-*` bash scripts, the
+same Hyprland Lua config chain, the same ~540 `omarchy-*` bash scripts, the
 same TOML + template theme engine. The NixOS layer is glue (a vendoring
 derivation, two modules, options, activation), not a reimplementation.
 
@@ -351,9 +357,10 @@ Lua config), default SDDM, PipeWire/NetworkManager/Bluetooth daemons, the
 Omarchy Plymouth boot splash, and the Omarchy SDDM login theme + Hyprland
 greeter.
 
-The package ships 10 upstream user units. The USB and Thunderbolt approval
-units stay disabled: configure USB policy with `services.usbguard`, and
-Thunderbolt with the existing native `services.hardware.bolt` service.
+The package ships 8 upstream user units. The USB/Thunderbolt approval
+feature was fully reverted upstream and in this port; configure USB
+policy with `services.usbguard`, and Thunderbolt with the existing native
+`services.hardware.bolt` service.
 
 Per-user (Home-Manager module): seeds `~/.config/hypr/hyprland.lua` (the
 entry point that dispatches into `$OMARCHY_PATH`), the user-editable stub
@@ -406,8 +413,8 @@ until an upstream release includes that PR.
 
 ## Testing
 
-The desktop is verified by an automated NixOS test that runs under
-`nix flake check`:
+Desktop acceptance runs under `nix flake check`; all 46 checks, including
+the four VM tests, pass for the October 22 snapshot:
 
 ```bash
 nix flake check                # every check: the 4 VM tests (desktop, ux, fish,
@@ -436,9 +443,10 @@ pkgs/                  # vendoring + themes + 21 upstream-owned packages:
   aether.nix asdcontrol.nix omacalc.nix omacut.nix omawrite.nix omasnap.nix
   monologue.nix hype.nix owe.nix
   disktree.nix gliff.nix superwhisper.nix
+  signed.nix omarchy-hyprland-titlebars.nix
   try.nix hyprland-guiutils.nix hyprland-preview-share-picker.nix
   omarchy-nvim.nix omarchy-fish.nix ttfx.nix herdr.nix herdr-zig-deps.nix
-  quickshell.nix       #   quickshell 0.3.1 pin (stable nixpkgs has 0.3.0)
+  quickshell.nix       #   quickshell 0.3.2.r7.g2b4501a pin + load/reload patches
   claude-desktop.nix claude-desktop-launcher.sh zcode-desktop.nix omp.nix
                        #   flake-owned Install-menu apps (omarchy.ownedPackages)
   omarchy-icons/       #   icon-font glyph injection for app launchers

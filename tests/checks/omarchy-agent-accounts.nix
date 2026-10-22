@@ -97,6 +97,17 @@ pkgs.runCommand "omarchy-agent-accounts-check" { nativeBuildInputs = [ pkgs.pyth
   def state(*args):
       return run(["omarchy-agent-account-state", *args]).stdout.strip()
 
+  # The Nix catalog supplies these tools; upstream's declaration helper
+  # must neither claim a mise default nor modify the user's own config.
+  miserc = home / ".config/mise/miserc.toml"
+  miserc.parent.mkdir(parents=True)
+  miserc.write_text("experimental = true\n")
+  assert run(["omarchy-mise-default-tools", "list"]).stdout == ""
+  run(["omarchy-mise-default-tools", "declares", "codex"], expected=1)
+  run(["omarchy-mise-default-tools", "disable"])
+  run(["omarchy-mise-default-tools", "enable"])
+  assert miserc.read_text() == "experimental = true\n"
+
   # The default Main account remains implicit, including an empty pin, so
   # Claude retains its ordinary ~/.claude.json behavior. Wrappers preserve
   # spaces, empty arguments and literal shell syntax without re-parsing them.

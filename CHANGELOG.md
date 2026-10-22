@@ -4,6 +4,59 @@ All notable changes to omarchy-nix, newest first. Dates are UTC.
 Upstream adaptation details and the bump checklist:
 [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
+## 2026-10-22
+
+- **Upstream Quattro moves from `33783b1` to `3c7027d` (206 commits).**
+  This is an October 22 snapshot after `4.5.0-rc1` (October 20); stable
+  `4.0.6` (October 19) is a divergent backport line. The upstream
+  `version` file still reads `4.0.0.alpha`. The tree has 537
+  `omarchy-*` commands, 23 themes, 20 templates, 206 classified
+  migrations, 55 classified `/etc` files, and 8 shipped user units.
+  The upstream-owned app set remains 21.
+- **Per-monitor workspaces and Omapager notifications are vendored.**
+  Upstream assigns each monitor its own workspace block and ships its
+  new notification engine, including grouped cards, history and snoozes.
+  VM acceptance covers notification rendering/dismissal and workspace
+  selection, live ID changes and virtual output removal.
+- **Quickshell advances to `0.3.2.r7.g2b4501a`**, pinned at
+  `2b4501a282689792b62e94f3fb30d8f512324fe6`. Its CLI still reports
+  0.3.2, so the package check also requires the full revision. Both
+  `load_qtquick_611.patch` and `intercept-rescan-fix.patch` are retained
+  with strict fuzz 0. Dropping the pin requires an equivalent snapshot
+  and fixes, `OmarchyLoadPatch` support, and passing desktop/reload
+  acceptance. Hyprland 0.56.2 and Qt 6.11.2 are unchanged.
+- **Network defaults stay native.** NetworkManager uses
+  `http://ping.omacom.io/nm-check.txt` with an empty expected response;
+  plain HTTP permits captive-portal interception. timesyncd fallback
+  servers are `ntp.omarchy.org` and `time.cloudflare.com`.
+- **Package and kernel ownership stays declarative.** T3 and agent
+  installs remain Nix catalog actions; upstream's AppImage and
+  self-updating mise transitions are deliberately excluded. The new
+  1Password removal entry uses the catalog. The Arch kernel selector
+  is hidden; consumers choose kernels with `boot.kernelPackages`.
+- **Mutable copies and migrations retain retry behavior.** Wallpaper
+  source copies are writable. Neovim migrations honor the installed
+  package guard and leave required but unavailable source files pending
+  for retry. Thirteen new migrations are classified (4 user-safe,
+  9 skip), and removed migration `1789091250` leaves the manifest.
+- **ZCode's glyph moves to U+E910**, preserving upstream's Tailscale
+  glyph at U+E90F. Nightly diff collection uses `git --no-pager diff`,
+  so a runner without `less` can still capture the input-canary diff.
+- **Scripted user services receive their runtime commands.** Their
+  sparse systemd PATH now includes the shell IPC tools and vendored
+  helpers. This fixes OWE's repeated failed handoff to the shell;
+  Taildrop uses the consumer's configured Tailscale package. The new
+  notification demo also receives its Python Gio dependency.
+- **All 46 flake checks pass, including four VM tests.**
+  Notification checks use the actual notification count and OCR because
+  the dismissed canvas stays mapped. Reload checks exercise the menu,
+  dock and notifications as well as the first OSD. They wait for the
+  grid's rendered content before closing it, avoiding a race with
+  synchronous icon loading over the VM's 9p store. Two lock cycles,
+  virtual monitor hotplug and live titlebar colors pass. The package
+  build, formatting and all-systems evaluation pass. Physical GPU
+  verification has not been completed for this snapshot.
+
 ## 2026-10-17
 
 - **Upstream Quattro moves from `f2a39c4` to `33783b1` (160 commits).**

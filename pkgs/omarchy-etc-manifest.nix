@@ -17,6 +17,7 @@
   # bundled Node (mise model rejected — the catalog is final).
   "mise/conf.d/omarchy.toml" = "na";
   "mise/conf.d/omarchy-agent-accounts.toml" = "na"; # mise dispatch is not used; the package supplies NixOS agent account wrappers on the session PATH
+  "mise/conf.d/omarchy-tools.toml" = "na"; # lazy/self-updating mise tools are owned by the Nix package catalog instead
   # v4.0.2: upstream hardened the CUPS account separation and then removed
   # automatic printer discovery entirely (migration 1788009111 drops
   # cups-browsed). NixOS matches: services.printing stays on, browsed is
@@ -34,10 +35,12 @@
   # 33783b1: mpv hardware decoding through the reliable-decoders list.
   "mpv/mpv.conf" = "vendored"; # environment.etc."mpv/mpv.conf" — mpv's system config layer (~/.config/mpv overrides)
   "mkinitcpio.conf.d/omarchy_hooks.conf" = "na"; # Arch mkinitcpio initrd hooks — NixOS builds its own initrd
+  "mkinitcpio.conf.d/omarchy_vconsole.conf" = "na"; # console layout is declared through console.* and the NixOS initrd
   "mkinitcpio.conf.d/00-omarchy-hooks.conf" = "na"; # platform-specific Arch HOOKS baseline; boot.initrd owns the NixOS initrd
   "mkinitcpio.conf.d/thunderbolt_module.conf" = "na"; # Arch early-module probe; boot.initrd.availableKernelModules is consumer-owned, services.hardware.bolt covers userspace
   "modprobe.d/omarchy-usb-autosuspend.conf" = "native"; # boot.extraModprobeConfig (usbcore autosuspend=-1)
   "NetworkManager/conf.d/omarchy-wifi-powersave.conf" = "native"; # networking.networkmanager.wifi.powersave
+  "NetworkManager/conf.d/omarchy-connectivity.conf" = "native"; # networking.networkmanager.settings.connectivity
   "nsswitch.conf" = "na"; # nixpkgs generates nsswitch.conf from system.nssModules; services.avahi nssmdns4 covers mdns_minimal
   "plymouth/plymouthd.conf" = "native"; # boot.plymouth.theme = "omarchy"
   "profile.d/omarchy.sh" = "covered"; # env-bootstrap deliberately NOT sourced (Arch dev-link logic); same effect via sessionVariables + uwsm env.d — docs/UPSTREAM.md

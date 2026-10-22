@@ -69,11 +69,11 @@
     };
 
     # Upstream-owned packages not available in nixpkgs, built under pkgs/
-    # and injected by the flake wrapper (19: aether, asdcontrol, omacalc,
+    # and injected by the flake wrapper (21: aether, asdcontrol, omacalc,
     # omacut, omawrite, omasnap, monologue, hype, owe, try, yaru-theme,
     # hyprland-guiutils, hyprland-preview-share-picker, omarchy-nvim, herdr,
-    # ttfx, disktree, gliff, superwhisper). Added to
-    # environment.systemPackages; entries are still subject to
+    # ttfx, disktree, gliff, superwhisper, signed, omarchy-hyprland-titlebars).
+    # Added to environment.systemPackages; entries are still subject to
     # omarchy.exclude_packages filtering.
     appPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
@@ -102,8 +102,9 @@
     };
 
     # The quickshell build the desktop runs. Injected by the flake wrapper as
-    # this repo's pin (currently 0.3.1 — pkgs/quickshell.nix explains why and
-    # when to drop it); null falls back to the consumer's pkgs.quickshell.
+    # this repo's 0.3.2.r7.g2b4501a snapshot plus load/reload patches.
+    # pkgs/quickshell.nix explains the exact revision and drop condition;
+    # null falls back to the consumer's pkgs.quickshell.
     # The shell is the whole desktop, so a consumer override replaces the
     # entire bar/launcher/menu/lock stack at once.
     quickshellPackage = lib.mkOption {
@@ -111,8 +112,11 @@
       default = null;
       description = ''
         The quickshell build used for the Quattro shell
-        (pkgs.quickshell by default; the flake injects its own 0.3.1 pin).
-        Override only to pin a different build.
+        (pkgs.quickshell by default; the flake injects its own
+        0.3.2.r7.g2b4501a snapshot with load/reload patches). The CLI still
+        reports 0.3.2; the package check also requires the full revision.
+        Override only with an equivalent snapshot and fixes, including
+        OmarchyLoadPatch support, and passing desktop/reload acceptance.
       '';
     };
 

@@ -8,6 +8,8 @@ files=(plugin/after/transparency.lua lua/plugins/lualine-transparent.lua)
 
 package=""
 nvim_setup=$(command -v omarchy-nvim-setup 2>/dev/null) && nvim_setup=$(readlink -f -- "$nvim_setup") || nvim_setup=""
+# A user without the Omarchy Neovim package owns their own config.
+[[ -n $nvim_setup ]] || exit 0
 for cand in \
   /run/current-system/sw/share/omarchy-nvim/config \
   "/etc/profiles/per-user/${USER:-}/share/omarchy-nvim/config" \
@@ -33,10 +35,10 @@ for file in "${files[@]}"; do
   done
 done
 
-# Nothing to copy until an omarchy-nvim carrying the files is on the profile.
+# An installed older package leaves this pending until its sources arrive.
 [[ -n $package ]] || {
-  echo "NixOS: omarchy-nvim transparency sources not found; skipping." >&2
-  exit 0
+  echo "NixOS: omarchy-nvim transparency sources not found; update the package and retry." >&2
+  exit 1
 }
 
 # A copy staged beside its target and moved into place whole, so a failed

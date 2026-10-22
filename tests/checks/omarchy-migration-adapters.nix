@@ -307,10 +307,22 @@ pkgs.runCommand "omarchy-migration-adapters-check" { } ''
 
   fresh trans-no-source
   mkdir -p "$H/.config/nvim/lua/plugins"
+  printf '%s\n' '-- my own Neovim profile' >"$H/.config/nvim/lua/plugins/keep.lua"
   run 1791723398.sh "$NO_NVIM"
   [[ ! -e $H/.config/nvim/plugin/after/transparency.lua ]] ||
     fail "1791723398 installed a transparency file without a source"
-  grep -q 'sources not found' "$TMPDIR/run.log" || fail "1791723398 without a source said nothing"
+  [[ $(cat "$H/.config/nvim/lua/plugins/keep.lua") == '-- my own Neovim profile' ]] ||
+    fail "1791723398 touched a config without omarchy-nvim"
+
+  fresh trans-old-package
+  mkdir -p "$H/.config/nvim/lua/plugins" "$TMPDIR/old-nvim/bin"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$TMPDIR/old-nvim/bin/omarchy-nvim-setup"
+  chmod +x "$TMPDIR/old-nvim/bin/omarchy-nvim-setup"
+  if env HOME="$H" USER=tester PATH="$TMPDIR/old-nvim/bin:$NO_NVIM" \
+    bash -euo pipefail "$A/1791723398.sh" >"$TMPDIR/run.log" 2>&1; then
+    fail "1791723398 completed with an installed package missing its sources"
+  fi
+  grep -q 'sources not found' "$TMPDIR/run.log" || fail "1791723398 did not explain the pending migration"
 
   fresh trans-link
   mkdir -p "$TMPDIR/dot/nvim-dir"

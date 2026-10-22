@@ -97,7 +97,7 @@ let
     "install.ai.claude-desktop": {"icon":"","iconFont":"omarchy","label":"Claude Desktop","disabled":"omarchy-pkg-present claude-desktop","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.claude-desktop'"},
     "install.ai.omp": {"icon":"󱚤","label":"Oh My Pi","when":"! omarchy-pkg-present omp","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.omp'"},
     "install.ai.hermes": {"icon":"󱚤","label":"Hermes","when":"! omarchy-pkg-present hermes","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.hermes'"},
-    "install.ai.zcode": {"icon":"","iconFont":"omarchy","label":"ZCode","disabled":"omarchy-pkg-present z-code-bin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.zcode'"},
+    "install.ai.zcode": {"icon":"","iconFont":"omarchy","label":"ZCode","disabled":"omarchy-pkg-present z-code-bin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-add install.ai.zcode'"},
   '';
 in
 
@@ -131,10 +131,10 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "/usr/share/fzf/key-bindings.bash" \
             "/run/current-system/sw/share/fzf/key-bindings.bash"
 
-        # The tree's only Python script: /usr/bin/python3 is dead
-        # on NixOS. Point it at the pygobject3-enabled store interpreter; the
-        # GI_TYPELIB_PATH wrap happens in postFixup.
-        substituteInPlace bin/omarchy-file-select \
+        # Gio/GLib clients need the pygobject3-enabled store interpreter
+        # and typelibs. Keep the demo on the same path as the file picker.
+        # GI_TYPELIB_PATH wraps happen in postFixup.
+        substituteInPlace bin/omarchy-file-select bin/omarchy-dev-notification-demo \
           --replace-fail '#!/usr/bin/python3' '#!${pythonWithGi}/bin/python3'
 
         # Python bin scripts with a hardcoded /usr/bin/python3 shebang (dead
@@ -414,6 +414,8 @@ stdenv.mkDerivation (finalAttrs: {
         # 33783b1 user-safe migrations with the same store->$HOME copy
         # class: the window-opaque toggle file, omarchy-browser.desktop and
         # the hyprland-mimeapps template.
+        substituteInPlace migrations/1792259038.sh \
+          --replace-fail 'cp "$source" "$replacement"' 'cp --no-preserve=mode "$source" "$replacement"'
         substituteInPlace migrations/1791705142.sh \
           --replace-fail 'cp "$OMARCHY_PATH/default/hypr/toggles/window-opaque.lua" "$toggles_dir/"' \
             'cp --no-preserve=mode "$OMARCHY_PATH/default/hypr/toggles/window-opaque.lua" "$toggles_dir/"'
@@ -639,21 +641,57 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace bin/omarchy-install-ai-chatgpt \
           --replace-fail 'uwsm-app -- /usr/bin/chatgpt' 'uwsm-app -- chatgpt'
 
-        # Claude Desktop + T3 Code removes: the pkg-drop stub would leave
-        # the package installed — the remove menu lines stay upstream and
-        # route into the catalog here. The T3 installer keeps a patched
-        # pkg-add core for migration 1789091250 (the menu action goes
-        # through omarchy-nix-add directly), and its palette step is
-        # best-effort: the pin's t3code 0.0.28 may not ship the
-        # `t3 theme set` subcommand; omarchy-theme-set-t3code already
-        # writes the palette file the app watches.
-        substituteInPlace bin/omarchy-install-ai-t3-code \
-          --replace-fail 'omarchy-pkg-add t3code-bin' 'omarchy-nix-add install.ai.t3-code' \
-          --replace-fail 't3 theme set omarchy --base-dir "$T3CODE_HOME"' 'command -v t3 >/dev/null 2>&1 && t3 theme set omarchy --base-dir "$T3CODE_HOME" || true'
+        # T3 Code stays in the Nix catalog; upstream's AppImage migration
+        # does not replace the system package or choose a second update channel.
+        # Keep the theme setup and --no-launch contract for direct callers.
+        overwrite_upstream bin/omarchy-install-t3code-app <<'EOF'
+    #!/bin/bash
+    # omarchy:summary=Install the Nix-managed T3 Code package
+    # omarchy:args=[stable]
+    # omarchy:hidden=true
+    set -euo pipefail
+    case "''${1:-stable}" in
+      stable) exec omarchy-nix-add install.ai.t3-code ;;
+      *) echo "NixOS: T3 Code's version is selected by the consumer flake, not an AppImage channel." >&2; exit 1 ;;
+    esac
+    EOF
+        chmod +x bin/omarchy-install-t3code-app
+        overwrite_upstream bin/omarchy-install-ai-t3-code <<'EOF'
+    #!/bin/bash
+    # omarchy:summary=Install T3 Code from the Nix catalog and apply its theme
+    # omarchy:args=[stable] [--no-launch]
+    set -euo pipefail
+    launch=1
+    for arg in "$@"; do
+      case "$arg" in
+        stable) ;;
+        --no-launch) launch=0 ;;
+        *) echo "NixOS: T3 Code's version is selected by the consumer flake." >&2; exit 1 ;;
+      esac
+    done
+    omarchy-install-t3code-app stable
+    T3CODE_HOME="''${T3CODE_HOME:-$HOME/.t3}"
+    mkdir -p "$T3CODE_HOME/userdata"
+    if [[ ! -f $HOME/.local/state/omarchy/current/theme/t3code.json ]]; then
+      omarchy-theme-refresh
+    fi
+    omarchy-theme-set-t3code
+    if command -v t3 >/dev/null 2>&1; then
+      t3 theme set omarchy --base-dir "$T3CODE_HOME" || true
+    fi
+    if ((launch)); then
+      setsid uwsm-app -- gtk-launch t3code >/dev/null 2>&1 &
+    fi
+    EOF
+        chmod +x bin/omarchy-install-ai-t3-code
         substituteInPlace bin/omarchy-remove-ai-claude \
           --replace-fail 'omarchy-pkg-drop claude-desktop' 'omarchy-nix-remove install.ai.claude-desktop'
         substituteInPlace bin/omarchy-remove-ai-t3-code \
-          --replace-fail 'omarchy-pkg-drop t3code-bin' 'omarchy-nix-remove install.ai.t3-code'
+          --replace-fail 'omarchy-pkg-drop t3code-bin t3code-nightly-bin' 'omarchy-nix-remove install.ai.t3-code'
+
+        substituteInPlace default/omarchy/omarchy-menu.jsonc \
+          --replace-fail '[[ -f \"$HOME/.local/share/t3code/T3-Code.AppImage\" ]] || omarchy-pkg-present t3code-bin || omarchy-pkg-present t3code-nightly-bin' 'omarchy-pkg-present t3code-bin' \
+          --replace-fail '[[ -f \"$HOME/.local/share/t3code/T3-Code.AppImage\" ]]' 'omarchy-pkg-present t3code-bin'
 
         # omarchy-remove-ai-ollama: the unit + /var/lib state are owned by
         # services.ollama on NixOS (removed with the feature at rebuild); the
@@ -1162,7 +1200,7 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace bin/omarchy-agent-account-exec \
           --replace-fail '# mise removes its wrapper dispatch directories before calling us, so exec' \
             $'source "$(dirname "''${BASH_SOURCE[0]}")/omarchy-nix-provider-path"\nexport PATH="$(omarchy_nix_provider_path)"\n\n# Remove the Nix dispatch directory before resolving the actual CLI, so exec' \
-          --replace-fail $'  # A mise dispatcher can exist before its CLI or first-run installer does.\n  export MISE_MINIMUM_RELEASE_AGE=0\n  mise use -g --quiet "$provider"\n  agent_binary=$(mise which "$provider")' \
+          --replace-fail $'  # A mise dispatcher can exist before its CLI or first-run installer does.\n  # Omarchy declares these agents, so installing one leaves the user\'s config\n  # alone. A user who removed the preinstalls selects it in their own config.\n  export MISE_MINIMUM_RELEASE_AGE=0\n  if omarchy-mise-default-tools declares "$provider"; then\n    mise install --quiet "$provider"\n  else\n    mise use -g --quiet "$provider"\n  fi\n  agent_binary=$(mise which "$provider")' \
             $'  echo "$provider is not installed. Use omarchy-nix-add install.ai.$provider and rebuild." >&2\n  exit 127' \
           --replace-fail 'export PATH="''${MISE_DATA_DIR:-''${XDG_DATA_HOME:-$HOME/.local/share}/mise}/command-wrappers/bin:$PATH"' \
             'export PATH="''${OMARCHY_PATH:-/run/current-system/sw/share/omarchy}/agent-wrappers:$PATH"'
@@ -1182,6 +1220,26 @@ stdenv.mkDerivation (finalAttrs: {
             'omarchy-nix-add "install.ai.$provider" || exit 1' \
           --replace-fail '#!/bin/bash\nexec omarchy-launch-browser --private "$1"' \
             '#!${bash}/bin/bash\nexec omarchy-launch-browser --private "$1"'
+
+        substituteInPlace bin/omarchy-agent \
+          --replace-fail 'if omarchy-cmd-missing "$agent" && ! { [[ $agent == "openclaw" ]] && omarchy-pkg-present openclaw; }; then' \
+            'if omarchy-cmd-missing "$agent"; then'
+
+        # Omarchy's global mise defaults are replaced by the Nix catalog.
+        # A successful declares probe would incorrectly enable lazy installs.
+        overwrite_upstream bin/omarchy-mise-default-tools <<'EOF'
+    #!/bin/bash
+    # omarchy:summary=Probe defaults supplied by the Nix package catalog
+    # omarchy:args=<list|declares tool|disable|enable>
+    # omarchy:hidden=true
+    set -euo pipefail
+    case "''${1:-}" in
+      list | enable | disable) exit 0 ;;
+      declares) exit 1 ;;
+      *) echo "Usage: omarchy-mise-default-tools <list|declares <tool>|disable|enable>" >&2; exit 1 ;;
+    esac
+    EOF
+        chmod +x bin/omarchy-mise-default-tools
 
         # OpenClaw's new private, self-updating Node copy is an Arch
         # packaging path. The catalog already owns its Nix CLI package.
@@ -1845,6 +1903,7 @@ stdenv.mkDerivation (finalAttrs: {
           --replace-fail "'omarchy-remove-browser edge'" "'omarchy-nix-remove install.browser.edge'" \
           --replace-fail "'omarchy-remove-browser brave'" "'omarchy-nix-remove install.browser.brave'" \
           --replace-fail "'omarchy-remove-browser firefox'" "'omarchy-nix-remove install.browser.firefox'" \
+          --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-remove-service-1password" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-remove install.service.1password'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-remove-service-dropbox" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-remove install.service.dropbox'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-remove-service-tailscale" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-remove install.service.tailscale'" \
           --replace-fail "omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-steam" "omarchy-launch-floating-terminal-with-presentation 'omarchy-nix-remove install.gaming.steam'" \
@@ -2001,7 +2060,7 @@ stdenv.mkDerivation (finalAttrs: {
         substituteInPlace bin/omarchy-default-agent \
           --replace-fail 'agent_present() { user_install || mise where "$agent_package" &>/dev/null; }' \
                          'agent_present() { ! omarchy-cmd-missing "$agent"; }' \
-          --replace-fail 'agent_install() { user_install || mise use -g "$agent_package"; }' \
+          --replace-fail $'agent_install() {\n    user_install && return\n    if omarchy-mise-default-tools declares "$agent_package"; then\n      mise install "$agent_package"\n    else\n      mise use -g "$agent_package"\n    fi\n  }' \
                          'agent_install() { ! omarchy-cmd-missing "$agent" || omarchy-nix-add "install.ai.$agent"; }' \
           --replace-fail 'agent_present() { "$agent_installer" --check; }' \
                          'agent_present() { ! omarchy-cmd-missing "$agent"; }' \
@@ -2011,9 +2070,9 @@ stdenv.mkDerivation (finalAttrs: {
                          'echo "Could not install $name from the nix catalog" >&2'
 
         # Menu icon font: the vendored font ships one glyph per app
-        # (default/fonts/omarchy/README.md catalogues them, up to U+E90E).
+        # (default/fonts/omarchy/README.md catalogues them, up to U+E90F).
         # ZCode's Install > AI entry carries its own mark, injected here as
-        # U+E90F so the menu renders the app's icon instead of a
+        # U+E910 so the menu renders the app's icon instead of a
         # fallback-family glyph. The mark and the injector live in
         # pkgs/omarchy-icons/; the injector keeps head.modified as vendored,
         # so the patched font is byte-reproducible.
@@ -3011,15 +3070,15 @@ stdenv.mkDerivation (finalAttrs: {
     runHook postInstall
   '';
 
-  # pythonWithGi's store path is substituted into omarchy-file-select's
-  # /usr/bin/python3 shebang below; the wrap in postFixup then
-  # gives its runtime `gi.repository.Gio/GLib` import the typelibs, without
-  # touching session env.
+  # Gio/GLib clients get their interpreter and typelibs per executable,
+  # without changing the session's Python environment.
   nativeBuildInputs = [ makeWrapper ];
 
   postFixup = ''
-    wrapProgram $out/share/omarchy/bin/omarchy-file-select \
-      --prefix GI_TYPELIB_PATH : ${glib}/lib/girepository-1.0
+    for command in omarchy-file-select omarchy-dev-notification-demo; do
+      wrapProgram "$out/share/omarchy/bin/$command" \
+        --prefix GI_TYPELIB_PATH : ${glib}/lib/girepository-1.0
+    done
   '';
 
   meta = {

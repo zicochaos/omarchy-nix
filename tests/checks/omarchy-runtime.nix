@@ -270,6 +270,34 @@ pkgs.runCommand "omarchy-runtime-check" { nativeBuildInputs = [ pkgs.jq ]; } ''
     fi
   done < <(jq -r '.scripts | to_entries[] | select(.value.class == "declarative-note") | .key' "$manifest")
 
+  # Direct T3 commands share the menu's Nix catalog contract. Isolate the
+  # package/rebuild boundary and user data; no download or rebuild may run.
+  probeBin=$TMPDIR/t3-probe
+  testHome=$TMPDIR/t3-home
+  mkdir -p "$probeBin" "$testHome/.local/state/omarchy/current/theme"
+  printf '{}\n' >"$testHome/.local/state/omarchy/current/theme/t3code.json"
+  export OMARCHY_TEST_CALLS=$TMPDIR/t3-calls
+  for name in omarchy-nix-add omarchy-nix-remove omarchy-theme-set-t3code \
+    omarchy-theme-refresh update-desktop-database; do
+    cat >"$probeBin/$name" <<'PROBE'
+  #!${pkgs.bash}/bin/bash
+  printf '%s:%s\n' "''${0##*/}" "$*" >>"$OMARCHY_TEST_CALLS"
+  PROBE
+    chmod +x "$probeBin/$name"
+  done
+  timeout 15 env HOME="$testHome" T3CODE_HOME="$testHome/.local/share/t3code" PATH="$probeBin:$bin:$PATH" \
+    "$bin/omarchy-install-ai-t3-code" stable --no-launch
+  grep -qxF 'omarchy-nix-add:install.ai.t3-code' "$OMARCHY_TEST_CALLS"
+  grep -qxF 'omarchy-theme-set-t3code:' "$OMARCHY_TEST_CALLS"
+  if env HOME="$testHome" T3CODE_HOME="$testHome/.local/share/t3code" PATH="$probeBin:$bin:$PATH" \
+    "$bin/omarchy-install-t3code-app" nightly; then
+    echo "T3 installer accepted an undeclared AppImage channel"
+    exit 1
+  fi
+  timeout 15 env HOME="$testHome" T3CODE_HOME="$testHome/.local/share/t3code" PATH="$probeBin:$bin:$PATH" \
+    "$bin/omarchy-remove-ai-t3-code"
+  grep -qxF 'omarchy-nix-remove:install.ai.t3-code' "$OMARCHY_TEST_CALLS"
+
   [[ $bad == 0 ]] || exit 1
   touch $out
 ''

@@ -40,6 +40,12 @@
       class = "port-owned";
       allow = [ ];
     };
+    omarchy-mise-default-tools = {
+      class = "nixos-adapted";
+      # No system mise declarations are installed; callers must receive
+      # a false declares probe without changing the user's mise config.
+      allow = [ ];
+    };
     # Wrapper the port injects for the keyboard widget's Fcitx state
     # watcher (see pkgs/omarchy.nix): pins the pygobject interpreter.
     omarchy-input-method-indicator = {
@@ -50,6 +56,16 @@
     omarchy-dns = {
       class = "declarative-note";
       note = "DNS is declarative: set services.resolved / networking.nameservers in your flake config and rebuild.";
+    };
+    omarchy-kernel = {
+      class = "declarative-note";
+      note = "Kernel selection is declarative: set boot.kernelPackages in your consumer flake and rebuild; NixOS owns the initrd and boot entries.";
+    };
+    omarchy-network-captive-portal = {
+      class = "user-safe";
+      # Recheck connectivity after opening the portal; exit-node changes
+      # are transient Tailscale runtime state restored when the window closes.
+      allow = [ "nmcli-radio" ];
     };
     omarchy-hibernation-setup = {
       class = "declarative-note";
@@ -680,9 +696,11 @@
     "setup.security.fido2"
     "setup.security.passwordless-sudo"
     "remove.security.fido2"
-    "trigger.hardware.hybrid-gpu"
+    "trigger.hardware.hybrid-gpu-on"
+    "trigger.hardware.hybrid-gpu-off"
     "update.config.plymouth"
-    "style.unlock"
+    "update.kernel"
+    "appearance.unlock"
     "update.timezone"
     # AUR-only browsers (zen-browser-bin, brave-origin-bin) — not in nixpkgs,
     # and their installer scripts also mutate /etc policy dirs (stubbed).

@@ -1,8 +1,6 @@
-# omarchy-sleep-lock holds a delay inhibitor, then execs
-# omarchy-system-sleep-lock, which talks to the running shell via
-# bare `omarchy-shell` / `qs` / `jq`. User-unit PATH is sparse;
-# missing those binaries means the lock request never lands and
-# the machine suspends unlocked.
+# Keep the historical check name, and cover the other scripted user units
+# too: NixOS gives these units a sparse PATH rather than the login shell's.
+# The required commands come from their vendored entry points and helpers.
 {
   self,
   nixpkgs,
@@ -10,29 +8,69 @@
   ...
 }:
 let
-  pathPkgs = self.nixosConfigurations.demo.config.systemd.user.services.omarchy-sleep-lock.path;
-  pathValue = nixpkgs.lib.makeBinPath pathPkgs;
-  required = [
+  lib = nixpkgs.lib;
+  services = self.nixosConfigurations.demo.config.systemd.user.services;
+  shellCommands = [
     "omarchy-shell"
     "qs"
-    "jq"
-    "hyprctl"
-    "omarchy-notification-send"
-    "omarchy-hyprland-monitor-clamshell"
+    "socat"
   ];
+  required = {
+    omarchy-sleep-lock = shellCommands ++ [
+      "jq"
+      "hyprctl"
+      "omarchy-notification-send"
+      "omarchy-hyprland-monitor-clamshell"
+    ];
+    owed = shellCommands ++ [
+      "jq"
+      "hyprctl"
+      "omarchy-theme-bg-boot-intro"
+    ];
+    omarchy-migrate = shellCommands ++ [
+      "jq"
+      "awk"
+      "gsettings"
+    ];
+    omarchy-migrate-notify = shellCommands ++ [
+      "jq"
+      "flock"
+      "busctl"
+      "omarchy-migrate"
+      "omarchy-notification-wait"
+      "omarchy-notification-send"
+    ];
+    omarchy-crash-watch = shellCommands ++ [
+      "jq"
+      "journalctl"
+      "busctl"
+      "omarchy-notification-wait"
+      "omarchy-default-agent"
+    ];
+    omarchy-recover-internal-monitor = [ "omarchy-hw-external-monitors" ];
+    omarchy-tailscale-receive = [
+      "tailscale"
+      "jq"
+      "busctl"
+      "omarchy-notification-send"
+      "omarchy-i18n"
+    ];
+  };
+  probes = lib.mapAttrsToList (unit: commands: ''
+    export PATH=${lib.escapeShellArg (lib.makeBinPath services.${unit}.path)}
+    for cmd in ${lib.concatStringsSep " " commands}; do
+      if ! command -v "$cmd" >/dev/null; then
+        echo "${unit} PATH missing $cmd" >&2
+        missing=1
+      fi
+    done
+  '') required;
 in
 pkgs.runCommand "omarchy-sleep-lock-path" { } ''
-  export PATH=${nixpkgs.lib.escapeShellArg pathValue}
+  builderPath=$PATH
   missing=0
-  for cmd in ${nixpkgs.lib.concatStringsSep " " required}; do
-    if ! command -v "$cmd" >/dev/null; then
-      echo "omarchy-sleep-lock PATH missing $cmd" >&2
-      missing=1
-    fi
-  done
-  if [ "$missing" != 0 ]; then
-    echo "PATH was: $PATH" >&2
-    exit 1
-  fi
+  ${lib.concatStringsSep "\n" probes}
+  [[ $missing == 0 ]] || exit 1
+  export PATH=$builderPath
   touch $out
 ''

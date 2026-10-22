@@ -56,11 +56,13 @@ manager (`services.displayManager.sddm.enable`).
 ### `omarchy.appPackages` *(listOf package, default `[]`, injected by the flake)*
 
 Upstream-owned Omarchy packages packaged by this flake because they are
-absent from nixpkgs or need a different pinned build (19): aether,
+absent from nixpkgs or need a different pinned build (21): aether,
 asdcontrol, omacalc, omacut, omawrite, monologue, hype, omasnap, owe, try,
 hyprland-guiutils,
 hyprland-preview-share-picker, omarchy-nvim, yaru-theme, herdr, ttfx,
-disktree, gliff, superwhisper. Set automatically by the flake's
+disktree, gliff, superwhisper, signed, omarchy-hyprland-titlebars.
+Signed provides PDF signing/filling; the titlebars plugin is built
+against the pinned Hyprland. Set automatically by the flake's
 `nixosModules.default`; override to trim or
 extend the set. Entries are still subject to `omarchy.exclude_packages`
 filtering (by package name, e.g. `"owe"`).
@@ -97,12 +99,20 @@ third-party client under `grok-cli`. Set automatically by the flake's
 
 The quickshell build the Quattro shell runs; `null` falls back to the
 consumer's `pkgs.quickshell`. The flake injects its own pin
-(`pkgs/quickshell.nix`, currently **0.3.1** — stable nixpkgs carries 0.3.0):
-0.3.1 fixes the plugin-reload OSD side effect measured in this port (the
-measurements are in the `pkgs/quickshell.nix` header) and carries crash fixes for the
-session lock and networking paths. Override only to pin a different build;
-the ux check asserts the post-reload OSD behaviour, so dropping the pin when
-nixpkgs moves is guarded.
+(`pkgs/quickshell.nix`, **0.3.2.r7.g2b4501a**, exact revision
+`2b4501a282689792b62e94f3fb30d8f512324fe6`; stable nixpkgs carries 0.3.0).
+The CLI still reports 0.3.2, so `checks.omarchy-quickshell-version`
+requires the full revision as well as the version. Both
+`load_qtquick_611.patch` (`OmarchyLoadPatch` support) and
+`intercept-rescan-fix.patch` (plugin-reload deadlock fix for Qt 6.11.2)
+are retained, with strict fuzz 0.
+
+Override only to select an equivalent build. Drop the repository pin
+only when nixpkgs supplies the equivalent snapshot and fixes, including
+`OmarchyLoadPatch` support, and desktop/reload acceptance passes. A
+numeric version alone is insufficient; the UX suite exercises the OSD,
+menu, dock and notifications after reload. Acceptance for the October 22
+snapshot is still in progress.
 
 ## Shell
 

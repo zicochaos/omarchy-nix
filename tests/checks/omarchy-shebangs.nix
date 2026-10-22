@@ -39,5 +39,18 @@ pkgs.runCommand "omarchy-shebang-check" { } ''
     exit 1
   fi
   [[ $bad == 0 ]] || exit 1
+
+  # Reach the new demo's Gio call through its actual executable wrapper.
+  # A deliberately absent bus fails after imports, without sending anything
+  # to a real desktop; a missing Python module/typelib cannot pass here.
+  if output=$(DBUS_SESSION_BUS_ADDRESS="unix:path=$TMPDIR/no-session-bus" \
+    ${omarchyPkg}/share/omarchy/bin/omarchy-dev-notification-demo 2>&1); then
+    echo "notification demo unexpectedly found the absent test bus"
+    exit 1
+  fi
+  if [[ $output != *g-io-error-quark* ]]; then
+    echo "notification demo did not reach Gio's bus connection: $output"
+    exit 1
+  fi
   touch $out
 ''

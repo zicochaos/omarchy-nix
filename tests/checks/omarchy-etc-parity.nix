@@ -34,6 +34,19 @@ let
 in
 if badClasses != [ ] then
   throw "omarchy-etc-manifest.nix has unknown classes: ${toString badClasses}"
+else if
+  demoCfg.networking.networkmanager.settings.connectivity.uri != "http://ping.omacom.io/nm-check.txt"
+then
+  throw "demo config missing Omarchy captive-portal connectivity endpoint"
+else if demoCfg.networking.networkmanager.settings.connectivity.response != "" then
+  throw "demo config connectivity probe must accept the endpoint's empty HTTP 204 response"
+else if
+  demoCfg.services.timesyncd.fallbackServers != [
+    "ntp.omarchy.org"
+    "time.cloudflare.com"
+  ]
+then
+  throw "demo config missing upstream timesyncd fallback servers"
 else if sysctl."vm.swappiness" != 150 then
   throw "demo config missing vm.swappiness=150 (etc/sysctl.d/99-omarchy-sysctl.conf)"
 else if sysctl."vm.page-cluster" != 0 then

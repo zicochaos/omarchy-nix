@@ -236,6 +236,7 @@ let
         "install.browser.edge",
         "install.browser.brave",
         "install.browser.firefox",
+        "install.service.1password",
         "install.service.dropbox",
         "install.service.tailscale",
         "install.gaming.steam",

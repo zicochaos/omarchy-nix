@@ -59,7 +59,7 @@ let
   isExcluded = p: builtins.any (m: m p) (builtins.attrValues excludeMatchers);
 
   # The shell package the desktop runs. The flake wrapper injects this repo's
-  # 0.3.1 pin (pkgs/quickshell.nix); without a wrapper (pure-module use) fall
+  # 0.3.2.r7 snapshot (pkgs/quickshell.nix); without a wrapper (pure-module use) fall
   # back to the consumer's pkgs.quickshell.
   quickshellPkg = if cfg.quickshellPackage != null then cfg.quickshellPackage else pkgs.quickshell;
 
@@ -1030,6 +1030,19 @@ in
         # wifi.powersave=2 under [connection] in NetworkManager.conf.
         networking.networkmanager.wifi.powersave = lib.mkDefault false;
 
+        # The same plain HTTP probe the shell opens for captive-portal login.
+        networking.networkmanager.settings.connectivity = {
+          uri = lib.mkDefault "http://ping.omacom.io/nm-check.txt";
+          response = lib.mkDefault "";
+        };
+
+        # Upstream default/systemd/timesyncd.conf.d/10-omarchy.conf:
+        # fallback servers leave explicitly configured and DHCP NTP first.
+        services.timesyncd.fallbackServers = lib.mkDefault [
+          "ntp.omarchy.org"
+          "time.cloudflare.com"
+        ];
+
         # Power button ignored by logind (upstream etc/systemd/
         # logind.conf.d/10-ignore-power-button.conf): the desktop shell owns
         # the action (quickshell power menu), a stray press must not power
@@ -1477,7 +1490,7 @@ in
 
       # (H) Enable the path-adapted systemd user units declaratively.
       # Upstream's install/user/first-run/enable-user-units.sh runs
-      # `systemctl --user enable --now` for six of the ten units; NixOS
+      # `systemctl --user enable --now` for six shipped units plus owed; NixOS
       # ignores package-unit [Install] sections, so wantedBy here creates the
       # .wants/ links. Unit bodies come from cfg.package via systemd.packages
       # (block A) — setting wantedBy alone becomes a drop-in, not a rewrite.
@@ -1485,8 +1498,6 @@ in
       # a hardware match exists). Taildrop is enabled only when the effective
       # NixOS Tailscale service is enabled; otherwise its long-running receiver
       # must not start merely because the vendored unit is present.
-      # USB/Thunderbolt watchers remain disabled: their imperative approval
-      # policy is replaced by consumer-owned declarative configuration.
       (lib.mkIf (cfg.package != null) {
         systemd.user.services = {
           # Keep UWSM's template and session environment when overriding
@@ -1498,7 +1509,16 @@ in
           };
           bt-agent.wantedBy = [ "graphical-session.target" ];
           omarchy-fcitx5.wantedBy = [ "graphical-session.target" ];
-          omarchy-migrate-notify.wantedBy = [ "graphical-session.target" ];
+          omarchy-migrate-notify = {
+            wantedBy = [ "graphical-session.target" ];
+            path = [
+              pkgs.jq
+              pkgs.util-linux
+              pkgs.socat
+              quickshellPkg
+              "${cfg.package}/share/omarchy"
+            ];
+          };
           # The migration runner itself. Upstream runs migrations from
           # omarchy-update (before the session), which NixOS consumers bypass
           # when they rebuild with plain nixos-rebuild — pending user-safe
@@ -1544,12 +1564,14 @@ in
                 bash
                 jq
                 gawk
+                socat
                 gnused
                 coreutils
                 systemd
                 glib
               ])
               ++ [
+                quickshellPkg
                 config.programs.hyprland.package
                 "${cfg.package}/share/omarchy"
               ];
@@ -1586,17 +1608,44 @@ in
                 "${cfg.package}/share/omarchy"
               ];
           };
-          omarchy-recover-internal-monitor.wantedBy = [ "graphical-session-pre.target" ];
+          omarchy-recover-internal-monitor = {
+            wantedBy = [ "graphical-session-pre.target" ];
+            path = [ "${cfg.package}/share/omarchy" ];
+          };
           # crash-watch: the v4.0.0 journal-fed coredump watcher (crash toast
           # + agent diagnosis). Upstream enables it from
           # install/user/first-run/enable-user-units.sh.
-          omarchy-crash-watch.wantedBy = [ "graphical-session.target" ];
+          omarchy-crash-watch = {
+            wantedBy = [ "graphical-session.target" ];
+            path = [
+              pkgs.jq
+              pkgs.socat
+              quickshellPkg
+              "${cfg.package}/share/omarchy"
+            ];
+          };
           # owed: OWE's wallpaper daemon (349ecc0; enable-user-units.sh
           # enables it upstream). The unit ships in the owe package.
-          owed = lib.mkIf (owePkg != null) { wantedBy = [ "graphical-session.target" ]; };
-          omarchy-tailscale-receive.wantedBy = lib.mkIf config.services.tailscale.enable [
-            "graphical-session.target"
-          ];
+          owed = lib.mkIf (owePkg != null) {
+            wantedBy = [ "graphical-session.target" ];
+            # NixOS unit defaults replace the login PATH. OWE's shell
+            # handoff and startup-intro probe need these commands too.
+            path = [
+              pkgs.jq
+              pkgs.socat
+              quickshellPkg
+              config.programs.hyprland.package
+              "${cfg.package}/share/omarchy"
+            ];
+          };
+          omarchy-tailscale-receive = {
+            wantedBy = lib.mkIf config.services.tailscale.enable [ "graphical-session.target" ];
+            path = [
+              config.services.tailscale.package
+              pkgs.jq
+              "${cfg.package}/share/omarchy"
+            ];
+          };
         };
       })
 

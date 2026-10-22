@@ -49,6 +49,30 @@ pkgs.runCommand "omarchy-migrations-check" { nativeBuildInputs = [ pkgs.jq ]; } 
     exit 1
   fi
 
+  # The new notification engine retires old message content while carrying
+  # DND forward. A shell that has already written quiet state wins over the
+  # legacy flag; retrying the migration must preserve that state too.
+  notificationHome=$TMPDIR/notification-home
+  notificationState=$notificationHome/.local/state/omarchy
+  mkdir -p "$notificationState/notifications/history" "$notificationState/notifications/images"
+  printf '{"dnd":true}\n' >"$notificationState/notifications.json"
+  printf '{}\n' >"$notificationState/notifications/123-message.json"
+  HOME="$notificationHome" ${pkgs.bash}/bin/bash ${vendored}/1792648436.sh
+  jq -e '.dnd == true and .snoozes == {} and .codesBypassQuiet == true' \
+    "$notificationState/notifications/quiet.json"
+  test "$(stat -c %a "$notificationState/notifications/quiet.json")" = 600
+  test ! -e "$notificationState/notifications.json"
+  test ! -e "$notificationState/notifications/history"
+  test ! -e "$notificationState/notifications/images"
+  test ! -e "$notificationState/notifications/123-message.json"
+  printf '{"dnd":false,"snoozes":{"chat":123}}\n' >"$notificationState/notifications/quiet.json"
+  cp "$notificationState/notifications/quiet.json" expected-quiet.json
+  printf '{"dnd":true}\n' >"$notificationState/notifications.json"
+  HOME="$notificationHome" ${pkgs.bash}/bin/bash ${vendored}/1792648436.sh
+  cmp expected-quiet.json "$notificationState/notifications/quiet.json"
+  HOME="$notificationHome" ${pkgs.bash}/bin/bash ${vendored}/1792648436.sh
+  cmp expected-quiet.json "$notificationState/notifications/quiet.json"
+
   # Runner stdin: the packaged omarchy-migrate against a temp root. A
   # migration that reads stdin (gum confirm, read) must get the
   # caller's stdin, never the pending list (it used to swallow the

@@ -23,7 +23,7 @@ upstream closed unmerged).
 Upstream Quattro's "desktop" is a **single `quickshell` process** that provides
 the bar, launcher, menus, notifications, OSDs, control panels, lock screen,
 and polkit agent as plugins, plus a **Lua-based Hyprland config** (≥0.56),
-~530 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
+~540 `omarchy-*` bash scripts in `bin/`, and a **TOML + template theme
 engine**. Waybar/wofi/mako/hyprlock/hyprpaper/swaybg/polkit-gnome are gone
 in Quattro. This port packages the upstream tree at `$out/share/omarchy`,
 exports `OMARCHY_PATH`, and seeds `~/.config/hypr/hyprland.lua` so Hyprland's
@@ -43,7 +43,7 @@ pkgs/                  # derivations:
   migrations-nix/      #   NixOS adapter scripts for class "adapter"
   plymouth-omarchy-theme.nix  #   boot-splash theme
   sddm-omarchy-theme.nix      #   login theme + Hyprland greeter config
-  quickshell.nix       #   quickshell 0.3.1 pin
+  quickshell.nix       #   quickshell 0.3.2.r7.g2b4501a pin + load/reload patches
   *.nix                #   upstream-owned apps nixpkgs lacks (aether, owe, ...)
                        #   and the flake-owned Install-menu apps
 modules/lib/           #   option-value validators/serializers (Lua, env.d)
@@ -92,18 +92,22 @@ NixOS-specific commands share one consumer-flake resolver
 - `hermes-agent` → `github:NousResearch/hermes-agent` (the `hermes`
   default-agent CLI, consumed as its own flake — it brings its own nixpkgs;
   its home-manager input follows ours).
-- `quickshell`: this repo pins 0.3.2 (`pkgs/quickshell.nix`, injected as
-  `omarchy.quickshellPackage`) because stable nixpkgs carries 0.3.0 — 0.3.1
-  fixed the plugin-reload OSD side effect measured here, and the 33783b1
-  shell needs 0.3.2 plus upstream's load_qtquick_611.patch (the menu panel
-  never opens without it) and this port's intercept-rescan-fix.patch
-  (upstream's patch deadlocks the engine on plugin reloads against the
-  pin's Qt 6.11).
-  `checks.omarchy-desktop` verifies the shell loads and registers its
-  instance, `checks.omarchy-quickshell-version` guards the pin, and
-  `checks.omarchy-ux` asserts the OSD survives a plugin reload. Drop the pin
-  (`pkgs/quickshell.nix`, the flake's packages entry, the wrapper injection
-  and the version check) when the nixpkgs pin carries 0.3.2 or newer.
+- `quickshell`: this repo pins `0.3.2.r7.g2b4501a`, exact revision
+  `2b4501a282689792b62e94f3fb30d8f512324fe6` (`pkgs/quickshell.nix`,
+  injected as `omarchy.quickshellPackage`). Its CLI still reports 0.3.2;
+  `checks.omarchy-quickshell-version` checks the full revision too.
+  Upstream's `load_qtquick_611.patch` supplies the shell's required
+  `OmarchyLoadPatch` support; this port's `intercept-rescan-fix.patch`
+  avoids an engine deadlock on plugin reloads with Qt 6.11.2. Both patches
+  apply with strict fuzz 0. Hyprland stays at 0.56.2.
+  `checks.omarchy-desktop` covers shell startup, and `checks.omarchy-ux`
+  exercises the OSD, menu, dock and notifications after plugin reload.
+  Drop the pin (`pkgs/quickshell.nix`, the flake's packages entry, the
+  wrapper injection and the version check) only when nixpkgs provides an
+  equivalent snapshot and fixes, including `OmarchyLoadPatch` support,
+  and desktop/reload acceptance passes. A numeric version alone is not
+  sufficient. The October 22 snapshot passes all 46 checks, including
+  four VM tests; physical GPU verification remains pending.
 
 ## Verification (every stage)
 

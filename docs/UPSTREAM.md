@@ -8,10 +8,11 @@ either deliberate NixOS-isms or known gaps, not features.
 
 Omarchy is DHH's "Beautiful, Modern & Opinionated Linux", a Wayland
 desktop distribution, currently on the Quattro generation
-(`v4.0.4` released 2026-09-15; the `quattro` branch is upstream's default
-and this port tracks it — the vendored `version` file still reads
-`4.0.0.alpha`). This port
-tracks that branch via the `omarchy-src` flake input.
+(`4.5.0-rc1` released 2026-10-20; this port tracks the `quattro` branch
+at `3c7027d`, an October 22 snapshot after that release candidate).
+Stable `4.0.6` (2026-10-19) is a divergent backport line. The vendored
+`version` file still reads `4.0.0.alpha`. This port tracks Quattro via
+the `omarchy-src` flake input.
 
 The README on GitHub is intentionally minimal ("Read more at
 [omarchy.org](https://omarchy.org)"). The real philosophy is in the
@@ -25,7 +26,7 @@ repo:
 - **Lua-based Hyprland config (≥0.56).** `~/.config/hypr/hyprland.lua`
   `dofile`s `$OMARCHY_PATH/default/hypr/bootstrap.lua`, then `require()s
   default.hypr.omarchy` (defaults) + `hypr.*` (user overrides).
-- **~530 `omarchy-*` bash scripts** in `bin/` do everything. Dispatched
+- **~540 `omarchy-*` bash scripts** in `bin/` do everything. Dispatched
   via the `omarchy` router or called bare from PATH.
 - **TOML + template theme engine.** `omarchy-theme-set` copies a
   theme's `colors.toml` into a staging dir, runs
@@ -104,11 +105,11 @@ declared by the NixOS module instead.
 
 ## Upstream defaults (from the vendored source)
 
-These are the defaults encoded in the upstream source (rev `33783b1`,
-2026-10-16, post-v4.0.4 quattro branch). Compare against them when verifying
-parity:
+These are the defaults encoded in the upstream source (rev `3c7027d`,
+2026-10-22, post-4.5.0-rc1 quattro branch). Compare against them when
+verifying parity:
 
-- **Theme**: `ethereal` — `current/theme/` gets the 19 rendered configs
+- **Theme**: `ethereal` — `current/theme/` gets the 20 rendered configs
   plus the theme's own verbatim assets (`colors.toml`, `icons.theme`,
   `unlock.png`, the previews, `backgrounds/`).
 - **Dictation**: Superwhisper for fresh users; migration `1791479273`
@@ -116,6 +117,16 @@ parity:
   explicit backend choice. Both remain selectable under Setup → Defaults.
 - **Disk usage and remote desktop**: Disktree replaces dua-cli; Gliff
   supplies the remote desktop server and indicator.
+- **Per-monitor workspaces**: each monitor owns a block of ten workspace
+  IDs; bindings and the bar present them as workspaces 1–10 on that
+  monitor. The upstream Lua persists monitor identity and reconciles
+  workspaces on unplug/replug. VM acceptance covers monitor-local slots,
+  live workspace-ID changes and virtual output removal. Physical
+  connector/EDID identity remains unverified for this snapshot.
+- **Notifications**: Omapager supplies grouped cards, history and
+  snoozes within quickshell. Its notification canvas normally stays
+  mapped when idle, so a layer's presence alone does not establish that
+  a notification is visible or has been dismissed.
 - **Terminal**: **foot** (`default/xdg-terminal-exec/hyprland-xdg-terminals.list`
   contains only `foot.desktop`; upstream ships
   `applications/foot.desktop` with `X-TerminalArgDir=--working-directory=`).
@@ -156,14 +167,17 @@ parity:
 
 ## Where this port deliberately differs from upstream
 
-The current bump advances `f2a39c4` → `33783b1` by 160 commits. Its tree
-contains 529 `omarchy-*` commands, 23 themes, 194 migrations, 52 `/etc`
-files, and 8 user units. The flake packages 21 upstream-owned apps,
+The current bump advances `33783b1` → `3c7027d` by 206 commits. Its tree
+contains 537 `omarchy-*` commands, 23 themes, 20 templates, 206 migrations,
+55 `/etc` files, and 8 user units. Thirteen migrations are new (4
+user-safe, 9 skip), and upstream removed `1789091250`. The flake packages
+21 upstream-owned apps,
 including Disktree 0.11.0, Gliff 0.3.1, Superwhisper 1.0.0, Signed 0.3.1
-and the omarchy-hyprland-titlebars plugin 0.2.2. These
-three applications open in the automated desktop session. All 46 flake
-checks, including the four VM tests, pass, together with the package
-build, formatting, and all-systems evaluation.
+and the omarchy-hyprland-titlebars plugin 0.2.2. All 46 checks pass,
+including the desktop, UX, SDDM and fish VM tests, alongside the package
+build, formatting and all-systems evaluation. Workspace hotplug and
+live titlebar colors are covered in VM; physical GPU verification of
+this snapshot remains pending.
 
 | Area | Upstream | This port | Why |
 |---|---|---|---|
@@ -175,11 +189,14 @@ build, formatting, and all-systems evaluation.
 | **First-run hooks** | `install/user/first-run/*.sh` on first login | **Runs for real**: `install/` is vendored and `omarchy-provision-first-run` executes on first login, including an explicit Superwhisper setup step | Fingerprint invitations stay muted; the deleted voxtype invitation's marker remains harmless. Dictation packages and fingerprint PAM are native. The Arch-packaging steps (`mise.sh`, `mise-work.sh`) are no-op stubs. |
 | **Per-user setup** | `install/user/all.sh` (theme, chromium, git, xcompose, mise, keyring, dictation, platform) | **Runs** via the vendored `omarchy-provision-user` on first login | `OMARCHY_USER_NAME`/`EMAIL` come from `omarchy.full_name`/`email_address` (environment.d + /etc/profile). `mise.sh`/`mise-work.sh` are no-op'd; platform setup reaches a declarative-note stub. |
 | **Hyprland package** | Arch `hyprland` package ( pacman) | `hyprland` flake input, self-contained build against its own nixpkgs | Needs ≥0.56 for the Lua config; stable nixpkgs only has 0.55.4. |
+| **Quickshell package** | Upstream snapshot with `OmarchyLoadPatch` support | `0.3.2.r7.g2b4501a`, exact revision `2b4501a282689792b62e94f3fb30d8f512324fe6`, plus `load_qtquick_611.patch` and `intercept-rescan-fix.patch`, strict fuzz 0 | The CLI still reports 0.3.2; the check also requires the full revision. Keep equivalent snapshot/fixes and `OmarchyLoadPatch` support, and pass desktop/reload acceptance before dropping the pin. Hyprland 0.56.2 and Qt 6.11.2 are unchanged. |
 | **Hyprland Cachix** | N/A (Arch builds from AUR/cache) | Auto-configured in module (`nix.settings.substituters`) | The flake Hyprland package isn't on cache.nixos.org; without this every consumer rebuilds Hyprland from source (OOMs small VMs). |
 | **Terminal default** | **foot** (`hyprland-xdg-terminals.list` → `foot.desktop`; ghostty opt-in) | foot in runtime deps; vendored list + `foot.desktop` installed to the package's `share/`; `/etc/xdg/hyprland-xdg-terminals.list` written from `omarchy.terminal` | The module-level list wins over the vendored fallback, so `omarchy.terminal = "ghostty"` re-points Super+Enter declaratively; an uninstalled choice degrades to foot. |
 | **Browser default** | **chromium** (set once in `omarchy-provision-user` via `xdg-settings`) | **chromium**: in runtime deps; `BROWSER=omarchy-launch-browser` in interactive shells only; `chromium-browser.desktop` aliased to `chromium.desktop`; HM initializes only an absent association and preserves later user choices | NixOS names the desktop file `chromium-browser.desktop`; upstream tooling expects `chromium.desktop`. |
 | **Cursor** | no theme (only `XCURSOR_SIZE`/`HYPRCURSOR_SIZE`=24; Adwaita cursors arrive via `gnome-themes-extra` on Arch) | `adwaita-icon-theme` in runtime deps + a `default → Adwaita` fallback package (`xcursor-default-adwaita`) | Upstream sets no theme NAME, so libxcursor resolves theme "default"; the fallback's `icons/default/index.theme` (Inherits=Adwaita) mirrors the Arch oracle byte-for-byte. No theme name is set, same as upstream. |
 | **Agent accounts** | mise wrapper dispatch and CLI installation | Account wrappers dispatch to Nix-installed Claude, Codex, or Grok; missing CLIs use the Install → AI catalog. The owned Grok 1.0.50 package takes precedence over nixpkgs' unrelated `grok-cli` | Per-account state stays upstream; package ownership stays with the consumer flake. |
+| **T3 and agent installation** | AppImage or self-updating mise flows | Installs remain Nix catalog actions; the new 1Password removal entry also uses the catalog | Updates stay owned by the consumer flake; these upstream packaging transitions are deliberately excluded. |
+| **Kernel selection** | Arch kernel selector | Menu entry hidden; consumers set `boot.kernelPackages` | Arch kernel packages and boot mutation helpers do not apply to NixOS. |
 | **App-building agent skill** | `omarchy-app` uses Arch `makepkg` and PKGBUILD templates | Source is vendored, but the skill is omitted from automatic user links | Both its instructions and templates need a Nix adaptation before being offered to agents. |
 
 ## Arch-only surface: classification
@@ -192,12 +209,12 @@ build); this table is the feature-level summary.
 
 | Class | Meaning | Items |
 |---|---|---|
-| **Adapted** | Works, in a NixOS-native form | Install/Remove menu (catalog → `omarchy-nix-add/remove` → `omarchy-packages.json` → rebuild, transactional with audit logs); Update → Omarchy (flake update + `nixos-rebuild boot` by default, live `switch` with `OMARCHY_NIX_REBUILD_CMD=switch`; upstream's command-scoped sudo hardening from 349ecc0 is kept — `bash -p` startup check, one password prompt, `sudo -N` wrapper — with its `/usr/bin` tools pointed at store paths and `/run/wrappers/bin/{sudo,pkexec}`, and the source-root check comparing resolved paths because `$OMARCHY_PATH` is a symlinked profile path); migrations (fail-closed classifier, NixOS adapters); firmware update (`fwupdmgr`); presence checks (`omarchy-pkg-present` via catalog + PATH); first-run / finalize-user (vendored, runs on first login); systemd user units (10 shipped and path-adapted; USB/Thunderbolt approval units disabled); lock-screen PAM (declared natively); zram swap (`zramSwap`, upstream's zstd/full-RAM profile); cross-arch execution (opt-in `omarchy.binfmtEmulatedSystems` → `boot.binfmt.emulatedSystems`); sshd key add/remove; `omarchy-update-restart` (compares `/run/{booted,current}-system/kernel`); development menu (global Nix packages via the catalog; direct upstream dev-env flows remain user-scoped mise tooling); AI account dispatch (Nix-installed CLIs, no mise fallback); Slack (native catalog package); OpenClaw CLI (`--check`/`--now` checks or installs the catalog package); dictation (Superwhisper first-run setup, Voxtype backend preservation); snapshots (print a NixOS generations note); the three system-level defaults behind skipped upstream migrations (logind `InhibitDelayMaxSec=15` via `services.logind.settings`, `NetworkManager-wait-online` mask, Wi-Fi powersave off via `networking.networkmanager.wifi.powersave`); bundled Chromium extensions (`--load-extension` in the seeded `chromium-flags.conf` path-adapted to `/run/current-system/sw/share/omarchy`, existing user files rewritten by migration adapter `1780517689.sh`) |
+| **Adapted** | Works, in a NixOS-native form | Install/Remove menu (catalog → `omarchy-nix-add/remove` → `omarchy-packages.json` → rebuild, transactional with audit logs); Update → Omarchy (flake update + `nixos-rebuild boot` by default, live `switch` with `OMARCHY_NIX_REBUILD_CMD=switch`; upstream's command-scoped sudo hardening from 349ecc0 is kept — `bash -p` startup check, one password prompt, `sudo -N` wrapper — with its `/usr/bin` tools pointed at store paths and `/run/wrappers/bin/{sudo,pkexec}`, and the source-root check comparing resolved paths because `$OMARCHY_PATH` is a symlinked profile path); migrations (fail-closed classifier, NixOS adapters); firmware update (`fwupdmgr`); presence checks (`omarchy-pkg-present` via catalog + PATH); first-run / finalize-user (vendored, runs on first login); systemd user units (8 shipped and path-adapted; USB/Thunderbolt approval fully reverted upstream and here); lock-screen PAM (declared natively); zram swap (`zramSwap`, upstream's zstd/full-RAM profile); cross-arch execution (opt-in `omarchy.binfmtEmulatedSystems` → `boot.binfmt.emulatedSystems`); sshd key add/remove; `omarchy-update-restart` (compares `/run/{booted,current}-system/kernel`); development menu (global Nix packages via the catalog; direct upstream dev-env flows remain user-scoped mise tooling); AI account dispatch (Nix-installed CLIs, no mise fallback); Slack (native catalog package); OpenClaw CLI (`--check`/`--now` checks or installs the catalog package); dictation (Superwhisper first-run setup, Voxtype backend preservation); snapshots (print a NixOS generations note); native NetworkManager connectivity checks and timesyncd fallback servers; the three system-level defaults behind skipped upstream migrations (logind `InhibitDelayMaxSec=15` via `services.logind.settings`, `NetworkManager-wait-online` mask, Wi-Fi powersave off via `networking.networkmanager.wifi.powersave`); bundled Chromium extensions (`--load-extension` in the seeded `chromium-flags.conf` path-adapted to `/run/current-system/sw/share/omarchy`, existing user files rewritten by migration adapter `1780517689.sh`) |
 | **N/A** | No NixOS analogue; removed or stubbed | AUR (menu entry deleted; `omarchy-pkg-aur-accessible` always exits 1); pacman channels/mirrors (`omarchy-channel-current` prints `nixos`); limine + snapper (systemd-boot + boot generations instead); direct-boot, hybrid-gpu, hibernation-setup, DNS, fido2, passwordless-sudo, plymouth/timezone refresh, sunshine (declarative-note stubs; their menu entries are deleted); pacman keyring/orphans/reinstall helpers; USB/Thunderbolt approval and boot-access workflows were stubbed here until upstream itself fully reverted them at 33783b1 (usbguard/bolt stay declarative); platform lifecycle/hardware/boot helpers (three declarative-note stubs); `omarchy-app` automatic skill links (Arch packaging templates await a Nix adaptation); `mise` dev-tool manager (Arch tarballs under `/opt/packages`; `mise.sh`/`mise-work.sh` no-op'd; **rejected** as a feature: the dev menu installs global Nix packages via the catalog, which is the final model) |
 | **Deferred** | Possible on NixOS, not done | NordVPN service (menu entry deleted; re-verified 2026-09-13 against `nixos-26.05` HEAD `21a67dc4`: neither the `nordvpn` package nor `services.nordvpn` exists on the stable channel — both are on `nixos-unstable` only. An earlier note here claimed the backport had reached 26.05; that was wrong. Restore when a stable channel carries both, or via a consumer-side overlay); zen / brave-origin browsers (AUR-only, no nixpkgs attrs on the 26.05 pin; menu entries deleted); Cursor CLI + Muse Code default-agent choices and the Perplexity app (v4.0.3; no nixpkgs attrs on the pin — the nixpkgs `muse` attr is the MusE audio sequencer, a name collision — menu entries deleted; revisit when attrs land) |
 | **Blocked / untested** | Needs an external precondition | Fingerprint **reader** on real hardware (the PAM services themselves are declared and pamtester-verified in `checks.omarchy-ux`); real-hardware specifics of the behavioral surface; menu IPC, notifications, OSD, lock and polkit are covered in the VM by `checks.omarchy-ux` section (10) since 2026-07-29, but multi-monitor lock, fingerprint dialog and panel interactions still need a real-hardware pass |
 
-### Arch `/etc` overlay (52 files)
+### Arch `/etc` overlay (55 files)
 
 Upstream's `etc/` tree (copied to `/etc` by the Arch ISO installer) is
 classified file-by-file in `pkgs/omarchy-etc-manifest.nix`, enforced
@@ -220,7 +237,10 @@ file fails the build until classified). Summary by class:
   write primitive), Plymouth + SDDM theme/wayland,
   zswap-off tmpfiles rule, compositor `KillMode=mixed`, plain console
   (`systemd.tty.term.console=dumb`), and opt-in fingerprint stop timeout
-  (`3s`) plus restart after resume.
+  (`3s`) plus restart after resume. NetworkManager's connectivity URI is
+  `http://ping.omacom.io/nm-check.txt` with an empty expected response;
+  it must stay plain HTTP for captive portals. timesyncd's native
+  `fallbackServers` are `[ "ntp.omarchy.org" "time.cloudflare.com" ]`.
 - **vendored** (`environment.etc` `.source` from the package):
   `systemd/oomd.conf.d/10-omarchy.conf`, `gnupg/dirmngr.conf`.
 - **seed** (per-user, mutable): `fastfetch/config.jsonc` →
@@ -403,23 +423,32 @@ explicit exclusion with rationale).
 
 **Doc counters and menu sync points:**
 
-- `ls "$SRC/bin" | grep -c '^omarchy-'` — the "~520 `omarchy-*`
+- `ls "$SRC/bin" | grep -c '^omarchy-'` — the "~540 `omarchy-*`
   scripts" figure in README.md (twice), AGENTS.md, this file and
-  the maintainer-internal MAINTAINERS.md (519 at `f2a39c4`; round to the
+  the maintainer-internal MAINTAINERS.md (537 at `3c7027d`; round to the
   nearest ten).
 - `ls "$SRC/themes" | wc -l` — the "23 stock themes" figure is baked
   into README.md, `example/configuration.nix`, `config.nix` and
   `docs/options.md`; bump all four if it changed.
-- `ls "$SRC/default/systemd/user"/*.service | wc -l` — the "10 systemd
+- `ls "$SRC/default/systemd/user"/*.service | wc -l` — the "8 systemd
   user units" figure appears in README/UPSTREAM/MAINTAINERS, the
   `pkgs/omarchy.nix` header comment and the `unit_names` tripwire in
   `tests/ux.nix`; a new upstream unit must be path-adapted in
   `pkgs/omarchy.nix` and added to `unit_names` together.
 - `ls "$SRC/default/themed"/*.tpl | wc -l` — the templated-config count
   in MAINTAINERS ("all N templated configs") follows the upstream
-  template set.
+  template set (20 at `3c7027d`).
+- Count `migrations/*.sh` and files under `etc/` — current summaries
+  carry 206 migrations and 55 `/etc` files. Classify added and removed
+  paths in their manifests; do not rewrite historical snapshot counts.
 - Compare the `omarchy.appPackages` list in `flake.nix` against the
-  lists in README.md, `docs/options.md` and the `config.nix` comment.
+  lists in README.md, `docs/options.md` and the `config.nix` comment
+  (currently 21 apps, including Signed and omarchy-hyprland-titlebars).
+- Check the exact Quickshell snapshot, both retained patches at fuzz 0,
+  and the full revision reported by the package. A CLI version of 0.3.2
+  alone does not prove revision `2b4501a282689792b62e94f3fb30d8f512324fe6`.
+  Drop the pin only for equivalent snapshot/fixes and `OmarchyLoadPatch`
+  support with passing desktop/reload acceptance.
 - `expected_removes` (tests/checks/catalog-consistency.nix) is a manual
   sync point with the menu rewires in `pkgs/omarchy.nix` — re-check both
   sides whenever menu entries are added/renamed upstream.
@@ -439,11 +468,19 @@ Verify behaviorally (not just processes):
 - First-run evidence: `~/.local/state/omarchy/first-run.log` has
   "Completed:" lines, `done/first-run-user` exists, `~/.XCompose`
   present.
+- Notifications: assert the actual notification count and OCR-visible
+  text before/after dismissal; the idle canvas normally stays mapped.
+  After plugin reload, exercise menu, dock, notifications and OSD.
+- Per-monitor workspaces: verify workspace selection and monitor
+  unplug/replug behavior, including stable monitor assignments. Virtual
+  monitor acceptance passes for the October 22 snapshot; physical
+  connector/EDID identity and GPU behavior still need a hardware pass.
 
 `checks.omarchy-ux` covers the terminal keypress, first-run evidence, and
-theme files/writability automatically. Its theme rendering runs with
-`OMARCHY_THEME_HEADLESS=1`, so verify live bar/shell color changes in a
-running desktop separately. `checks.omarchy-sddm` covers the SDDM path
+theme files/writability automatically. Its theme-file checks run with
+`OMARCHY_THEME_HEADLESS=1`; a separate live theme switch verifies the
+floating titlebar's actual colors and text. Other bar/shell color paths
+need separate desktop verification. `checks.omarchy-sddm` covers the SDDM path
 (daemon, Wayland greeter configuration, theme render, autologin into the
 uwsm session), but not typing at the interactive greeter; package/update
 operations still run without a real rebuild. Separately verify the

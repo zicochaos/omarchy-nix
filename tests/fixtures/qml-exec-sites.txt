@@ -72,11 +72,9 @@ plugins/menu/Menu.qml: Process providerProc: command: -
 plugins/menu/Menu.qml: Process resultProc: command: -
 plugins/menu/Menu.qml: Process selectionProc: command: -
 plugins/menu/Menu.qml: Util.execDetached(command)
-plugins/notifications/Service.qml: Process ensureDirsProc: command: ["mkdir", "-p", service.stateDir, service.popupStateDir, service.historyDir, service.imagesDir]
-plugins/notifications/Service.qml: Process focusAppProc: command: -
-plugins/notifications/Service.qml: Process popupFileProc: command: -
-plugins/notifications/Service.qml: Process readHistoryProc: command: -
-plugins/notifications/Service.qml: Process restorePopupsProc: command: -
+plugins/notifications/Service.qml: Process clipProc: command: -
+plugins/notifications/Service.qml: Process clipReader: command: ["wl-paste", "--no-newline"]
+plugins/notifications/Service.qml: Process storePrepare: command: ["bash", "-c", "umask 077\n" + "dir=$1\n" + "mkdir -p -- \"$dir\" && chmod 700 -- \"$dir\" || exit 1\n" + "for name in live.json history.json quiet.json; do\n" + " file=$dir/$name\n" + " if [[ -L $file ]]; then rm -f -- \"$file\"; fi\n" + " if [[ -f $file ]]; then chmod 600 -- \"$file\"; elif [[ ! -e $file ]]; then : >\"$file\"; fi\n" + "done\n", "omarchy-notifications-state", service.stateDir]
 plugins/panels/audio/Panel.qml: Process sinkAvailabilityProc: command: ["omarchy-audio-sink-availability"]
 plugins/panels/audio/Panel.qml: Process sourceAvailabilityProc: command: ["omarchy-audio-sink-availability", "sources"]
 plugins/panels/audio/Panel.qml: Process volumeSinkProc: command: ["omarchy-audio-output-sink"]
@@ -94,8 +92,11 @@ plugins/panels/dropbox/Service.qml: Quickshell.execDetached(["uwsm-app", "--", "
 plugins/panels/elsewhen/Globe.qml: Process zoneProc: command: -
 plugins/panels/elsewhen/Panel.qml: Process catalogProc: command: ["timedatectl", "list-timezones"]
 plugins/panels/elsewhen/Panel.qml: Process geoProc: command: -
+plugins/panels/elsewhen/Panel.qml: Process peopleProc: command: -
+plugins/panels/elsewhen/Panel.qml: Process placeProc: command: -
 plugins/panels/elsewhen/Panel.qml: Process probeProc: command: Model.probeCommand(root.probeIds, true)
-plugins/panels/elsewhen/Panel.qml: Process searchProc: command: Model.probeCommand(root.searchZoneIds, false)
+plugins/panels/elsewhen/Panel.qml: Process searchProc: command: -
+plugins/panels/elsewhen/Panel.qml: Process timezoneProc: command: -
 plugins/panels/elsewhen/Panel.qml: Process weatherProc: command: -
 plugins/panels/monitor/Panel.qml: Process actionProc: command: -
 plugins/panels/monitor/Panel.qml: Process setBrightnessProc: command: -
@@ -108,7 +109,7 @@ plugins/panels/network/Panel.qml: Process detailsProc: command: ["omarchy-networ
 plugins/panels/network/Panel.qml: Process dnsProc: command: -
 plugins/panels/network/Panel.qml: Process enterpriseConnect: command: -
 plugins/panels/network/Panel.qml: Quickshell.execDetached(["bash", "-c", "printf %s " + Util.shellQuote(value) + " | wl-copy"])
-plugins/panels/network/Panel.qml: Quickshell.execDetached(["omarchy-launch-browser", Model.captivePortalUrl])
+plugins/panels/network/Panel.qml: Quickshell.execDetached(["omarchy-network-captive-portal", Model.captivePortalUrl])
 plugins/panels/power/Panel.qml: Process actionProc: command: -
 plugins/panels/power/Panel.qml: Process batteryProc: command: ["omarchy-battery-status", "--shell"]
 plugins/panels/power/Panel.qml: Process profilesProc: command: ["omarchy-powerprofiles-list", "--active-state"]
@@ -130,7 +131,7 @@ plugins/panels/tailscale/Service.qml: Quickshell.execDetached(["omarchy-tailscal
 plugins/panels/weather/Panel.qml: Process dailyForecastProc: command: -
 plugins/panels/weather/Panel.qml: Process forecastProc: command: ["curl", "-fsS", "--max-time", "10", "https://wttr.in/" + root.locationQuery + "?format=j1"]
 plugins/panels/weather/Panel.qml: Process geocodeProc: command: -
-plugins/panels/weather/Panel.qml: Process locationProc: command: ["curl", "-fsS", "--max-time", "4", "https://wttr.in/?format=%l"]
+plugins/panels/weather/Panel.qml: Process locationProc: command: ["curl", "-fsS", "--max-time", "4", "https://geo.omarchy.org/"]
 plugins/panels/weather/Panel.qml: Process locationSaveProc: command: -
 plugins/panels/wifiqr/Panel.qml: Process pwProc: command: -
 plugins/panels/wifiqr/Panel.qml: Process qrProc: command: -
